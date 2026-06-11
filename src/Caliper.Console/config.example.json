@@ -1,0 +1,63 @@
+{
+  "Caliper": {
+    "Provider": "OpenRouter",
+    "Model": "openrouter/model-slug",
+    "SummarizerModel": null,
+    "MaxSteps": 25,
+    "DuplicateCallLimit": 2,
+    "ToolTimeoutSeconds": 60,
+    "ToolMaxRetries": 2,
+    "ToolOutputMaxChars": 16000,
+    "Temperature": 0.0,
+    "Seed": null,
+    "Reasoning": { "Effort": "medium", "Exclude": false },
+    "TurnStrategy": "Auto",
+    "EnabledTools": [ "search", "fetch_url", "read_file", "list_dir", "glob", "grep", "write_file", "edit_file", "bash", "powershell", "memory", "load_skill" ],
+    "WorkingRoot": ".",
+    "SkillsDirectory": "~/.caliper/skills",
+    "SkillSelector": "None",
+    "MaxSurfacedSkills": 12,
+    "Context": {
+      "AutoCompact": true,
+      "CompactAtFraction": 0.8,
+      "KeepRecentTurns": 8,
+      "ReservedOutputTokens": 4096
+    },
+    "Memory": {
+      "Enabled": true,
+      "GlobalDir": "~/.caliper/memory",
+      "ProjectFile": "CALIPER.md"
+    }
+  },
+  "Providers": {
+    "OpenRouter": {
+      "Endpoint": "https://openrouter.ai/api/v1",
+      "AppTitle": "Caliper"
+    }
+  },
+  "Permissions": {
+    "Mode": "AskAlways",
+    "RememberApprovals": true,
+    "ShellAutoAllowlist": [ "git status", "git diff --", "dotnet build", "dotnet test" ],
+    "ShellDenylist": [ "rm -rf", "sudo ", "mkfs", "dd ", ":(){", "curl", "wget", "Remove-Item -Recurse", "Format-Volume", "reg delete" ],
+    "AutoAllowFileRoots": []
+  },
+  "Mcp": {
+    "Servers": {}
+  },
+  "Search": {
+    "Backend": "Stub",
+    "SearchDepth": "basic",
+    "MaxResults": 5,
+    "Topic": "general"
+  },
+  "Persistence": {
+    "SqlitePath": "~/.caliper/caliper.db"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information"
+    }
+  }
+}

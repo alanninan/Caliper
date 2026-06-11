@@ -1,0 +1,25 @@
+<!-- SPDX-FileCopyrightText: 2026 Alan Ninan Thomas -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Authors>Alan Ninan Thomas</Authors>
+    <Copyright>Copyright 2026 Alan Ninan Thomas</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- CA1305: locale-invariance for AI prompt text is a non-issue.
+         CA1848: LoggerMessage delegates are a micro-opt; structured logging is correct. -->
+    <NoWarn>$(NoWarn);CA1305;CA1848</NoWarn>
+    <Deterministic>true</Deterministic>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,12 @@
+<!-- SPDX-FileCopyrightText: 2026 Alan Ninan Thomas -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<Project>
+  <!-- Import the root Directory.Build.props so test projects still get the shared settings. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!-- Tests legitimately use underscored method names (Method_Condition_Expected).
+       CA1707 applies to production code; suppress it in test projects. -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CA1707</NoWarn>
+  </PropertyGroup>
+</Project>
