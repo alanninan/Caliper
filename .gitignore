@@ -11,6 +11,9 @@
 .claude/
 .vs/
 
+# Local planning / scratch docs (not tracked)
+docs/
+
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/

@@ -19,6 +19,7 @@ public enum SlashCommandKind
     Model,
     Models,
     Permissions,
+    Config,
     Help,
     Quit,
 }
@@ -43,6 +44,7 @@ public static class SlashCommandParser
         new("/models", "List known OpenRouter models."),
         new("/permissions <mode>", "Switch permission mode: AskAlways, Auto, or Plan."),
         new("/set <key> <value>", "Update supported runtime settings."),
+        new("/config save", "Persist the session's runtime/permission settings to config.json."),
         new("/help", "Show this command list."),
         new("/quit", "Exit Caliper."),
     ];
@@ -70,6 +72,7 @@ public static class SlashCommandParser
             "/model" => SlashCommandKind.Model,
             "/models" => SlashCommandKind.Models,
             "/permissions" => SlashCommandKind.Permissions,
+            "/config" => SlashCommandKind.Config,
             "/help" => SlashCommandKind.Help,
             "/quit" => SlashCommandKind.Quit,
             _ => SlashCommandKind.Unknown,

@@ -135,7 +135,7 @@ public sealed class SkillStoreTests
 
     private static SkillStore Build(string root) =>
         new(
-            Options.Create(new AgentOptions { SkillsDirectory = root }),
+            Options.Create(new CaliperOptions { SkillsDirectory = root }),
             NullLogger<SkillStore>.Instance);
 
     private static string CreateRoot()

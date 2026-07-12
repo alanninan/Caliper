@@ -14,6 +14,13 @@ public interface ITool
     JsonElement ParameterSchema { get; }
     SideEffect SideEffect { get; }
     Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct);
+
+    /// <summary>
+    /// The side effect for a specific invocation. Defaults to <see cref="SideEffect"/>; tools
+    /// whose risk depends on their arguments (e.g. a memory tool that both reads and writes) can
+    /// narrow it so read-only invocations are not gated as writes.
+    /// </summary>
+    SideEffect EffectiveSideEffect(JsonElement arguments) => SideEffect;
 }
 
 public enum SideEffect

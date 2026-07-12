@@ -33,7 +33,12 @@ public sealed class ReadFileTool(IOptions<CaliperOptions> options) : ITool
             if (start > end)
                 return new ToolResult(false, "start_line must be <= end_line.");
 
-            var selected = lines.Skip(start - 1).Take(end - start + 1);
+            // Prefix each line with its 1-based number so the model can cite and target ranges
+            // precisely (mirrors grep's file:line output).
+            var selected = lines
+                .Skip(start - 1)
+                .Take(end - start + 1)
+                .Select((line, offset) => $"{start + offset}: {line}");
             return new ToolResult(true, ToolOutput.Truncate(string.Join(Environment.NewLine, selected), options.Value.ToolOutputMaxChars));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

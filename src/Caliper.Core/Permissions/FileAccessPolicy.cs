@@ -8,13 +8,25 @@ namespace Caliper.Core.Permissions;
 
 public sealed class FileAccessPolicy
 {
+    // Windows/macOS default file systems are case-insensitive; Linux is case-sensitive. Using the
+    // wrong comparison lets a differently-cased path outside the root read as inside (or vice versa).
+    private static readonly StringComparison s_pathComparison =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+    private static readonly StringComparer s_pathComparer =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
     public FileAccessPolicy(CaliperOptions caliperOptions, PermissionsOptions permissionsOptions)
     {
         WorkingRoot = ResolveRoot(caliperOptions.WorkingRoot);
         AutoAllowRoots = permissionsOptions.AutoAllowFileRoots
             .Where(static root => !string.IsNullOrWhiteSpace(root))
             .Select(ResolveRoot)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Distinct(s_pathComparer)
             .ToList();
     }
 
@@ -72,7 +84,7 @@ public sealed class FileAccessPolicy
     private static bool IsInsideRoot(string fullPath, string root)
     {
         var normalized = EnsureTrailingSeparator(ResolvePhysicalPath(Path.GetFullPath(fullPath)));
-        return normalized.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        return normalized.StartsWith(root, s_pathComparison);
     }
 
     private static string ResolvePhysicalPath(string fullPath)

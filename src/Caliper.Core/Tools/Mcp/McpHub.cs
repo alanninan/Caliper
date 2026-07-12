@@ -24,11 +24,13 @@ public sealed class McpHub(
 
     public IReadOnlyList<ITool> Tools => _tools;
     public IReadOnlyList<McpServerStatus> Status => _status;
+    public event EventHandler? StatusChanged;
 
     public async Task ConnectAllAsync(CancellationToken ct)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         var provisionalClients = new List<McpClient>();
+        var updated = false;
         try
         {
             var tools = new List<ITool>();
@@ -68,6 +70,7 @@ public sealed class McpHub(
             provisionalClients = [];
             _tools = tools;
             _status = statuses;
+            updated = true;
 
             await DisposeClientsAsync(oldClients).ConfigureAwait(false);
         }
@@ -80,6 +83,9 @@ public sealed class McpHub(
         {
             _gate.Release();
         }
+
+        if (updated)
+            StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task DisposeAllAsync()
@@ -96,6 +102,8 @@ public sealed class McpHub(
         {
             _gate.Release();
         }
+
+        StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public async ValueTask DisposeAsync()
@@ -139,11 +147,6 @@ public sealed class McpHub(
                 Client: null,
                 Tools: [],
                 Error: $"MCP server '{serverName}' connect timed out after {s_serverConnectTimeout.TotalSeconds:0}s.");
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
-        {
-            await DisposeClientAsync(client).ConfigureAwait(false);
-            return new McpServerConnection(Client: null, Tools: [], Error: ex.Message);
         }
         catch (Exception ex)
         {

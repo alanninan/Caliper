@@ -11,11 +11,12 @@ using Microsoft.Extensions.Options;
 namespace Caliper.Core.Models;
 
 internal sealed class OpenRouterCapabilityProvider(
-    HttpClient http,
+    IHttpClientFactory httpClientFactory,
     IOptions<CaliperOptions> caliperOptions,
     IOptions<ProvidersOptions> providerOptions,
     ILogger<OpenRouterCapabilityProvider> logger) : IModelCapabilityProvider, IModelCatalog, IDisposable
 {
+    public const string HttpClientName = "openrouter-meta";
     private const int FallbackContextWindow = 32768;
     private IReadOnlyDictionary<string, ModelCapabilities>? _cache;
     private readonly SemaphoreSlim _cacheGate = new(1, 1);
@@ -65,7 +66,8 @@ internal sealed class OpenRouterCapabilityProvider(
                 return _cache;
 
             var endpoint = providerOptions.Value.OpenRouter.Endpoint.TrimEnd('/') + "/";
-            http.BaseAddress ??= new Uri(endpoint);
+            using var http = httpClientFactory.CreateClient(HttpClientName);
+            http.BaseAddress = new Uri(endpoint);
             var response = await http.GetFromJsonAsync("models", CaliperJsonContext.Default.OpenRouterModelsResponse, ct)
                 .ConfigureAwait(false);
 
@@ -93,8 +95,11 @@ internal sealed class OpenRouterCapabilityProvider(
         }
     }
 
+    // Optimistic on tools: if we could not confirm capabilities (metadata fetch failed, or the
+    // slug is missing from the catalog) we assume tools are supported rather than silently
+    // dropping every tool. A model that genuinely lacks tools surfaces a clear API error instead.
     private static ModelCapabilities Fallback() =>
-        new(SupportsTools: false, SupportsReasoning: false, SupportsStructuredOutputs: false, ContextWindowTokens: FallbackContextWindow);
+        new(SupportsTools: true, SupportsReasoning: false, SupportsStructuredOutputs: false, ContextWindowTokens: FallbackContextWindow);
 
     public void Dispose() => _cacheGate.Dispose();
 

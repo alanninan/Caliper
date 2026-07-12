@@ -1,0 +1,22 @@
+# Normalize line endings on commit so the history doesn't churn on EOLs across machines.
+* text=auto
+
+# Windows-only scripts and solution/project files stay CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.sln text eol=crlf
+*.slnx text eol=crlf
+
+# Shell scripts stay LF.
+*.sh text eol=lf
+
+# Treat common binary assets as binary (no EOL or diff munging).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.db binary
+*.sqlite binary

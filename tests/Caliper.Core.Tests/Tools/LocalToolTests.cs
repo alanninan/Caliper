@@ -26,9 +26,12 @@ public sealed class LocalToolTests : IDisposable
         var options = Options.Create(new CaliperOptions { ToolOutputMaxChars = 4000 });
         var write = await new WriteFileTool().InvokeAsync(JsonSerializer.SerializeToElement(new { path = "docs/a.txt", content = "alpha\nbeta\nalpha" }), ctx, CancellationToken.None);
         Assert.True(write.Success);
+        Assert.NotNull(write.FileChange);
+        Assert.Empty(write.FileChange.Before);
+        Assert.Equal("alpha\nbeta\nalpha", write.FileChange.After);
 
         var read = await new ReadFileTool(options).InvokeAsync(JsonSerializer.SerializeToElement(new { path = "docs/a.txt", start_line = 2, end_line = 2 }), ctx, CancellationToken.None);
-        Assert.Equal("beta", read.Output);
+        Assert.Equal("2: beta", read.Output);
 
         var list = await new ListDirTool(options).InvokeAsync(JsonSerializer.SerializeToElement(new { path = "." }), ctx, CancellationToken.None);
         Assert.Contains("docs/", list.Output, StringComparison.Ordinal);
@@ -41,7 +44,63 @@ public sealed class LocalToolTests : IDisposable
 
         var edit = await new EditFileTool().InvokeAsync(JsonSerializer.SerializeToElement(new { path = "docs/a.txt", old_str = "beta", new_str = "gamma" }), ctx, CancellationToken.None);
         Assert.True(edit.Success);
+        Assert.NotNull(edit.FileChange);
+        Assert.Contains("beta", edit.FileChange.Before, StringComparison.Ordinal);
+        Assert.Contains("gamma", edit.FileChange.After, StringComparison.Ordinal);
         Assert.Contains("gamma", File.ReadAllText(Path.Combine(_root, "docs", "a.txt")), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Edit_file_preserves_utf8_bom()
+    {
+        var ctx = Context();
+        var path = Path.Combine(_root, "bom.txt");
+        var utf8Bom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true);
+        await File.WriteAllTextAsync(path, "alpha beta", utf8Bom);
+
+        var edit = await new EditFileTool().InvokeAsync(
+            JsonSerializer.SerializeToElement(new { path = "bom.txt", old_str = "beta", new_str = "gamma" }),
+            ctx,
+            CancellationToken.None);
+
+        Assert.True(edit.Success);
+        var bytes = await File.ReadAllBytesAsync(path);
+        Assert.Equal([0xEF, 0xBB, 0xBF], bytes[..3]);
+        Assert.Equal("alpha gamma", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task Edit_file_preserves_utf16le_encoding()
+    {
+        var ctx = Context();
+        var path = Path.Combine(_root, "utf16.txt");
+        await File.WriteAllTextAsync(path, "alpha beta", System.Text.Encoding.Unicode);
+
+        var edit = await new EditFileTool().InvokeAsync(
+            JsonSerializer.SerializeToElement(new { path = "utf16.txt", old_str = "beta", new_str = "gamma" }),
+            ctx,
+            CancellationToken.None);
+
+        Assert.True(edit.Success);
+        var bytes = await File.ReadAllBytesAsync(path);
+        // UTF-16LE BOM (FF FE) must survive, and the content must decode as UTF-16, not mojibake.
+        Assert.Equal([0xFF, 0xFE], bytes[..2]);
+        Assert.Equal("alpha gamma", await File.ReadAllTextAsync(path, System.Text.Encoding.Unicode));
+    }
+
+    [Fact]
+    public async Task Write_file_new_file_defaults_to_bomless_utf8()
+    {
+        var ctx = Context();
+
+        var write = await new WriteFileTool().InvokeAsync(
+            JsonSerializer.SerializeToElement(new { path = "plain.txt", content = "hello" }),
+            ctx,
+            CancellationToken.None);
+
+        Assert.True(write.Success);
+        var bytes = await File.ReadAllBytesAsync(Path.Combine(_root, "plain.txt"));
+        Assert.Equal(System.Text.Encoding.UTF8.GetBytes("hello"), bytes);
     }
 
     [Fact]
@@ -92,7 +151,7 @@ public sealed class LocalToolTests : IDisposable
                 CancellationToken.None);
 
             Assert.True(read.Success);
-            Assert.Equal("authorized", read.Output);
+            Assert.Equal("1: authorized", read.Output);
         }
         finally
         {

@@ -29,7 +29,7 @@ public sealed class GlobTool(IOptions<CaliperOptions> options) : ITool
             if (!Directory.Exists(root))
                 return Task.FromResult(new ToolResult(false, $"Directory not found: {root}"));
 
-            var regex = GlobToRegex(pattern);
+            var regex = GlobMatcher.ToRegex(pattern);
             var matches = SafeFileTraversal.EnumerateFiles(root, ct)
                 .Select(path => Path.GetRelativePath(root, path))
                 .Where(relative => regex.IsMatch(relative.Replace('\\', '/')))
@@ -40,14 +40,5 @@ public sealed class GlobTool(IOptions<CaliperOptions> options) : ITool
         {
             return Task.FromResult(new ToolResult(false, ex.Message));
         }
-    }
-
-    private static Regex GlobToRegex(string pattern)
-    {
-        var escaped = Regex.Escape(pattern.Replace('\\', '/'))
-            .Replace(@"\*\*", ".*", StringComparison.Ordinal)
-            .Replace(@"\*", @"[^/]*", StringComparison.Ordinal)
-            .Replace(@"\?", ".", StringComparison.Ordinal);
-        return new Regex("^" + escaped + "$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromSeconds(2));
     }
 }

@@ -36,13 +36,14 @@ public sealed class OpenRouterCapabilityProviderTests
     }
 
     [Fact]
-    public async Task Fallback_is_respond_only_when_metadata_is_unavailable()
+    public async Task Fallback_assumes_tool_support_when_metadata_is_unavailable()
     {
         var provider = BuildProvider("""{"data": []}""");
 
         var capabilities = await provider.GetAsync("missing/model", CancellationToken.None);
 
-        Assert.False(capabilities.SupportsTools);
+        // Optimistic on tools so a transient metadata gap doesn't silently strip every tool.
+        Assert.True(capabilities.SupportsTools);
         Assert.False(capabilities.SupportsReasoning);
         Assert.False(capabilities.SupportsStructuredOutputs);
         Assert.Equal(32768, capabilities.ContextWindowTokens);
@@ -50,9 +51,9 @@ public sealed class OpenRouterCapabilityProviderTests
 
     private static OpenRouterCapabilityProvider BuildProvider(string json)
     {
-        var handler = new StaticJsonHandler(json);
+        var factory = new StaticHttpClientFactory(new StaticJsonHandler(json));
         return new OpenRouterCapabilityProvider(
-            new HttpClient(handler),
+            factory,
             Options.Create(new CaliperOptions { Provider = "OpenRouter" }),
             Options.Create(new ProvidersOptions
             {
@@ -60,6 +61,11 @@ public sealed class OpenRouterCapabilityProviderTests
             }),
             NullLogger<OpenRouterCapabilityProvider>.Instance);
     }
+}
+
+file sealed class StaticHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+{
+    public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
 }
 
 file sealed class StaticJsonHandler(string json) : HttpMessageHandler

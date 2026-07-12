@@ -31,6 +31,18 @@ public sealed class ToolRegistryTests
     }
 
     [Fact]
+    public void All_includes_tools_disabled_by_config()
+    {
+        var opts = new CaliperOptions { EnabledTools = ["tool-a"] };
+        var registry = Build([new StubTool("tool-a"), new StubTool("tool-b")], opts);
+
+        var allNames = registry.All.Select(t => t.Name).ToList();
+        Assert.Contains("tool-a", allNames);
+        Assert.Contains("tool-b", allNames);
+        Assert.DoesNotContain("tool-b", registry.Enabled.Select(t => t.Name));
+    }
+
+    [Fact]
     public void Find_returns_registered_tool_by_name()
     {
         var opts     = new CaliperOptions { EnabledTools = ["search"] };
@@ -119,4 +131,5 @@ file sealed class StubMcpHub(IReadOnlyList<ITool> tools) : IMcpHub
     public IReadOnlyList<McpServerStatus> Status => [];
     public Task ConnectAllAsync(CancellationToken ct) => Task.CompletedTask;
     public Task DisposeAllAsync() => Task.CompletedTask;
+    public event EventHandler? StatusChanged { add { } remove { } }
 }

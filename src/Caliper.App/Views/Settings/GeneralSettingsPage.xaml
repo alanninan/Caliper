@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.GeneralSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="720" Spacing="16">
+            <StackPanel Spacing="8">
+                <TextBlock Text="General" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Theme and workspace root." TextWrapping="Wrap" />
+            </StackPanel>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+            <settings:SettingsCard Header="Theme" Description="High Contrast follows Windows automatically.">
+                <ComboBox
+                    x:Name="ThemePicker"
+                    AutomationProperties.AutomationId="ThemePicker"
+                    MinWidth="180"
+                    ItemsSource="{x:Bind ViewModel.ThemeOptions, Mode=OneWay}"
+                    SelectedItem="{x:Bind ViewModel.SelectedTheme, Mode=TwoWay}"
+                    SelectionChanged="ThemePicker_SelectionChanged" />
+            </settings:SettingsCard>
+            <settings:SettingsCard Header="Working root" Description="Folder the agent treats as the project root.">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox
+                        AutomationProperties.AutomationId="SettingsWorkingRootTextBox"
+                        MinWidth="320"
+                        Text="{x:Bind ViewModel.WorkingRoot, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button AutomationProperties.AutomationId="BrowseWorkingRootButton" Click="BrowseWorkingRoot_Click" Content="Browse" />
+                </StackPanel>
+            </settings:SettingsCard>
+            <Button
+                AutomationProperties.AutomationId="SaveGeneralSettingsButton"
+                Command="{x:Bind ViewModel.SaveCommand}"
+                Content="Save"
+                Style="{StaticResource AccentButtonStyle}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

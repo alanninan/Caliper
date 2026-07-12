@@ -42,6 +42,14 @@ internal sealed class EvalSessionStore : ISessionStore
     public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<SessionSummary>>([]);
 
+    public Task DeleteAsync(string sessionId, CancellationToken ct)
+    {
+        lock (_lock) _sessions.Remove(sessionId);
+        return Task.CompletedTask;
+    }
+
+    public Task RenameAsync(string sessionId, string title, CancellationToken ct) => Task.CompletedTask;
+
     public Task ReplaceWithCompactionAsync(string sessionId, ContextFit fit, CancellationToken ct)
     {
         lock (_lock)

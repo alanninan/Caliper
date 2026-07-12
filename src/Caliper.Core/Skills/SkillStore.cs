@@ -11,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace Caliper.Core.Skills;
 
 internal sealed partial class SkillStore(
-    IOptions<AgentOptions> opts,
+    IOptions<CaliperOptions> opts,
     ILogger<SkillStore> logger) : ISkillStore
 {
     private const int MaxBodyWarningChars = 20_000;
@@ -43,7 +43,7 @@ internal sealed partial class SkillStore(
         if (body.Length > MaxBodyWarningChars)
         {
             logger.LogWarning(
-                "Skill '{Skill}' body is {Length} characters; Phase 4 only warns for oversized skill bodies.",
+                "Skill '{Skill}' body is {Length} characters; oversized skill bodies are loaded but may crowd the context window.",
                 name,
                 body.Length);
         }

@@ -40,6 +40,9 @@ internal abstract class SqliteStoreBase(
                 Directory.CreateDirectory(directory);
 
             await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+            // WAL is a persistent, database-level property; set it once here rather than on
+            // every connection open.
+            await ExecuteNonQueryAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
             await CreateSchemaAsync(connection, ct).ConfigureAwait(false);
 
             if (logger.IsEnabled(LogLevel.Debug))
@@ -62,8 +65,26 @@ internal abstract class SqliteStoreBase(
         var connection = CreateConnection();
         await connection.OpenAsync(ct).ConfigureAwait(false);
         await ExecuteNonQueryAsync(connection, "PRAGMA busy_timeout=5000;", ct).ConfigureAwait(false);
-        await ExecuteNonQueryAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
         return connection;
+    }
+
+    /// <summary>Adds a column if the table does not already have it (idempotent migration).</summary>
+    protected static async Task EnsureColumnAsync(
+        SqliteConnection connection,
+        string table,
+        string column,
+        string definition,
+        CancellationToken ct)
+    {
+        await using (var check = connection.CreateCommand())
+        {
+            check.CommandText = $"SELECT 1 FROM pragma_table_info('{table}') WHERE name = $column LIMIT 1;";
+            check.Parameters.AddWithValue("$column", column);
+            if (await check.ExecuteScalarAsync(ct).ConfigureAwait(false) is not null)
+                return;
+        }
+
+        await ExecuteNonQueryAsync(connection, $"ALTER TABLE {table} ADD COLUMN {column} {definition};", ct).ConfigureAwait(false);
     }
 
     protected static async Task ExecuteNonQueryAsync(

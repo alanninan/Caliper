@@ -136,6 +136,26 @@ public sealed class AgentRunnerGuardrailTests
     }
 
     [Fact]
+    public async Task Load_skill_persists_tool_call_before_its_result()
+    {
+        var store = new InMemorySessionStoreStub();
+        var sessionId = await store.CreateAsync(null, CancellationToken.None);
+        var strategy = CapturingTurnStrategy.Returning(
+            LoadSkill("pdf-processing"),
+            Respond("done"));
+
+        var runner = Build(strategy, skillStore: new SingleSkillStore(), sessions: store);
+        _ = await RunAll(runner, sessionId, "load a skill");
+
+        var history = (await store.LoadAsync(sessionId, CancellationToken.None)).ToList();
+        var callIndex = history.FindIndex(m => m.Kind == MessageKind.ToolCall && m.ToolName == "load_skill");
+        var resultIndex = history.FindIndex(m => m.Kind == MessageKind.ToolResult && m.ToolName == "load_skill");
+
+        Assert.True(callIndex >= 0, "load_skill must persist a tool-call message");
+        Assert.True(resultIndex > callIndex, "the tool result must follow its matching call");
+    }
+
+    [Fact]
     public async Task Tool_call_decision_is_visible_in_next_turn_history()
     {
         var args = JsonDocument.Parse("""{"query":"same"}""").RootElement.Clone();
@@ -242,6 +262,48 @@ public sealed class AgentRunnerGuardrailTests
         Assert.Equal(1, tool.InvocationCount);
         Assert.Contains(events, e => e is RunCompleted { Reason: CompletionReason.Cancelled });
         Assert.DoesNotContain(events, e => e is ToolFailed);
+    }
+
+    [Fact]
+    public async Task Cancellation_mid_tool_persists_a_healing_result_for_the_dangling_call()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var store = new InMemorySessionStoreStub();
+        var sessionId = await store.CreateAsync(null, CancellationToken.None);
+        var tool = new CancellingTool(cancellation);
+        var args = JsonDocument.Parse("""{"value":"go"}""").RootElement.Clone();
+        var strategy = FakeTurnStrategy.Returning(CallTool(tool.Name, args, "call_dangling"));
+        var runner = Build(
+            strategy,
+            new CaliperOptions { Model = "test", MaxSteps = 4, DuplicateCallLimit = 10 },
+            registry: new SingleToolRegistry(tool),
+            sessions: store);
+
+        var events = await RunAll(runner, sessionId, "cancel", cancellation.Token);
+
+        Assert.Contains(events, e => e is RunCompleted { Reason: CompletionReason.Cancelled });
+        var history = (await store.LoadAsync(sessionId, CancellationToken.None)).ToList();
+        var callIndex = history.FindLastIndex(m => m.Kind == MessageKind.ToolCall && m.ToolCallId == "call_dangling");
+        Assert.True(callIndex >= 0, "the interrupted tool call must be persisted");
+        Assert.Contains(
+            history.Skip(callIndex + 1),
+            m => m.Kind == MessageKind.ToolResult && m.ToolCallId == "call_dangling");
+    }
+
+    [Fact]
+    public async Task Loaded_skill_body_survives_into_a_later_run()
+    {
+        var store = new InMemorySessionStoreStub();
+        var sessionId = await store.CreateAsync(null, CancellationToken.None);
+
+        var first = CapturingTurnStrategy.Returning(LoadSkill("pdf-processing"), Respond("loaded"));
+        _ = await RunAll(Build(first, skillStore: new SingleSkillStore(), sessions: store), sessionId, "load the skill");
+
+        var second = CapturingTurnStrategy.Returning(Respond("second"));
+        _ = await RunAll(Build(second, skillStore: new SingleSkillStore(), sessions: store), sessionId, "reuse the skill");
+
+        Assert.NotEmpty(second.Contexts);
+        Assert.Contains("## Skill: pdf-processing", second.Contexts[0].System, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -407,6 +469,25 @@ public sealed class AgentRunnerGuardrailTests
         Assert.True(tokens.Calibrations[0].Estimated > 0);
     }
 
+    [Fact]
+    public async Task UsageReported_accumulates_across_multiple_turns()
+    {
+        var tool = new WriteToolStub();
+        var args = JsonDocument.Parse("""{"value":"go"}""").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallTool(tool.Name, args),
+            Respond("done"));
+
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool));
+
+        var events = await RunAll(runner, "test-session", "usage");
+
+        var usageEvents = events.OfType<UsageReported>().ToList();
+        Assert.Equal(2, usageEvents.Count);
+        Assert.Equal((1, 1), (usageEvents[0].CumulativePrompt, usageEvents[0].CumulativeCompletion));
+        Assert.Equal((2, 2), (usageEvents[1].CumulativePrompt, usageEvents[1].CumulativeCompletion));
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────
 
     private static string CreateSession() => "test-session";
@@ -518,6 +599,14 @@ file sealed class InMemorySessionStoreStub : ISessionStore
     public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<SessionSummary>>([]);
 
+    public Task DeleteAsync(string sessionId, CancellationToken ct)
+    {
+        _data.Remove(sessionId);
+        return Task.CompletedTask;
+    }
+
+    public Task RenameAsync(string sessionId, string title, CancellationToken ct) => Task.CompletedTask;
+
     public Task ReplaceWithCompactionAsync(string sessionId, ContextFit fit, CancellationToken ct)
     {
         var prefix = _data.TryGetValue(sessionId, out var existing)
@@ -532,6 +621,7 @@ file sealed class InMemorySessionStoreStub : ISessionStore
 file sealed class EmptyToolRegistry : IToolRegistry
 {
     public IReadOnlyList<ITool> Enabled => [];
+    public IReadOnlyList<ITool> All => [];
     public ITool? Find(string name) => null;
     public IReadOnlyList<Microsoft.Extensions.AI.AIFunction> AsAIFunctions() => [];
 
@@ -544,6 +634,8 @@ file sealed class EmptyToolRegistry : IToolRegistry
 file sealed class SingleToolRegistry(ITool tool) : IToolRegistry
 {
     public IReadOnlyList<ITool> Enabled => [tool];
+
+    public IReadOnlyList<ITool> All => [tool];
 
     public ITool? Find(string name) =>
         string.Equals(name, tool.Name, StringComparison.Ordinal) ? tool : null;

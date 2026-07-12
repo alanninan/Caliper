@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.MemoryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:markdown="using:CommunityToolkit.WinUI.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Caliper.App.ViewModels">
+
+    <Grid Padding="36,28" RowSpacing="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="8">
+                <TextBlock Text="Memory" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Global/project memory and the project document that can be surfaced into prompts." TextWrapping="Wrap" />
+            </StackPanel>
+            <Button Grid.Column="1" AutomationProperties.AutomationId="MemoryRefreshButton" Command="{x:Bind ViewModel.RefreshMemoryCommand}" Content="Refresh memory" />
+        </Grid>
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <settings:SettingsCard Header="Entries" Description="{x:Bind ViewModel.MemoryCountText, Mode=OneWay}" />
+            <settings:SettingsCard Grid.Column="1" Header="Project document" Description="{x:Bind ViewModel.ProjectDocumentPath, Mode=OneWay}" />
+        </Grid>
+        <Grid Grid.Row="2" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="420" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <Grid>
+                    <ListView AutomationProperties.AutomationId="MemoryList" ItemsSource="{x:Bind ViewModel.Memories, Mode=OneWay}">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:MemoryItemViewModel">
+                                <StackPanel Padding="16" Spacing="4">
+                                    <TextBlock Text="{x:Bind Key}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Value}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{x:Bind Scope}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                    <InfoBar Margin="16" IsClosable="False" IsOpen="{x:Bind converters:XamlConverters.InvertBool(ViewModel.HasMemories), Mode=OneWay}" Message="No remembered facts are stored for the current scopes." Severity="Informational" />
+                </Grid>
+            </Border>
+            <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <Grid RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Project document" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.ProjectDocumentPath, Mode=OneWay}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+                    <ScrollViewer Grid.Row="1">
+                        <markdown:MarkdownTextBlock IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.ProjectDocument, Mode=OneWay}" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>

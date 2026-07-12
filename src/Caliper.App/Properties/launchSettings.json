@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Caliper.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "Caliper.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

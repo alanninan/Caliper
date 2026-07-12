@@ -115,17 +115,68 @@ public sealed class NativeToolStrategy(
         foreach (var message in context.Messages)
             messages.Add(ToAiMessage(message));
 
-        return messages;
+        return HealDanglingToolCalls(messages);
     }
 
-    private static AIChatMessage ToAiMessage(CaliperChatMessage message) =>
-        message.Kind switch
+    // A stored transcript can end an assistant tool_calls message without its matching tool result
+    // (a run cancelled or a process killed mid-tool). OpenAI-compatible endpoints reject an
+    // assistant tool_calls message that isn't followed by a response for every call id, so a single
+    // orphan poisons every later turn until compaction happens to drop it. Synthesize a stand-in
+    // result for any call id whose response is missing before the next non-tool message. This also
+    // heals sessions already corrupted on disk.
+    private static List<AIChatMessage> HealDanglingToolCalls(List<AIChatMessage> messages)
+    {
+        var healed = new List<AIChatMessage>(messages.Count);
+        var pending = new List<string>();
+
+        void FlushPending()
         {
-            MessageKind.ToolCall => BuildToolCallMessage(message),
-            MessageKind.ToolResult => BuildToolResultMessage(message),
-            MessageKind.Summary => new AIChatMessage(ToAiRole(message.Role), message.Content),
-            _ => new AIChatMessage(ToAiRole(message.Role), message.Content),
-        };
+            foreach (var callId in pending)
+            {
+                healed.Add(new AIChatMessage(AIChatRole.Tool, [
+                    new FunctionResultContent(callId, "[no result — run was interrupted]"),
+                ]));
+            }
+
+            pending.Clear();
+        }
+
+        foreach (var message in messages)
+        {
+            var resultIds = message.Contents.OfType<FunctionResultContent>().Select(c => c.CallId).ToList();
+            if (resultIds.Count > 0)
+            {
+                // A tool result answers pending calls; keep it and drop those ids from pending.
+                foreach (var id in resultIds)
+                    pending.Remove(id);
+                healed.Add(message);
+                continue;
+            }
+
+            // Any other message (assistant text or new tool_calls, user, system) starts a fresh
+            // block, so anything still pending never got its result — fill it in first.
+            FlushPending();
+            healed.Add(message);
+            pending.AddRange(message.Contents.OfType<FunctionCallContent>().Select(c => c.CallId));
+        }
+
+        FlushPending();
+        return healed;
+    }
+
+    private static AIChatMessage ToAiMessage(CaliperChatMessage message)
+    {
+        if (message.Kind == MessageKind.ToolCall && message.Payload is not null)
+            return BuildToolCallMessage(message);
+        if (message.Kind == MessageKind.ToolResult && message.Payload is not null)
+            return BuildToolResultMessage(message);
+
+        // Text, Summary, or a tool-kind message that lost its payload (e.g. a compaction
+        // placeholder). Render as plain content under a role the API accepts standalone —
+        // never emit an orphaned Tool-role message with no matching tool call.
+        var role = message.Role == CaliperChatRole.Tool ? AIChatRole.Assistant : ToAiRole(message.Role);
+        return new AIChatMessage(role, message.Content);
+    }
 
     private static AIChatMessage BuildToolCallMessage(CaliperChatMessage message)
     {
@@ -229,7 +280,8 @@ internal static class JsonValue
         }
 
         stream.Position = 0;
-        return JsonDocument.Parse(stream).RootElement.Clone();
+        using var document = JsonDocument.Parse(stream);
+        return document.RootElement.Clone();
     }
 
     private static void WriteObject(Utf8JsonWriter writer, IEnumerable<KeyValuePair<string, object?>> values)

@@ -57,7 +57,9 @@ internal sealed class AutoCompactingContextManager(
             var summary = await summarizer.SummarizeAsync(split.Older, ct).ConfigureAwait(false);
             compacted =
             [
-                new ChatMessage(ChatRole.System, MessageKind.Summary, $"Earlier conversation summary:\n{summary}"),
+                // User role (as data) rather than a mid-conversation System message, which some
+                // providers reject or treat specially.
+                new ChatMessage(ChatRole.User, MessageKind.Summary, $"Earlier conversation summary:\n{summary}"),
                 .. split.Tail,
             ];
         }
@@ -140,6 +142,15 @@ internal sealed class AutoCompactingContextManager(
             start = Math.Max(0, history.Count - Math.Max(1, keepRecentTurns));
 
         start = Math.Clamp(start, 0, history.Count);
+
+        // Never let the kept tail begin with a tool result whose call is being summarized away;
+        // advance the boundary past any leading tool results so both halves stay well-formed.
+        while (start < history.Count && history[start].Kind == MessageKind.ToolResult)
+            start++;
+
+        if (start >= history.Count)
+            return (history, []);
+
         if (start == 0)
             return ([], history);
 

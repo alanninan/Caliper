@@ -49,6 +49,15 @@ public sealed class ToolPanelRenderer
     private static string ArgumentsSummary(JsonElement arguments) =>
         Markup.Escape(Truncate(arguments.GetRawText()));
 
-    private static string Truncate(string text) =>
-        text.Length <= MaxPayloadChars ? text : text[..MaxPayloadChars] + "...";
+    private static string Truncate(string text)
+    {
+        if (text.Length <= MaxPayloadChars)
+            return text;
+
+        // Don't cut through a surrogate pair, which would render as a broken glyph.
+        var end = MaxPayloadChars;
+        if (char.IsHighSurrogate(text[end - 1]))
+            end--;
+        return text[..end] + "...";
+    }
 }

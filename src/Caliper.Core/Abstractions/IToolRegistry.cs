@@ -9,6 +9,15 @@ namespace Caliper.Core.Abstractions;
 public interface IToolRegistry
 {
     IReadOnlyList<ITool> Enabled { get; }
+
+    /// <summary>
+    /// Every built-in tool registered with the host, regardless of whether it is currently
+    /// enabled via <c>CaliperOptions.EnabledTools</c>. Used by settings UIs that need to offer a
+    /// toggle for a disabled tool, not just list the active set. MCP tools are intentionally
+    /// excluded — they are connection-dependent and already surfaced via <see cref="IMcpHub"/>.
+    /// </summary>
+    IReadOnlyList<ITool> All { get; }
+
     ITool? Find(string name);
     IReadOnlyList<AIFunction> AsAIFunctions();
     JsonElement BuildResponseSchema(IReadOnlyList<string> skillMenu);

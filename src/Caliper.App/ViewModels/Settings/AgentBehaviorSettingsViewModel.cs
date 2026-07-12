@@ -1,0 +1,77 @@
+// Copyright 2026 Alan Ninan Thomas
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for full license information.
+using System.Globalization;
+using Caliper.Core.Abstractions;
+using Caliper.Core.Configuration;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+
+namespace Caliper.App.ViewModels.Settings;
+
+public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configWriter) : ObservableObject
+{
+    public IReadOnlyList<TurnStrategyKind> TurnStrategyOptions { get; } = Enum.GetValues<TurnStrategyKind>();
+    public IReadOnlyList<string> ReasoningEffortOptions { get; } = ["none", "low", "medium", "high", "extra-high"];
+
+    [ObservableProperty] public partial TurnStrategyKind SelectedTurnStrategy { get; set; }
+    [ObservableProperty] public partial double MaxSteps { get; set; }
+    [ObservableProperty] public partial double DuplicateCallLimit { get; set; }
+    [ObservableProperty] public partial double ToolTimeoutSeconds { get; set; }
+    [ObservableProperty] public partial double ToolMaxRetries { get; set; }
+    [ObservableProperty] public partial double ToolOutputMaxChars { get; set; }
+    [ObservableProperty] public partial double Temperature { get; set; }
+    [ObservableProperty] public partial string SeedText { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ReasoningEffort { get; set; } = "medium";
+    [ObservableProperty] public partial bool ExcludeReasoning { get; set; }
+    [ObservableProperty] public partial string StatusMessage { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool StatusIsError { get; set; }
+
+    [RelayCommand]
+    public async Task LoadAsync(CancellationToken ct)
+    {
+        var caliper = await configWriter.LoadCaliperAsync(ct);
+        SelectedTurnStrategy = caliper.TurnStrategy;
+        MaxSteps = caliper.MaxSteps;
+        DuplicateCallLimit = caliper.DuplicateCallLimit;
+        ToolTimeoutSeconds = caliper.ToolTimeoutSeconds;
+        ToolMaxRetries = caliper.ToolMaxRetries;
+        ToolOutputMaxChars = caliper.ToolOutputMaxChars;
+        Temperature = caliper.Temperature;
+        SeedText = caliper.Seed?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
+        ReasoningEffort = caliper.Reasoning.Effort;
+        ExcludeReasoning = caliper.Reasoning.Exclude;
+    }
+
+    [RelayCommand]
+    private async Task SaveAsync()
+    {
+        int? seed = null;
+        if (!string.IsNullOrWhiteSpace(SeedText))
+        {
+            if (!int.TryParse(SeedText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            {
+                StatusIsError = true;
+                StatusMessage = "Seed must be an integer or empty.";
+                return;
+            }
+            seed = parsed;
+        }
+
+        var caliper = await configWriter.LoadCaliperAsync(CancellationToken.None);
+        caliper.TurnStrategy = SelectedTurnStrategy;
+        caliper.MaxSteps = (int)MaxSteps;
+        caliper.DuplicateCallLimit = (int)DuplicateCallLimit;
+        caliper.ToolTimeoutSeconds = (int)ToolTimeoutSeconds;
+        caliper.ToolMaxRetries = (int)ToolMaxRetries;
+        caliper.ToolOutputMaxChars = (int)ToolOutputMaxChars;
+        caliper.Temperature = Temperature;
+        caliper.Seed = seed;
+        caliper.Reasoning.Effort = ReasoningEffort;
+        caliper.Reasoning.Exclude = ExcludeReasoning;
+
+        var result = await configWriter.SaveCaliperAsync(caliper, CancellationToken.None);
+        StatusIsError = !result.Success;
+        StatusMessage = result.Success ? "Saved. Changes apply to the next message you send." : result.Error ?? "Save failed.";
+    }
+}

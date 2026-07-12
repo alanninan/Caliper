@@ -45,7 +45,8 @@ public sealed record ChatMessage(
             call.CallId,
             call.Tool,
             result.Success,
-            result.Output),
+            result.Output,
+            result.FileChange),
             CaliperJsonContext.Default.ToolResultPayload);
         var prefix = result.Success ? $"[Tool: {call.Tool}]" : $"[Tool: {call.Tool} ERROR]";
         return new ChatMessage(
@@ -67,4 +68,5 @@ public sealed record ToolResultPayload(
     string CallId,
     string ToolName,
     bool Success,
-    string Output);
+    string Output,
+    FileChange? FileChange = null);

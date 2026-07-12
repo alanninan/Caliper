@@ -7,6 +7,13 @@ internal static class SafeFileTraversal
 {
     private const int MaxDirectories = 10000;
 
+    // Nested build output and VCS metadata are noise for search tools and waste the match budget.
+    // Only children are filtered, so an explicit search rooted inside one of these still works.
+    private static readonly HashSet<string> s_ignoredDirectories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git", ".hg", ".svn", ".vs", "bin", "obj", "node_modules", ".idea",
+    };
+
     public static IEnumerable<string> EnumerateFiles(string root, CancellationToken ct)
     {
         if (File.Exists(root))
@@ -27,12 +34,13 @@ internal static class SafeFileTraversal
             if (++visitedDirectories > MaxDirectories)
                 throw new InvalidOperationException($"Directory traversal exceeded {MaxDirectories} directories.");
 
-            IEnumerable<FileSystemInfo> entries;
+            List<FileSystemInfo> entries;
             try
             {
-                entries = new DirectoryInfo(directory).EnumerateFileSystemInfos();
+                // Materialize under the try so an access error surfaces here, not mid-iteration.
+                entries = new DirectoryInfo(directory).EnumerateFileSystemInfos().ToList();
             }
-            catch (DirectoryNotFoundException)
+            catch (Exception ex) when (ex is DirectoryNotFoundException or UnauthorizedAccessException or IOException)
             {
                 continue;
             }
@@ -44,9 +52,14 @@ internal static class SafeFileTraversal
                     continue;
 
                 if ((entry.Attributes & FileAttributes.Directory) != 0)
-                    pending.Push(entry.FullName);
+                {
+                    if (!s_ignoredDirectories.Contains(entry.Name))
+                        pending.Push(entry.FullName);
+                }
                 else
+                {
                     yield return entry.FullName;
+                }
             }
         }
     }

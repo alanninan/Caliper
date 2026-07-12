@@ -14,7 +14,7 @@ namespace Caliper.Core.Tools.BuiltIn;
 public sealed class GrepTool(IOptions<CaliperOptions> options) : ITool
 {
     private static readonly JsonElement s_schema = JsonDocument.Parse(
-        """{"type":"object","additionalProperties":false,"required":["pattern"],"properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string"}}}""").RootElement.Clone();
+        """{"type":"object","additionalProperties":false,"required":["pattern"],"properties":{"pattern":{"type":"string"},"path":{"type":"string"},"glob":{"type":"string"},"case_sensitive":{"type":"boolean"}}}""").RootElement.Clone();
 
     public string Name => "grep";
     public string Description => "Search text files with a regular expression.";
@@ -26,21 +26,33 @@ public sealed class GrepTool(IOptions<CaliperOptions> options) : ITool
         try
         {
             var root = FileToolHelpers.ResolvePath(FileToolHelpers.GetString(arguments, "path", ".") ?? ".", ctx);
+            var caseSensitive = FileToolHelpers.GetBool(arguments, "case_sensitive");
+            var regexOptions = RegexOptions.CultureInvariant | (caseSensitive ? RegexOptions.None : RegexOptions.IgnoreCase);
             var regex = new Regex(
                 FileToolHelpers.GetString(arguments, "pattern") ?? "",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                regexOptions,
                 RegexTimeout());
             var glob = FileToolHelpers.GetString(arguments, "glob");
             var files = SafeFileTraversal.EnumerateFiles(root, ct);
-            if (!string.IsNullOrWhiteSpace(glob))
-                files = files.Where(file => Path.GetFileName(file).Contains(glob.Trim('*'), StringComparison.OrdinalIgnoreCase));
 
             var baseRoot = File.Exists(root) ? Path.GetDirectoryName(root) ?? root : root;
+            if (!string.IsNullOrWhiteSpace(glob))
+            {
+                // A bare pattern like "*.cs" matches by name anywhere; a pattern with a slash is
+                // matched against the path relative to the search root.
+                var globRegex = GlobMatcher.ToRegex(glob.Contains('/', StringComparison.Ordinal) ? glob : "**/" + glob);
+                files = files.Where(file =>
+                    globRegex.IsMatch(Path.GetRelativePath(baseRoot, file).Replace('\\', '/')));
+            }
+
             var sb = new StringBuilder();
             var count = 0;
             foreach (var file in files)
             {
                 ct.ThrowIfCancellationRequested();
+                if (await IsBinaryAsync(file, ct).ConfigureAwait(false))
+                    continue;
+
                 var lineNo = 0;
                 await foreach (var line in ReadLinesAsync(file, ct).ConfigureAwait(false))
                 {
@@ -62,6 +74,22 @@ public sealed class GrepTool(IOptions<CaliperOptions> options) : ITool
 
     private TimeSpan RegexTimeout() =>
         TimeSpan.FromSeconds(Math.Max(1, Math.Min(options.Value.ToolTimeoutSeconds, 5)));
+
+    private static async Task<bool> IsBinaryAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            await using var stream = File.OpenRead(path);
+            var buffer = new byte[4096];
+            var read = await stream.ReadAsync(buffer, ct).ConfigureAwait(false);
+            // A NUL byte in the leading block is a reliable, cheap signal for a binary file.
+            return Array.IndexOf(buffer, (byte)0, 0, read) >= 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
 
     private static async IAsyncEnumerable<string> ReadLinesAsync(string path, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {

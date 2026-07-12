@@ -34,4 +34,45 @@ public sealed class McpHubTests
         Assert.Contains("Unsupported MCP transport type", status.Error);
         Assert.Empty(hub.Tools);
     }
+
+    [Fact]
+    public async Task ConnectAll_raises_StatusChanged()
+    {
+        var options = new McpOptions
+        {
+            Servers = new Dictionary<string, McpServerOptions>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["bad"] = new() { Type = "unsupported" },
+            },
+        };
+        var hub = new McpHub(
+            Options.Create(options),
+            Options.Create(new CaliperOptions()),
+            NullLoggerFactory.Instance,
+            NullLogger<McpHub>.Instance);
+
+        var raised = false;
+        hub.StatusChanged += (_, _) => raised = true;
+
+        await hub.ConnectAllAsync(CancellationToken.None);
+
+        Assert.True(raised);
+    }
+
+    [Fact]
+    public async Task DisposeAll_raises_StatusChanged()
+    {
+        var hub = new McpHub(
+            Options.Create(new McpOptions()),
+            Options.Create(new CaliperOptions()),
+            NullLoggerFactory.Instance,
+            NullLogger<McpHub>.Instance);
+
+        var raised = false;
+        hub.StatusChanged += (_, _) => raised = true;
+
+        await hub.DisposeAllAsync();
+
+        Assert.True(raised);
+    }
 }

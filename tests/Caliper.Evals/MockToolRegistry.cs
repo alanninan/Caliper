@@ -57,6 +57,8 @@ internal sealed class MockToolRegistry(IReadOnlyDictionary<string, (string Descr
 
     public IReadOnlyList<ITool> Enabled => _tools;
 
+    public IReadOnlyList<ITool> All => _tools;
+
     public ITool? Find(string name) => _tools.FirstOrDefault(t => t.Name == name);
 
     public IReadOnlyList<AIFunction> AsAIFunctions() => [];
@@ -114,6 +116,7 @@ internal sealed class EmptyEvalToolRegistry : IToolRegistry
 {
     internal static readonly EmptyEvalToolRegistry Instance = new();
     public IReadOnlyList<ITool> Enabled => [];
+    public IReadOnlyList<ITool> All => [];
     public ITool? Find(string name) => null;
     public IReadOnlyList<AIFunction> AsAIFunctions() => [];
     public JsonElement BuildResponseSchema(IReadOnlyList<string> skillMenu) =>

@@ -78,7 +78,9 @@ public sealed class ConstrainedEnvelopeStrategy(
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
-            logger.LogError("Constrained envelope parse failed. Raw response: {Response}", raw.ToString());
+            // Truncate: the raw response can be large and may contain sensitive prompt/memory text.
+            logger.LogError("Constrained envelope parse failed. Raw response: {Response}",
+                Tools.ToolOutput.Truncate(raw.ToString(), 2000));
             throw new InvalidOperationException($"Constrained envelope parse failed: {ex.Message}", ex);
         }
 

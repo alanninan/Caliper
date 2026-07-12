@@ -22,9 +22,16 @@ public sealed class WriteFileTool : ITool
         try
         {
             var path = FileToolHelpers.ResolvePath(FileToolHelpers.GetString(arguments, "path") ?? "", ctx);
+            // Overwriting an existing file preserves its encoding/BOM; a brand-new file defaults to
+            // BOM-less UTF-8.
+            var before = string.Empty;
+            System.Text.Encoding encoding = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            if (File.Exists(path))
+                (before, encoding) = await FileToolHelpers.ReadTextWithEncodingAsync(path, ct).ConfigureAwait(false);
+            var content = FileToolHelpers.GetString(arguments, "content") ?? "";
             Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ctx.WorkingRoot);
-            await File.WriteAllTextAsync(path, FileToolHelpers.GetString(arguments, "content") ?? "", ct).ConfigureAwait(false);
-            return new ToolResult(true, $"Wrote {path}");
+            await File.WriteAllTextAsync(path, content, encoding, ct).ConfigureAwait(false);
+            return new ToolResult(true, $"Wrote {path}", FileChange.Capture(path, before, content));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {

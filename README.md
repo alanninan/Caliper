@@ -1,14 +1,18 @@
 # Caliper
 
-Caliper is a .NET agent runtime and console application for running model-assisted workflows against a local workspace. It combines an OpenRouter-compatible chat client, guarded local tools, MCP server support, session persistence, memory, skills, and context compaction behind a small interactive terminal UI.
+Caliper is a .NET agent runtime with two front-ends — an interactive console app and a WinUI 3 desktop app — for running model-assisted workflows against a local workspace. It combines OpenRouter and Google Gemini chat clients, guarded local tools, MCP server support, session persistence, memory, skills, and context compaction. The reusable engine lives in `Caliper.Core`; the console and the WinUI app are two hosts on top of it.
 
 The project is designed around deterministic host-side control: model output proposes work, while Caliper owns tool dispatch, permissions, retries, context management, persistence, and safety checks.
 
 ## Features
 
-- Console-first agent loop with streaming responses.
-- OpenRouter provider integration through `Microsoft.Extensions.AI`.
-- Runtime model switching with `/model <slug>` and catalog inspection with `/models`.
+- Console-first agent loop with streaming responses, plus a WinUI 3 desktop app (`Caliper.App`)
+  with a three-pane workbench, inline tool/diff inspector, docked permission approvals, and
+  structured settings pages.
+- OpenRouter and Google Gemini provider integration through `Microsoft.Extensions.AI` (Gemini via
+  its OpenAI-compatible endpoint).
+- Runtime model switching with `/model <slug>` and catalog inspection with `/models`; runtime
+  provider switching with `/set provider <OpenRouter|Gemini>`.
 - Tool permission modes: `AskAlways`, `Auto`, and `Plan`.
 - Built-in tools for search, URL fetch, file reads/writes/edits, glob, grep, shell, memory, and skill loading.
 - MCP client support for stdio and HTTP servers.
@@ -25,17 +29,33 @@ Caliper.slnx
 src/
   Caliper.Console/      Console host, rendering, slash commands, sample config
   Caliper.Core/         Agent loop, tools, model clients, persistence, memory
+  Caliper.App/          WinUI 3 desktop host (view models, XAML, Credential Manager store)
 tests/
   Caliper.Console.Tests/
   Caliper.Core.Tests/
+  Caliper.App.Tests/    View-model and pure-layer tests for the WinUI app
   Caliper.Evals/        Hermetic and model-in-the-loop evaluation suites
 ```
+
+## Desktop app (`Caliper.App`)
+
+The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
+
+- Run it with `dotnet run --project src/Caliper.App` (or F5 in Visual Studio); requires the Windows
+  App SDK and a Windows 10.0.19041+ target.
+- API keys are stored in **Windows Credential Manager** (not `config.json`) — enter them under
+  Settings → Models &amp; providers. Provider endpoint and key changes apply after a restart, which
+  the app offers as a one-click "Restart Caliper" button.
+- UI preferences (theme, window placement, sessions-pane state) live in `~/.caliper/app-ui.json`;
+  runtime settings still come from `~/.caliper/config.json`.
 
 ## Prerequisites
 
 - .NET SDK 10.0 or newer.
-- An OpenRouter API key for model-backed runs.
-- A model slug from your OpenRouter account. Pick a model appropriate for your task; tool-calling models work best with Caliper's native tool strategy.
+- An API key for model-backed runs: an OpenRouter key (default provider), or a Google Gemini API
+  key if you plan to use `Provider: "Gemini"`.
+- A model slug from your chosen provider. Pick a model appropriate for your task; tool-calling
+  models work best with Caliper's native tool strategy.
 
 ## Setup
 
@@ -68,6 +88,24 @@ tests/
    ```powershell
    $env:CALIPER_Caliper__Model = "<your-openrouter-model-slug>"
    ```
+
+   To use Gemini instead, set `CALIPER_GEMINI_KEY` and switch the provider and model:
+
+   ```powershell
+   $env:CALIPER_GEMINI_KEY = "<your-gemini-api-key>"
+   ```
+
+   ```json
+   {
+     "Caliper": {
+       "Provider": "Gemini",
+       "Model": "gemini-2.5-flash"
+     }
+   }
+   ```
+
+   Or switch providers at runtime from the console with `/set provider Gemini` followed by
+   `/model gemini-2.5-flash`.
 
 4. Run Caliper.
 
@@ -120,9 +158,12 @@ Important settings:
 
 | Setting | Purpose |
 | --- | --- |
+| `Caliper.Provider` | Active provider: `OpenRouter` (default) or `Gemini`. Switchable at runtime with `/set provider <name>`. |
 | `Caliper.Model` | Active provider model slug. Configure this before model-backed use. |
 | `Providers.OpenRouter.Endpoint` | OpenRouter-compatible API endpoint. |
 | `Providers.OpenRouter.ApiKey` | API key, usually supplied through `CALIPER_OPENROUTER_KEY`. |
+| `Providers.Gemini.Endpoint` | Gemini's OpenAI-compatible API endpoint. |
+| `Providers.Gemini.ApiKey` | API key, usually supplied through `CALIPER_GEMINI_KEY`. |
 | `Caliper.WorkingRoot` | Workspace root exposed to file tools. |
 | `Caliper.EnabledTools` | Tool allowlist surfaced to the agent. |
 | `Permissions.Mode` | Permission mode for side-effecting tools. |
@@ -134,6 +175,7 @@ Environment variable examples:
 
 ```powershell
 $env:CALIPER_OPENROUTER_KEY = "<your-openrouter-api-key>"
+$env:CALIPER_GEMINI_KEY = "<your-gemini-api-key>"
 $env:CALIPER_Caliper__Model = "<your-openrouter-model-slug>"
 $env:CALIPER_Permissions__Mode = "AskAlways"
 ```

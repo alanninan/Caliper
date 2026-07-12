@@ -27,13 +27,15 @@ public sealed class EditFileTool : ITool
 
             var oldStr = FileToolHelpers.GetString(arguments, "old_str") ?? "";
             var newStr = FileToolHelpers.GetString(arguments, "new_str") ?? "";
-            var content = await File.ReadAllTextAsync(path, ct).ConfigureAwait(false);
+            var (content, encoding) = await FileToolHelpers.ReadTextWithEncodingAsync(path, ct).ConfigureAwait(false);
             var count = CountOccurrences(content, oldStr);
             if (count != 1)
                 return new ToolResult(false, $"old_str must occur exactly once; found {count} matches.");
 
-            await File.WriteAllTextAsync(path, content.Replace(oldStr, newStr, StringComparison.Ordinal), ct).ConfigureAwait(false);
-            return new ToolResult(true, $"Edited {path}");
+            var updated = content.Replace(oldStr, newStr, StringComparison.Ordinal);
+            // Preserve the file's original encoding/BOM so an edit doesn't re-encode the whole file.
+            await File.WriteAllTextAsync(path, updated, encoding, ct).ConfigureAwait(false);
+            return new ToolResult(true, $"Edited {path}", FileChange.Capture(path, content, updated));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {

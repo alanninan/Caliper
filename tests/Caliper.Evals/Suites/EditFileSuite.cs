@@ -144,6 +144,7 @@ internal static class EditFileSuite
         private readonly EditFileTool _tool = new();
 
         public IReadOnlyList<ITool> Enabled => [_tool];
+        public IReadOnlyList<ITool> All => [_tool];
         public ITool? Find(string name) => string.Equals(name, _tool.Name, StringComparison.Ordinal) ? _tool : null;
         public IReadOnlyList<AIFunction> AsAIFunctions() => [];
         public JsonElement BuildResponseSchema(IReadOnlyList<string> skillMenu) =>

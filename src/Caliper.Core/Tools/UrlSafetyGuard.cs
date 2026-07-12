@@ -53,13 +53,16 @@ internal sealed class UrlSafetyGuard(
             var bytes = address.GetAddressBytes();
             return bytes[0] switch
             {
-                0 => true,
-                10 => true,
-                127 => true,
-                100 when bytes[1] is >= 64 and <= 127 => true,
-                169 when bytes[1] == 254 => true,
-                172 when bytes[1] is >= 16 and <= 31 => true,
-                192 when bytes[1] == 168 => true,
+                0 => true,                                              // "this" network
+                10 => true,                                             // private
+                127 => true,                                            // loopback
+                100 when bytes[1] is >= 64 and <= 127 => true,          // CGNAT 100.64/10
+                169 when bytes[1] == 254 => true,                       // link-local
+                172 when bytes[1] is >= 16 and <= 31 => true,           // private 172.16/12
+                192 when bytes[1] == 0 && bytes[2] == 0 => true,        // IETF protocol 192.0.0/24
+                192 when bytes[1] == 168 => true,                       // private
+                198 when bytes[1] is 18 or 19 => true,                  // benchmarking 198.18/15
+                >= 224 => true,                                         // multicast, reserved, broadcast
                 _ => false,
             };
         }

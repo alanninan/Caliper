@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <NavigationView
+        x:Name="RootNav"
+        IsBackButtonVisible="Collapsed"
+        IsSettingsVisible="True"
+        PaneDisplayMode="LeftCompact"
+        SelectionChanged="RootNav_SelectionChanged">
+        <NavigationView.MenuItems>
+            <NavigationViewItem AutomationProperties.AutomationId="ChatNavigationItem" Content="Chat" Tag="Chat">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE80F;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem AutomationProperties.AutomationId="SkillsNavigationItem" Content="Skills" Tag="Skills">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE82D;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem AutomationProperties.AutomationId="MemoryNavigationItem" Content="Memory" Tag="Memory">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE8F1;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+        </NavigationView.MenuItems>
+        <Frame x:Name="RootContentFrame" />
+    </NavigationView>
+</Page>

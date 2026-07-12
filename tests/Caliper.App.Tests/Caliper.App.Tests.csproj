@@ -1,0 +1,52 @@
+<!-- SPDX-FileCopyrightText: 2026 Alan Ninan Thomas -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- WindowsCredentialStore.cs (linked from Caliper.App) uses LibraryImport-generated interop stubs. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="DiffPlex" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caliper.Core\Caliper.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Caliper.App\ViewModels\AgentEventMapper.cs" Link="ViewModels\AgentEventMapper.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\ApprovalViewModel.cs" Link="ViewModels\ApprovalViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\ChatItemViewModels.cs" Link="ViewModels\ChatItemViewModels.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\ChatRunStatus.cs" Link="ViewModels\ChatRunStatus.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\ChatViewModel.cs" Link="ViewModels\ChatViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\FileDiffViewModel.cs" Link="ViewModels\FileDiffViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\IChatSessionController.cs" Link="ViewModels\IChatSessionController.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\MemoryViewModel.cs" Link="ViewModels\MemoryViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\PersistedTranscriptFactory.cs" Link="ViewModels\PersistedTranscriptFactory.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\SessionItemViewModel.cs" Link="ViewModels\SessionItemViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\SessionsViewModel.cs" Link="ViewModels\SessionsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\SkillsViewModel.cs" Link="ViewModels\SkillsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\GeneralSettingsViewModel.cs" Link="ViewModels\Settings\GeneralSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ModelsProvidersSettingsViewModel.cs" Link="ViewModels\Settings\ModelsProvidersSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\AgentBehaviorSettingsViewModel.cs" Link="ViewModels\Settings\AgentBehaviorSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ContextMemorySettingsViewModel.cs" Link="ViewModels\Settings\ContextMemorySettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ToolsSettingsViewModel.cs" Link="ViewModels\Settings\ToolsSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\PermissionsSettingsViewModel.cs" Link="ViewModels\Settings\PermissionsSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\McpServersSettingsViewModel.cs" Link="ViewModels\Settings\McpServersSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\SearchSettingsViewModel.cs" Link="ViewModels\Settings\SearchSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\AdvancedSettingsViewModel.cs" Link="ViewModels\Settings\AdvancedSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\Permissions\ApprovalService.cs" Link="Permissions\ApprovalService.cs" />
+    <Compile Include="..\..\src\Caliper.App\Preferences\AppPreferencesStore.cs" Link="Preferences\AppPreferencesStore.cs" />
+    <Compile Include="..\..\src\Caliper.App\Security\WindowsCredentialStore.cs" Link="Security\WindowsCredentialStore.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\src\Caliper.App\Permissions\IUiDispatcher.cs" Link="Permissions\IUiDispatcher.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

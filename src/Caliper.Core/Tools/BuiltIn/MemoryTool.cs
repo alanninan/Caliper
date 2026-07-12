@@ -32,6 +32,12 @@ public sealed class MemoryTool(IMemoryStore memoryStore) : ITool
     public JsonElement ParameterSchema => s_schema;
     public SideEffect SideEffect => SideEffect.Write;
 
+    // "recall" only reads; classify it read-only so it is not gated behind a write prompt.
+    public SideEffect EffectiveSideEffect(JsonElement arguments) =>
+        string.Equals(GetString(arguments, "action"), "recall", StringComparison.OrdinalIgnoreCase)
+            ? SideEffect.ReadOnly
+            : SideEffect.Write;
+
     public async Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct)
     {
         try

@@ -53,33 +53,6 @@ internal sealed class OpenRouterChatClientProvider(
             .Build();
     }
 
-    private sealed class UnavailableChatClient(string reason) : IChatClient
-    {
-        public Task<ChatResponse> GetResponseAsync(
-            IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages,
-            ChatOptions? options = null,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException(reason);
-
-        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
-            IEnumerable<Microsoft.Extensions.AI.ChatMessage> messages,
-            ChatOptions? options = null,
-            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            await Task.CompletedTask.ConfigureAwait(false);
-            throw new InvalidOperationException(reason);
-            #pragma warning disable CS0162
-            yield break;
-            #pragma warning restore CS0162
-        }
-
-        public object? GetService(Type serviceType, object? serviceKey = null) => null;
-
-        public void Dispose()
-        {
-        }
-    }
-
     private sealed class OpenRouterAttributionPolicy(OpenRouterOptions options) : PipelinePolicy
     {
         public override void Process(PipelineMessage message, IReadOnlyList<PipelinePolicy> pipeline, int currentIndex)

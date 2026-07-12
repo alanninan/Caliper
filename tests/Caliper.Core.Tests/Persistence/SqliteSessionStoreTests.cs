@@ -70,6 +70,40 @@ public sealed class SqliteSessionStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Delete_removes_session_and_messages()
+    {
+        var path = NewDbPath();
+        var store = Build(path);
+        var sessionId = await store.CreateAsync("delete me", CancellationToken.None);
+        await store.AppendAsync(
+            sessionId,
+            new ChatMessage(ChatRole.User, "hello"),
+            CancellationToken.None);
+
+        await store.DeleteAsync(sessionId, CancellationToken.None);
+
+        Assert.DoesNotContain(await store.ListAsync(CancellationToken.None), item => item.Id == sessionId);
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => store.LoadAsync(sessionId, CancellationToken.None));
+
+        await using var connection = new SqliteConnection($"Data Source={path}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM messages WHERE session_id = $session_id;";
+        command.Parameters.AddWithValue("$session_id", sessionId);
+        Assert.Equal(0L, await command.ExecuteScalarAsync());
+    }
+
+    [Fact]
+    public async Task Delete_unknown_session_throws()
+    {
+        var store = Build(NewDbPath());
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(
+            () => store.DeleteAsync("missing", CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Unknown_session_throws()
     {
         var store = Build(NewDbPath());
@@ -158,6 +192,34 @@ public sealed class SqliteSessionStoreTests : IDisposable
         Assert.Equal("before clear", loaded[0].Content);
         Assert.Equal(Caliper.Core.Agents.AgentRunner.ContextResetMarker, loaded[1].Content);
         Assert.Equal("post-clear summary", loaded[2].Content);
+    }
+
+    [Fact]
+    public async Task ReplaceWithCompaction_preserves_original_messages_as_superseded()
+    {
+        var path = NewDbPath();
+        var store = Build(path);
+        var sessionId = await store.CreateAsync("keep history", CancellationToken.None);
+        await store.AppendAsync(sessionId, new ChatMessage(ChatRole.User, "original one"), CancellationToken.None);
+        await store.AppendAsync(sessionId, new ChatMessage(ChatRole.Assistant, "original two"), CancellationToken.None);
+
+        var summary = new ChatMessage(ChatRole.User, MessageKind.Summary, "summary");
+        await store.ReplaceWithCompactionAsync(
+            sessionId,
+            new ContextFit([summary], true, 100, 20, 20, ActiveStartIndex: 0),
+            CancellationToken.None);
+
+        // The active view is just the summary...
+        var loaded = await store.LoadAsync(sessionId, CancellationToken.None);
+        Assert.Equal(["summary"], loaded.Select(message => message.Content));
+
+        // ...but the originals remain in the table, marked superseded, for audit/replay.
+        await using var connection = new SqliteConnection($"Data Source={path}");
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM messages WHERE session_id = $s AND superseded_at IS NOT NULL;";
+        command.Parameters.AddWithValue("$s", sessionId);
+        Assert.Equal(2L, await command.ExecuteScalarAsync());
     }
 
     private static SqliteSessionStore Build(string path, string model = "test-model") =>

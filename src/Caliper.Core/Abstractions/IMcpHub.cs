@@ -9,6 +9,12 @@ public interface IMcpHub
     IReadOnlyList<ITool> Tools { get; }
     IReadOnlyList<McpServerStatus> Status { get; }
     Task DisposeAllAsync();
+
+    /// <summary>
+    /// Raised whenever <see cref="Status"/> changes (after <see cref="ConnectAllAsync"/> or
+    /// <see cref="DisposeAllAsync"/> completes), so hosts can react without polling.
+    /// </summary>
+    event EventHandler? StatusChanged;
 }
 
 public sealed record McpServerStatus(string Name, bool Connected, int ToolCount, string? Error);

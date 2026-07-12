@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for full license information.
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using Caliper.Core.Abstractions;
 using Caliper.Core.Agents;
 using Caliper.Core.Context;
@@ -43,17 +42,25 @@ public static class ServiceCollectionExtensions
         services.Configure<PersistenceOptions>(configuration.GetSection("Persistence"));
         services.PostConfigure<ProvidersOptions>(options =>
         {
-            options.OpenRouter.ApiKey ??= Environment.GetEnvironmentVariable("CALIPER_OPENROUTER_KEY");
+            // Fall back to the env var when the config key is null OR an empty/whitespace
+            // placeholder (the seeded config.json ships ApiKey as ""), so a set env var wins.
+            if (string.IsNullOrWhiteSpace(options.OpenRouter.ApiKey))
+                options.OpenRouter.ApiKey = Environment.GetEnvironmentVariable("CALIPER_OPENROUTER_KEY");
+            if (string.IsNullOrWhiteSpace(options.Gemini.ApiKey))
+                options.Gemini.ApiKey = Environment.GetEnvironmentVariable("CALIPER_GEMINI_KEY");
         });
         services.PostConfigure<SearchOptions>(options =>
         {
-            options.ApiKey ??= Environment.GetEnvironmentVariable("CALIPER_SEARCH_KEY");
+            if (string.IsNullOrWhiteSpace(options.ApiKey))
+                options.ApiKey = Environment.GetEnvironmentVariable("CALIPER_SEARCH_KEY");
         });
 
         // Validation — triggers eagerly on first resolution
         services.AddSingleton<IValidateOptions<CaliperOptions>, CaliperOptionsValidator>();
         services.AddSingleton<IValidateOptions<SearchOptions>, SearchOptionsValidator>();
         services.AddSingleton<IRuntimeSettings, RuntimeSettings>();
+        services.AddSingleton<IConfigFileStore, ConfigFileStore>();
+        services.AddSingleton<IConfigWriter, ConfigWriter>();
 
         // HTTP clients
         services.AddHttpClient();
@@ -77,12 +84,23 @@ public static class ServiceCollectionExtensions
 
         // Preserved local model client
         services.AddSingleton<IModelClient, OllamaModelClient>();
-        services.AddHttpClient<OpenRouterCapabilityProvider>();
+        // Named client resolved per request via IHttpClientFactory so the singleton provider
+        // doesn't pin a handler with stale DNS for the process lifetime.
+        services.AddHttpClient(OpenRouterCapabilityProvider.HttpClientName);
+        services.AddSingleton<OpenRouterCapabilityProvider>();
+        services.AddSingleton<OpenRouterChatClientProvider>();
+        services.AddSingleton<GeminiCapabilityProvider>();
+        services.AddSingleton<GeminiChatClientProvider>();
+        // ModelProviderRouter dispatches to the OpenRouter or Gemini concretes above based on
+        // CaliperOptions.Provider, re-checked per call so a runtime provider switch takes effect
+        // immediately rather than requiring a restart.
+        services.AddSingleton<ModelProviderRouter>();
+        services.AddSingleton<IChatClientProvider>(sp =>
+            sp.GetRequiredService<ModelProviderRouter>());
         services.AddSingleton<IModelCapabilityProvider>(sp =>
-            sp.GetRequiredService<OpenRouterCapabilityProvider>());
+            sp.GetRequiredService<ModelProviderRouter>());
         services.AddSingleton<IModelCatalog>(sp =>
-            sp.GetRequiredService<OpenRouterCapabilityProvider>());
-        services.AddSingleton<IChatClientProvider, OpenRouterChatClientProvider>();
+            sp.GetRequiredService<ModelProviderRouter>());
 
         // Turn strategy.
         services.AddSingleton<NativeToolStrategy>();
@@ -114,9 +132,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITool, WriteFileTool>();
         services.AddSingleton<ITool, EditFileTool>();
         services.AddSingleton<ITool, MemoryTool>();
-        services.AddSingleton<ITool>(sp => new ShellTool(
-            sp.GetRequiredService<IOptions<CaliperOptions>>(),
-            RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "powershell" : "bash"));
+        // Register both shells and let EnabledTools decide; this keeps cross-platform configs
+        // working and avoids a startup warning about the OS's non-default shell name.
+        services.AddSingleton<ITool>(sp => new ShellTool(sp.GetRequiredService<IOptions<CaliperOptions>>(), "powershell"));
+        services.AddSingleton<ITool>(sp => new ShellTool(sp.GetRequiredService<IOptions<CaliperOptions>>(), "bash"));
         services.AddSingleton<IToolRegistry, ToolRegistry>();
 
         // Skills
@@ -139,6 +158,11 @@ public static class ServiceCollectionExtensions
 
         // Agent runner
         services.AddSingleton<AgentRunner>();
+        services.AddSingleton<IAgentRunner>(services =>
+            services.GetRequiredService<AgentRunner>());
+        services.AddSingleton<ConversationOrchestrator>();
+        services.AddSingleton<IConversationOrchestrator>(services =>
+            services.GetRequiredService<ConversationOrchestrator>());
 
         return services;
     }

@@ -73,8 +73,13 @@ file sealed class FakeRuntimeSettings : IRuntimeSettings
     public CaliperOptions Caliper { get; } = new() { Model = "model/a" };
     public PermissionsOptions Permissions { get; } = new() { Mode = PermissionMode.Auto };
 
+    public event EventHandler? SettingsChanged { add { } remove { } }
+
+    public void SetProvider(string provider) => throw new NotSupportedException();
     public void SetModel(string model) => throw new NotSupportedException();
     public void SetPermissionMode(PermissionMode mode) => throw new NotSupportedException();
+    public void UpdateCaliper(Action<CaliperOptions> mutate) => throw new NotSupportedException();
+    public void UpdatePermissions(Action<PermissionsOptions> mutate) => throw new NotSupportedException();
     public bool TrySet(string key, string value, out string message) => throw new NotSupportedException();
 }
 
@@ -84,4 +89,5 @@ file sealed class FakeMcpHub : IMcpHub
     public IReadOnlyList<ITool> Tools => [];
     public IReadOnlyList<McpServerStatus> Status => [new("local", true, 2, null), new("down", false, 0, "offline")];
     public Task DisposeAllAsync() => Task.CompletedTask;
+    public event EventHandler? StatusChanged { add { } remove { } }
 }

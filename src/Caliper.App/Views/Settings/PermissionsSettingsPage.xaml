@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.PermissionsSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls">
+
+    <Page.Resources>
+        <DataTemplate x:Key="AllowlistRowTemplate" x:DataType="x:String">
+            <Grid Padding="8,4" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind}" TextWrapping="Wrap" FontFamily="{StaticResource CodeFontFamily}" />
+                <Button Grid.Column="1" Click="RemoveAllowlistEntry_Click" Tag="{x:Bind}" Content="Remove" />
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="DenylistRowTemplate" x:DataType="x:String">
+            <Grid Padding="8,4" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind}" TextWrapping="Wrap" FontFamily="{StaticResource CodeFontFamily}" />
+                <Button Grid.Column="1" Click="RemoveDenylistEntry_Click" Tag="{x:Bind}" Content="Remove" />
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="FileRootRowTemplate" x:DataType="x:String">
+            <Grid Padding="8,4" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind}" TextWrapping="Wrap" FontFamily="{StaticResource CodeFontFamily}" />
+                <Button Grid.Column="1" Click="RemoveFileRootEntry_Click" Tag="{x:Bind}" Content="Remove" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="820" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Permissions" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="How side-effecting tools are handled during runs." TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" AutomationProperties.AutomationId="SavePermissionsButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Mode" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <ComboBox AutomationProperties.AutomationId="PermissionModePicker" MinWidth="200" ItemsSource="{x:Bind ViewModel.PermissionModes, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SelectedPermissionMode, Mode=TwoWay}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap">
+                    AskAlways prompts for every side-effecting tool. Auto allows read-only and allowlisted shell commands automatically. Plan denies every side-effecting tool.
+                </TextBlock>
+            </StackPanel>
+            <ToggleSwitch AutomationProperties.AutomationId="RememberApprovalsSwitch" Header="Remember 'Allow for session' approvals" IsOn="{x:Bind ViewModel.RememberApprovals, Mode=TwoWay}" />
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Shell auto-allowlist" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Command prefixes allowed automatically in Auto mode." Style="{StaticResource CaptionTextBlockStyle}" />
+                <ListView AutomationProperties.AutomationId="ShellAllowlistList" MaxHeight="200" ItemsSource="{x:Bind ViewModel.ShellAutoAllowlist}" ItemTemplate="{StaticResource AllowlistRowTemplate}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="NewAllowlistEntry" AutomationProperties.AutomationId="NewAllowlistEntryTextBox" PlaceholderText="git status" />
+                    <Button Grid.Column="1" Click="AddAllowlistEntry_Click" Content="Add" />
+                </Grid>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Shell denylist" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Command fragments that always require approval, in every mode." Style="{StaticResource CaptionTextBlockStyle}" />
+                <ListView AutomationProperties.AutomationId="ShellDenylistList" MaxHeight="200" ItemsSource="{x:Bind ViewModel.ShellDenylist}" ItemTemplate="{StaticResource DenylistRowTemplate}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="NewDenylistEntry" AutomationProperties.AutomationId="NewDenylistEntryTextBox" PlaceholderText="rm -rf" />
+                    <Button Grid.Column="1" Click="AddDenylistEntry_Click" Content="Add" />
+                </Grid>
+            </StackPanel>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Auto-allow file roots" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Paths outside the working root that file tools may access without a prompt." Style="{StaticResource CaptionTextBlockStyle}" />
+                <ListView AutomationProperties.AutomationId="FileRootsList" MaxHeight="200" ItemsSource="{x:Bind ViewModel.AutoAllowFileRoots}" ItemTemplate="{StaticResource FileRootRowTemplate}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="NewFileRootEntry" AutomationProperties.AutomationId="NewFileRootEntryTextBox" PlaceholderText="C:\shared" />
+                    <Button Grid.Column="1" Click="AddFileRootEntry_Click" Content="Add" />
+                </Grid>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

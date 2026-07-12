@@ -2,10 +2,12 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Caliper.App/Caliper.App.csproj" />
     <Project Path="src/Caliper.Console/Caliper.Console.csproj" />
     <Project Path="src/Caliper.Core/Caliper.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Caliper.App.Tests/Caliper.App.Tests.csproj" />
     <Project Path="tests/Caliper.Console.Tests/Caliper.Console.Tests.csproj" />
     <Project Path="tests/Caliper.Core.Tests/Caliper.Core.Tests.csproj" />
     <Project Path="tests/Caliper.Evals/Caliper.Evals.csproj" />

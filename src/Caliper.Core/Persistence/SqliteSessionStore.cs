@@ -22,6 +22,12 @@ internal sealed class SqliteSessionStore(
 
     public async Task<string> CreateAsync(string? title, CancellationToken ct)
     {
+        var summary = await CreateWithSummaryAsync(title, ct).ConfigureAwait(false);
+        return summary.Id;
+    }
+
+    public async Task<SessionSummary> CreateWithSummaryAsync(string? title, CancellationToken ct)
+    {
         await EnsureCreatedAsync(ct).ConfigureAwait(false);
 
         var id = Guid.NewGuid().ToString("N");
@@ -35,33 +41,37 @@ internal sealed class SqliteSessionStore(
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
         command.Parameters.AddWithValue("$model", caliperOptions.Value.Model);
-        command.Parameters.AddWithValue("$created_at", NowString());
+        var createdAt = DateTimeOffset.Parse(
+            NowString(),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind);
+        command.Parameters.AddWithValue("$created_at", createdAt.ToString("O", CultureInfo.InvariantCulture));
         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
-        return id;
+        return new SessionSummary(id, title, createdAt);
     }
 
     public async Task AppendAsync(string sessionId, ChatMessage message, CancellationToken ct)
     {
         await EnsureCreatedAsync(ct).ConfigureAwait(false);
-        await ThrowIfSessionMissingAsync(sessionId, ct).ConfigureAwait(false);
 
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+        await ThrowIfSessionMissingAsync(connection, sessionId, ct).ConfigureAwait(false);
         await InsertMessageAsync(connection, transaction: null, sessionId, message, ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<ChatMessage>> LoadAsync(string sessionId, CancellationToken ct)
     {
         await EnsureCreatedAsync(ct).ConfigureAwait(false);
-        await ThrowIfSessionMissingAsync(sessionId, ct).ConfigureAwait(false);
 
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+        await ThrowIfSessionMissingAsync(connection, sessionId, ct).ConfigureAwait(false);
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
             SELECT role, kind, content, tool_call_id, tool_name, payload_json
             FROM messages
-            WHERE session_id = $session_id
+            WHERE session_id = $session_id AND superseded_at IS NULL
             ORDER BY id ASC;
             """;
         command.Parameters.AddWithValue("$session_id", sessionId);
@@ -76,10 +86,16 @@ internal sealed class SqliteSessionStore(
                 reader.GetString(2),
                 reader.IsDBNull(3) ? null : reader.GetString(3),
                 reader.IsDBNull(4) ? null : reader.GetString(4),
-                reader.IsDBNull(5) ? null : JsonDocument.Parse(reader.GetString(5)).RootElement.Clone()));
+                reader.IsDBNull(5) ? null : ParsePayload(reader.GetString(5))));
         }
 
         return messages;
+    }
+
+    private static JsonElement ParsePayload(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
     }
 
     public async Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct)
@@ -106,6 +122,47 @@ internal sealed class SqliteSessionStore(
         }
 
         return sessions;
+    }
+
+    public async Task RenameAsync(string sessionId, string title, CancellationToken ct)
+    {
+        await EnsureCreatedAsync(ct).ConfigureAwait(false);
+
+        await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+        await ThrowIfSessionMissingAsync(connection, sessionId, ct).ConfigureAwait(false);
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE sessions SET title = $title WHERE id = $id;";
+        command.Parameters.AddWithValue("$title", title);
+        command.Parameters.AddWithValue("$id", sessionId);
+        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(string sessionId, CancellationToken ct)
+    {
+        await EnsureCreatedAsync(ct).ConfigureAwait(false);
+
+        await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+        await ThrowIfSessionMissingAsync(connection, sessionId, ct).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+
+        await using (var messages = connection.CreateCommand())
+        {
+            messages.Transaction = transaction;
+            messages.CommandText = "DELETE FROM messages WHERE session_id = $session_id;";
+            messages.Parameters.AddWithValue("$session_id", sessionId);
+            await messages.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await using (var session = connection.CreateCommand())
+        {
+            session.Transaction = transaction;
+            session.CommandText = "DELETE FROM sessions WHERE id = $session_id;";
+            session.Parameters.AddWithValue("$session_id", sessionId);
+            await session.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
     }
 
     protected override async Task CreateSchemaAsync(SqliteConnection connection, CancellationToken ct)
@@ -135,29 +192,36 @@ internal sealed class SqliteSessionStore(
         await ExecuteNonQueryAsync(connection, """
                 CREATE INDEX IF NOT EXISTS ix_messages_session ON messages(session_id, id);
                 """, ct).ConfigureAwait(false);
+        // Compaction supersedes messages rather than deleting them, so the original transcript
+        // survives for audit/replay. Added via migration so existing databases upgrade in place.
+        await EnsureColumnAsync(connection, "messages", "superseded_at", "TEXT", ct).ConfigureAwait(false);
     }
 
     public async Task ReplaceWithCompactionAsync(string sessionId, ContextFit fit, CancellationToken ct)
     {
         await EnsureCreatedAsync(ct).ConfigureAwait(false);
-        await ThrowIfSessionMissingAsync(sessionId, ct).ConfigureAwait(false);
 
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
+        await ThrowIfSessionMissingAsync(connection, sessionId, ct).ConfigureAwait(false);
         await using var transaction = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
         try
         {
-            var firstDeleteId = await FirstMessageIdAtOffsetAsync(connection, (SqliteTransaction)transaction, sessionId, fit.ActiveStartIndex, ct)
+            var firstSupersededId = await FirstMessageIdAtOffsetAsync(connection, (SqliteTransaction)transaction, sessionId, fit.ActiveStartIndex, ct)
                 .ConfigureAwait(false);
-            await using (var delete = connection.CreateCommand())
+            if (firstSupersededId is not null)
             {
-                delete.Transaction = (SqliteTransaction)transaction;
-                delete.CommandText = firstDeleteId is null
-                    ? "DELETE FROM messages WHERE session_id = $session_id AND 1 = 0;"
-                    : "DELETE FROM messages WHERE session_id = $session_id AND id >= $first_id;";
-                delete.Parameters.AddWithValue("$session_id", sessionId);
-                if (firstDeleteId is not null)
-                    delete.Parameters.AddWithValue("$first_id", firstDeleteId.Value);
-                await delete.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                // Mark the active messages from the boundary onward as superseded rather than
+                // deleting them, so the original transcript is recoverable.
+                await using var supersede = connection.CreateCommand();
+                supersede.Transaction = (SqliteTransaction)transaction;
+                supersede.CommandText = """
+                    UPDATE messages SET superseded_at = $now
+                    WHERE session_id = $session_id AND superseded_at IS NULL AND id >= $first_id;
+                    """;
+                supersede.Parameters.AddWithValue("$now", NowString());
+                supersede.Parameters.AddWithValue("$session_id", sessionId);
+                supersede.Parameters.AddWithValue("$first_id", firstSupersededId.Value);
+                await supersede.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
             foreach (var message in fit.Messages)
@@ -172,10 +236,8 @@ internal sealed class SqliteSessionStore(
         }
     }
 
-    private async Task ThrowIfSessionMissingAsync(string sessionId, CancellationToken ct)
+    private static async Task ThrowIfSessionMissingAsync(SqliteConnection connection, string sessionId, CancellationToken ct)
     {
-        await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
-
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT 1 FROM sessions WHERE id = $id LIMIT 1;";
         command.Parameters.AddWithValue("$id", sessionId);
@@ -204,7 +266,7 @@ internal sealed class SqliteSessionStore(
         command.Parameters.AddWithValue("$tool_name", (object?)message.ToolName ?? DBNull.Value);
         command.Parameters.AddWithValue("$content", message.Content);
         command.Parameters.AddWithValue("$payload_json", message.Payload is { } payload ? payload.GetRawText() : DBNull.Value);
-        command.Parameters.AddWithValue("$token_estimate", DBNull.Value);
+        command.Parameters.AddWithValue("$token_estimate", Math.Max(1, message.Content.Length / 4));
         command.Parameters.AddWithValue("$created_at", NowString());
         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -218,10 +280,12 @@ internal sealed class SqliteSessionStore(
     {
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
+        // Offset counts active messages only; ActiveStartIndex is an index into the loaded
+        // (non-superseded) history, not into all rows ever stored.
         command.CommandText = """
             SELECT id
             FROM messages
-            WHERE session_id = $session_id
+            WHERE session_id = $session_id AND superseded_at IS NULL
             ORDER BY id ASC
             LIMIT 1 OFFSET $offset;
             """;

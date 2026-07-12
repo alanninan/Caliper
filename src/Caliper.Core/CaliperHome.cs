@@ -18,6 +18,7 @@ public static class CaliperHome
     public static string ConfigPath => Path.Combine(Resolve(), "config.json");
     public static string SkillsPath => Path.Combine(Resolve(), "skills");
     public static string MemoryPath => Path.Combine(Resolve(), "memory");
+    public static string LogsPath => Path.Combine(Resolve(), "logs");
     public static string DatabasePath => Path.Combine(Resolve(), "caliper.db");
 
     public static void EnsureInitialized()
@@ -26,6 +27,7 @@ public static class CaliperHome
         Directory.CreateDirectory(home);
         Directory.CreateDirectory(MemoryPath);
         Directory.CreateDirectory(SkillsPath);
+        Directory.CreateDirectory(LogsPath);
 
         if (!File.Exists(ConfigPath))
             File.WriteAllText(ConfigPath, DefaultConfigTemplate);
@@ -74,7 +76,8 @@ public static class CaliperHome
     }
 
     private const string DefaultConfigTemplate = """
-        // Caliper config. You can also set CALIPER_OPENROUTER_KEY instead of storing a key here.
+        // Caliper config. You can also set CALIPER_OPENROUTER_KEY or CALIPER_GEMINI_KEY instead
+        // of storing a key here.
         {
           "Caliper": {
             "Provider": "OpenRouter",
@@ -87,8 +90,10 @@ public static class CaliperHome
           "Providers": {
             "OpenRouter": {
               "Endpoint": "https://openrouter.ai/api/v1",
-              "AppTitle": "Caliper",
-              "ApiKey": ""
+              "AppTitle": "Caliper"
+            },
+            "Gemini": {
+              "Endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/"
             }
           },
           "Persistence": {

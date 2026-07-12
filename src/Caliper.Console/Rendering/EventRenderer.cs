@@ -58,12 +58,16 @@ public sealed class EventRenderer(
             case AssistantMessage(var content):
                 if (_assistantPreview.Length > 0)
                 {
+                    // Already streamed live; just finish the line rather than re-rendering the
+                    // whole message and printing it a second time.
                     System.Console.WriteLine();
-                    AnsiConsole.MarkupLine("[dim]-- rendered --[/]");
                     _assistantPreview.Clear();
                 }
-                AnsiConsole.Write(MarkdownRenderer.Render(content));
-                System.Console.WriteLine();
+                else
+                {
+                    AnsiConsole.Write(MarkdownRenderer.Render(content));
+                    System.Console.WriteLine();
+                }
                 break;
 
             case ToolInvoked invoked:
@@ -86,8 +90,8 @@ public sealed class EventRenderer(
                 AnsiConsole.Write(ToolPanelRenderer.PermissionResolved(resolved));
                 break;
 
-            case UsageReported(var prompt, var completion):
-                _lastUsage = new UsageInfo(prompt, completion, prompt + completion);
+            case UsageReported(_, _, var cumulativePrompt, var cumulativeCompletion):
+                _lastUsage = new UsageInfo(cumulativePrompt, cumulativeCompletion, cumulativePrompt + cumulativeCompletion);
                 break;
 
             case SkillLoaded(var skill):

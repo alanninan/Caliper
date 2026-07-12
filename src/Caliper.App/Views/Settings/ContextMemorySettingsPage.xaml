@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.ContextMemorySettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="720" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Context &amp; memory" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Compaction thresholds and persistent memory locations." TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" AutomationProperties.AutomationId="SaveContextMemoryButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+
+            <settings:SettingsExpander Header="Context compaction" Description="Keeps the conversation inside the model's context window.">
+                <ToggleSwitch AutomationProperties.AutomationId="AutoCompactSwitch" IsOn="{x:Bind ViewModel.AutoCompact, Mode=TwoWay}" />
+                <settings:SettingsExpander.Items>
+                    <settings:SettingsCard Header="Compact at fraction" Description="Fraction of the context window that triggers compaction.">
+                        <NumberBox AutomationProperties.AutomationId="CompactFractionNumberBox" Minimum="0.1" Maximum="0.99" SmallChange="0.05" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.CompactAtFraction, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Keep recent turns">
+                        <NumberBox AutomationProperties.AutomationId="KeepTurnsNumberBox" Minimum="1" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.KeepRecentTurns, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Reserved output tokens">
+                        <NumberBox AutomationProperties.AutomationId="ReservedTokensNumberBox" Minimum="1" SmallChange="512" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.ReservedOutputTokens, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                </settings:SettingsExpander.Items>
+            </settings:SettingsExpander>
+
+            <settings:SettingsExpander Header="Memory" Description="Persistent memory locations and the project document name.">
+                <ToggleSwitch AutomationProperties.AutomationId="MemoryEnabledSwitch" IsOn="{x:Bind ViewModel.MemoryEnabled, Mode=TwoWay}" />
+                <settings:SettingsExpander.Items>
+                    <settings:SettingsCard Header="Global memory directory">
+                        <TextBox AutomationProperties.AutomationId="MemoryGlobalDirTextBox" MinWidth="280" Text="{x:Bind ViewModel.MemoryGlobalDir, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Project memory file">
+                        <TextBox AutomationProperties.AutomationId="MemoryProjectFileTextBox" MinWidth="220" Text="{x:Bind ViewModel.MemoryProjectFile, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </settings:SettingsCard>
+                </settings:SettingsExpander.Items>
+            </settings:SettingsExpander>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.AgentBehaviorSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="720" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Agent behavior" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Turn strategy, step limits, generation controls." TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" AutomationProperties.AutomationId="SaveAgentBehaviorButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+            </Grid>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+
+            <settings:SettingsExpander Header="Turn strategy" Description="How the model decides between native tool calls and structured envelopes.">
+                <ComboBox AutomationProperties.AutomationId="TurnStrategyPicker" MinWidth="200" ItemsSource="{x:Bind ViewModel.TurnStrategyOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SelectedTurnStrategy, Mode=TwoWay}" />
+                <settings:SettingsExpander.Items>
+                    <settings:SettingsCard Header="Max steps">
+                        <NumberBox AutomationProperties.AutomationId="MaxStepsNumberBox" Minimum="1" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.MaxSteps, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Duplicate call limit">
+                        <NumberBox AutomationProperties.AutomationId="DuplicateCallNumberBox" Minimum="1" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.DuplicateCallLimit, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Tool timeout seconds">
+                        <NumberBox AutomationProperties.AutomationId="ToolTimeoutNumberBox" Minimum="1" SmallChange="5" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.ToolTimeoutSeconds, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Tool max retries">
+                        <NumberBox AutomationProperties.AutomationId="ToolRetriesNumberBox" Minimum="0" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.ToolMaxRetries, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Tool output max chars">
+                        <NumberBox AutomationProperties.AutomationId="ToolOutputNumberBox" Minimum="1" SmallChange="1000" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.ToolOutputMaxChars, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                </settings:SettingsExpander.Items>
+            </settings:SettingsExpander>
+
+            <settings:SettingsExpander Header="Generation" Description="Temperature, seed, and reasoning controls.">
+                <settings:SettingsExpander.Items>
+                    <settings:SettingsCard Header="Temperature">
+                        <NumberBox AutomationProperties.AutomationId="TemperatureNumberBox" Minimum="0" Maximum="2" SmallChange="0.1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.Temperature, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Seed" Description="Optional integer.">
+                        <TextBox AutomationProperties.AutomationId="SeedTextBox" MinWidth="160" Text="{x:Bind ViewModel.SeedText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Reasoning effort">
+                        <ComboBox AutomationProperties.AutomationId="ReasoningEffortPicker" MinWidth="160" ItemsSource="{x:Bind ViewModel.ReasoningEffortOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.ReasoningEffort, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Exclude reasoning from context">
+                        <ToggleSwitch AutomationProperties.AutomationId="ExcludeReasoningSwitch" IsOn="{x:Bind ViewModel.ExcludeReasoning, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                </settings:SettingsExpander.Items>
+            </settings:SettingsExpander>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

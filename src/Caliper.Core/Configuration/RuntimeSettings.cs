@@ -1,6 +1,7 @@
 // Copyright 2026 Alan Ninan Thomas
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for full license information.
+using System.Globalization;
 using Caliper.Core.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -14,6 +15,8 @@ internal sealed class RuntimeSettings(
     private CaliperOptions _caliper = Clone(caliper.Value);
     private PermissionsOptions _permissions = Clone(permissions.Value);
 
+    public event EventHandler? SettingsChanged;
+
     public CaliperOptions Caliper
     {
         get { lock (_gate) return Clone(_caliper); }
@@ -24,6 +27,16 @@ internal sealed class RuntimeSettings(
         get { lock (_gate) return Clone(_permissions); }
     }
 
+    public void SetProvider(string provider)
+    {
+        if (string.IsNullOrWhiteSpace(provider))
+            throw new ArgumentException("Provider cannot be empty.", nameof(provider));
+
+        lock (_gate)
+            _caliper.Provider = provider.Trim();
+        RaiseSettingsChanged();
+    }
+
     public void SetModel(string model)
     {
         if (string.IsNullOrWhiteSpace(model))
@@ -31,15 +44,41 @@ internal sealed class RuntimeSettings(
 
         lock (_gate)
             _caliper.Model = model.Trim();
+        RaiseSettingsChanged();
     }
 
     public void SetPermissionMode(PermissionMode mode)
     {
         lock (_gate)
             _permissions.Mode = mode;
+        RaiseSettingsChanged();
     }
 
+    public void UpdateCaliper(Action<CaliperOptions> mutate)
+    {
+        lock (_gate)
+            mutate(_caliper);
+        RaiseSettingsChanged();
+    }
+
+    public void UpdatePermissions(Action<PermissionsOptions> mutate)
+    {
+        lock (_gate)
+            mutate(_permissions);
+        RaiseSettingsChanged();
+    }
+
+    private void RaiseSettingsChanged() => SettingsChanged?.Invoke(this, EventArgs.Empty);
+
     public bool TrySet(string key, string value, out string message)
+    {
+        var result = TrySetCore(key, value, out message);
+        if (result)
+            RaiseSettingsChanged();
+        return result;
+    }
+
+    private bool TrySetCore(string key, string value, out string message)
     {
         if (string.IsNullOrWhiteSpace(key))
         {
@@ -51,6 +90,16 @@ internal sealed class RuntimeSettings(
         {
             switch (NormalizeKey(key))
             {
+                case "provider":
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        message = "Provider cannot be empty.";
+                        return false;
+                    }
+                    _caliper.Provider = value.Trim();
+                    message = $"provider = {_caliper.Provider}";
+                    return true;
+
                 case "model":
                     if (string.IsNullOrWhiteSpace(value))
                     {
@@ -73,8 +122,34 @@ internal sealed class RuntimeSettings(
                     message = $"permissions.mode = {_permissions.Mode}";
                     return true;
 
+                case "permissions.rememberapprovals":
+                    if (!bool.TryParse(value, out var rememberApprovals))
+                    {
+                        message = "permissions.rememberApprovals must be true or false.";
+                        return false;
+                    }
+                    _permissions.RememberApprovals = rememberApprovals;
+                    message = $"permissions.rememberApprovals = {_permissions.RememberApprovals}";
+                    return true;
+
+                case "workingroot":
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        message = "Working root cannot be empty.";
+                        return false;
+                    }
+                    var resolvedRoot = Path.GetFullPath(LocalPath.ResolveHome(value.Trim()));
+                    if (!Directory.Exists(resolvedRoot))
+                    {
+                        message = $"Working root does not exist: {resolvedRoot}";
+                        return false;
+                    }
+                    _caliper.WorkingRoot = value.Trim();
+                    message = $"workingRoot = {_caliper.WorkingRoot}";
+                    return true;
+
                 case "temperature":
-                    if (!double.TryParse(value, out var temperature) || temperature < 0)
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var temperature) || temperature < 0)
                     {
                         message = "Temperature must be a non-negative number.";
                         return false;
@@ -89,7 +164,7 @@ internal sealed class RuntimeSettings(
                     {
                         _caliper.Seed = null;
                     }
-                    else if (int.TryParse(value, out var seed))
+                    else if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var seed))
                     {
                         _caliper.Seed = seed;
                     }
@@ -134,7 +209,7 @@ internal sealed class RuntimeSettings(
 
                 case "context.compactatfraction":
                 case "ctx.compactatfraction":
-                    if (!double.TryParse(value, out var fraction) || fraction <= 0 || fraction > 1)
+                    if (!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var fraction) || fraction <= 0 || fraction > 1)
                     {
                         message = "context.compactAtFraction must be between 0 and 1.";
                         return false;
@@ -145,8 +220,7 @@ internal sealed class RuntimeSettings(
 
                 case "context.reservedoutputtokens":
                 case "ctx.reservedoutputtokens":
-                case "ctx":
-                    if (!int.TryParse(value, out var reserved) || reserved < 0)
+                    if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var reserved) || reserved < 0)
                     {
                         message = "context.reservedOutputTokens must be a non-negative integer.";
                         return false;

@@ -1,0 +1,962 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.ChatPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Caliper.App.Controls"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:local="using:Caliper.App.Views"
+    xmlns:markdown="using:CommunityToolkit.WinUI.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Caliper.App.ViewModels"
+    NavigationCacheMode="Enabled">
+    <Page.Resources>
+        <Style x:Key="CopyButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Background" Value="{ThemeResource ControlFillColorDefaultBrush}" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+
+        <DataTemplate x:Key="UserMessageTemplate" x:DataType="vm:UserMessageViewModel">
+            <Grid
+                Margin="64,8,8,8"
+                GettingFocus="MessageBubble_GettingFocus"
+                LosingFocus="MessageBubble_LosingFocus"
+                PointerEntered="MessageBubble_PointerEntered"
+                PointerExited="MessageBubble_PointerExited">
+                <Border
+                    MaxWidth="760"
+                    Padding="16,12"
+                    HorizontalAlignment="Right"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}">
+                    <TextBlock
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        IsTextSelectionEnabled="True"
+                        Text="{x:Bind Content}"
+                        TextWrapping="Wrap" />
+                </Border>
+                <Button
+                    x:Name="CopyButton"
+                    Margin="0,-6,8,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    AutomationProperties.Name="Copy message"
+                    Click="CopyMessage_Click"
+                    Style="{StaticResource CopyButtonStyle}"
+                    Tag="{x:Bind Content}"
+                    Visibility="Collapsed">
+                    <FontIcon FontSize="12" Glyph="&#xE8C8;" />
+                </Button>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ReasoningTemplate" x:DataType="vm:ReasoningViewModel">
+            <Expander
+                Margin="48,8,64,8"
+                HorizontalAlignment="Stretch"
+                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasContent), Mode=OneWay}">
+                <Expander.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE945;" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind DurationText, Mode=OneWay}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+                </Expander.Header>
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    IsTextSelectionEnabled="True"
+                    Text="{x:Bind Content, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="AssistantMessageTemplate" x:DataType="vm:AssistantMessageViewModel">
+            <Grid
+                Margin="8,8,64,8"
+                GettingFocus="MessageBubble_GettingFocus"
+                LosingFocus="MessageBubble_LosingFocus"
+                PointerEntered="MessageBubble_PointerEntered"
+                PointerExited="MessageBubble_PointerExited"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasContent), Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border
+                    Width="32"
+                    Height="32"
+                    VerticalAlignment="Top"
+                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource ControlCornerRadius}">
+                    <FontIcon
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Glyph="&#xE8BD;" />
+                </Border>
+                <Border
+                    Grid.Column="1"
+                    MaxWidth="820"
+                    Padding="16,12"
+                    HorizontalAlignment="Left"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}">
+                    <Grid>
+                        <TextBlock
+                            IsTextSelectionEnabled="True"
+                            Text="{x:Bind Content, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsStreaming), Mode=OneWay}" />
+                        <markdown:MarkdownTextBlock
+                            IsTextSelectionEnabled="True"
+                            Text="{x:Bind Content, Mode=OneWay}"
+                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsStreaming), Mode=OneWay}" />
+                    </Grid>
+                </Border>
+                <Button
+                    x:Name="CopyButton"
+                    Grid.Column="1"
+                    Margin="0,-6,8,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    AutomationProperties.Name="Copy message"
+                    Click="CopyMessage_Click"
+                    Style="{StaticResource CopyButtonStyle}"
+                    Tag="{x:Bind Content, Mode=OneWay}"
+                    Visibility="Collapsed">
+                    <FontIcon FontSize="12" Glyph="&#xE8C8;" />
+                </Button>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ToolTemplate" x:DataType="vm:ToolCallViewModel">
+            <Expander
+                Margin="0,0,0,8"
+                HorizontalAlignment="Stretch"
+                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
+                <Expander.Header>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE90F;" />
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock
+                                Text="{x:Bind ToolName}"
+                                TextTrimming="CharacterEllipsis"
+                                Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind Status, Mode=OneWay}"
+                                Style="{StaticResource CaptionTextBlockStyle}" />
+                        </StackPanel>
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Diff"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasDiff), Mode=OneWay}" />
+                        <Button
+                            Grid.Column="3"
+                            AutomationProperties.AutomationId="{x:Bind InspectAutomationId}"
+                            AutomationProperties.Name="Inspect tool details"
+                            Click="InspectTool_Click">
+                            <FontIcon Glyph="&#xE946;" />
+                        </Button>
+                    </Grid>
+                </Expander.Header>
+                <Grid Padding="0,8,0,0" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Arguments"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasArguments), Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Row="1"
+                        FontFamily="{StaticResource CodeFontFamily}"
+                        IsTextSelectionEnabled="True"
+                        Text="{x:Bind Arguments}"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasArguments), Mode=OneWay}" />
+                    <TextBlock
+                        Grid.Row="1"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="No arguments were supplied."
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(HasArguments), Mode=OneWay}" />
+                </Grid>
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ToolActivityTemplate" x:DataType="vm:ToolActivityViewModel">
+            <Expander
+                Margin="48,8,64,8"
+                HorizontalAlignment="Stretch"
+                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
+                <Expander.Header>
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressRing
+                            Width="16"
+                            Height="16"
+                            VerticalAlignment="Center"
+                            IsActive="{x:Bind IsRunning, Mode=OneWay}"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsRunning), Mode=OneWay}" />
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Glyph="&#xE783;"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasFailure), Mode=OneWay}" />
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Glyph="&#xE90F;"
+                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsRunning), Mode=OneWay}" />
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock
+                                Text="Tool activity"
+                                Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind Summary, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                Style="{StaticResource CaptionTextBlockStyle}" />
+                        </StackPanel>
+                    </Grid>
+                </Expander.Header>
+                <ItemsRepeater ItemTemplate="{StaticResource ToolTemplate}" ItemsSource="{x:Bind Calls}">
+                    <ItemsRepeater.Layout>
+                        <StackLayout Spacing="4" />
+                    </ItemsRepeater.Layout>
+                </ItemsRepeater>
+            </Expander>
+        </DataTemplate>
+
+        <DataTemplate x:Key="StatusTemplate" x:DataType="vm:RunStatusViewModel">
+            <InfoBar
+                Margin="48,8,64,8"
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind Message, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(IsError), Mode=OneWay}"
+                Title="{x:Bind Title, Mode=OneWay}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="ApprovalTemplate" x:DataType="vm:ApprovalViewModel">
+            <InfoBar
+                IsClosable="False"
+                IsOpen="True"
+                Message="{x:Bind Status, Mode=OneWay}"
+                Severity="{x:Bind local:ChatPage.ApprovalSeverity(IsResolved, IsDenied), Mode=OneWay}"
+                Title="{x:Bind Title, Mode=OneWay}">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        Text="{x:Bind Reason}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        Grid.Row="1"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind Effect}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <TextBlock
+                        Grid.Row="2"
+                        FontFamily="{StaticResource CodeFontFamily}"
+                        IsTextSelectionEnabled="True"
+                        Text="{x:Bind Arguments}"
+                        TextWrapping="Wrap" />
+                    <StackPanel
+                        Grid.Row="3"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsPending), Mode=OneWay}">
+                        <Button
+                            AutomationProperties.AutomationId="ApprovalAllowButton"
+                            Command="{x:Bind AllowCommand}"
+                            Content="Allow"
+                            Style="{StaticResource AccentButtonStyle}" />
+                        <Button
+                            AutomationProperties.AutomationId="ApprovalAllowSessionButton"
+                            Command="{x:Bind AllowForSessionCommand}"
+                            Content="Allow for session"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(CanRememberApproval), Mode=OneTime}" />
+                        <Button
+                            AutomationProperties.AutomationId="ApprovalDenyButton"
+                            Command="{x:Bind DenyCommand}"
+                            Content="Deny" />
+                    </StackPanel>
+                </Grid>
+            </InfoBar>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ApprovalTranscriptTemplate" x:DataType="vm:ApprovalViewModel">
+            <ContentControl
+                Margin="48,8,64,8"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Content="{x:Bind}"
+                ContentTemplate="{StaticResource ApprovalTemplate}"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsResolved), Mode=OneWay}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="SessionGroupHeaderTemplate" x:DataType="x:String">
+            <TextBlock
+                Margin="4,12,4,4"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                IsHitTestVisible="False"
+                Text="{x:Bind}"
+                Style="{StaticResource CaptionTextBlockStyle}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="SessionTemplate" x:DataType="vm:SessionItemViewModel">
+            <Grid
+                AutomationProperties.Name="{x:Bind Title}"
+                Padding="12"
+                ColumnSpacing="8"
+                DoubleTapped="SessionRow_DoubleTapped">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="4" Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsEditing), Mode=OneWay}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse
+                            Width="6"
+                            Height="6"
+                            VerticalAlignment="Center"
+                            Fill="{ThemeResource SystemFillColorSuccessBrush}"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsActiveRun), Mode=OneWay}" />
+                        <TextBlock
+                            Text="{x:Bind Title, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    </StackPanel>
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind CreatedText}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+                <TextBox
+                    AutomationProperties.AutomationId="{x:Bind RenameAutomationId}"
+                    KeyDown="SessionRenameTextBox_KeyDown"
+                    LostFocus="SessionRenameTextBox_LostFocus"
+                    Text="{x:Bind EditText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsEditing), Mode=OneWay}" />
+                <Button
+                    Grid.Column="1"
+                    AutomationProperties.AutomationId="{x:Bind ActionsAutomationId}"
+                    AutomationProperties.Name="Session actions"
+                    VerticalAlignment="Center"
+                    Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsEditing), Mode=OneWay}">
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuFlyoutItem
+                                Command="{x:Bind BeginRenameCommand}"
+                                Icon="Rename"
+                                Text="Rename" />
+                            <MenuFlyoutItem
+                                AutomationProperties.AutomationId="{x:Bind DeleteAutomationId}"
+                                Command="{x:Bind DeleteCommand}"
+                                Icon="Delete"
+                                Text="Delete"
+                                ToolTipService.ToolTip="{x:Bind DeleteTooltip, Mode=OneWay}" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                    <FontIcon Glyph="&#xE712;" />
+                </Button>
+            </Grid>
+        </DataTemplate>
+
+        <controls:SessionListItemTemplateSelector
+            x:Key="SessionListItemTemplateSelector"
+            HeaderTemplate="{StaticResource SessionGroupHeaderTemplate}"
+            SessionTemplate="{StaticResource SessionTemplate}" />
+
+        <DataTemplate x:Key="SideBySideDiffTemplate" x:DataType="vm:SideBySideDiffRowViewModel">
+            <Grid MinHeight="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.ColumnSpan="2" Background="{ThemeResource DiffRemovedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsRemoved(OldKind), Mode=OneTime}" />
+                <Border Grid.ColumnSpan="2" Background="{ThemeResource DiffModifiedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsModified(OldKind), Mode=OneTime}" />
+                <Border Grid.Column="2" Grid.ColumnSpan="2" Background="{ThemeResource DiffAddedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsAdded(NewKind), Mode=OneTime}" />
+                <Border Grid.Column="2" Grid.ColumnSpan="2" Background="{ThemeResource DiffModifiedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsModified(NewKind), Mode=OneTime}" />
+                <TextBlock Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind local:ChatPage.FormatLineNumber(OldLineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock Grid.Column="1" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind OldText}" />
+                <TextBlock Grid.Column="2" Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind local:ChatPage.FormatLineNumber(NewLineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock Grid.Column="3" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind NewText}" />
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="InlineDiffTemplate" x:DataType="vm:InlineDiffRowViewModel">
+            <Grid MinHeight="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="24" />
+                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.ColumnSpan="3" Background="{ThemeResource DiffAddedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsAdded(Kind), Mode=OneTime}" />
+                <Border Grid.ColumnSpan="3" Background="{ThemeResource DiffRemovedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsRemoved(Kind), Mode=OneTime}" />
+                <Border Grid.ColumnSpan="3" Background="{ThemeResource DiffModifiedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsModified(Kind), Mode=OneTime}" />
+                <TextBlock Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind Prefix}" />
+                <TextBlock Grid.Column="1" Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind local:ChatPage.FormatLineNumber(LineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock Grid.Column="2" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind Text}" />
+            </Grid>
+        </DataTemplate>
+
+        <controls:ChatItemTemplateSelector
+            x:Key="ChatItemTemplateSelector"
+            ApprovalTemplate="{StaticResource ApprovalTranscriptTemplate}"
+            AssistantTemplate="{StaticResource AssistantMessageTemplate}"
+            ReasoningTemplate="{StaticResource ReasoningTemplate}"
+            StatusTemplate="{StaticResource StatusTemplate}"
+            ToolActivityTemplate="{StaticResource ToolActivityTemplate}"
+            ToolTemplate="{StaticResource ToolTemplate}"
+            UserTemplate="{StaticResource UserMessageTemplate}" />
+    </Page.Resources>
+
+    <Page.KeyboardAccelerators>
+        <KeyboardAccelerator Key="L" Modifiers="Control" Invoked="FocusPrompt_Invoked" />
+        <KeyboardAccelerator Key="Y" Modifiers="Control,Shift" Invoked="ApproveAccelerator_Invoked" />
+        <KeyboardAccelerator Key="N" Modifiers="Control,Shift" Invoked="DenyAccelerator_Invoked" />
+        <KeyboardAccelerator Key="F1" Invoked="ShowShortcutsAccelerator_Invoked" />
+    </Page.KeyboardAccelerators>
+
+    <Grid x:Name="ChatWorkspace">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition
+                x:Name="SessionsColumn"
+                Width="{x:Bind converters:XamlConverters.PaneWidth(Sessions.IsPaneCollapsed), Mode=OneWay}"
+                MinWidth="{x:Bind converters:XamlConverters.PaneMinWidth(Sessions.IsPaneCollapsed), Mode=OneWay}" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" MinWidth="420" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="320" MinWidth="280" />
+        </Grid.ColumnDefinitions>
+
+        <Border
+            Padding="16"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="0,0,1,0"
+            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(Sessions.IsPaneCollapsed), Mode=OneWay}">
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Sessions" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Saved conversations and working threads"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+                    <Button
+                        Grid.Column="1"
+                        AutomationProperties.AutomationId="NewSessionButton"
+                        AutomationProperties.Name="New session"
+                        Command="{x:Bind Sessions.NewSessionCommand}">
+                        <Button.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="N" Modifiers="Control" />
+                        </Button.KeyboardAccelerators>
+                        <FontIcon Glyph="&#xE710;" />
+                    </Button>
+                </Grid>
+                <TextBox
+                    Grid.Row="1"
+                    AutomationProperties.AutomationId="SessionSearchBox"
+                    PlaceholderText="Search sessions"
+                    Text="{x:Bind Sessions.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid Grid.Row="2">
+                    <ListView
+                        x:Name="SessionList"
+                        AutomationProperties.AutomationId="SessionList"
+                        ItemTemplateSelector="{StaticResource SessionListItemTemplateSelector}"
+                        ItemsSource="{x:Bind Sessions.FilteredItems, Mode=OneWay}"
+                        KeyDown="SessionList_KeyDown"
+                        SelectedItem="{x:Bind Sessions.SelectedSession, Mode=OneWay}"
+                        SelectionChanged="SessionList_SelectionChanged"
+                        SelectionMode="Single" />
+                    <TextBlock
+                        Margin="4,12"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        AutomationProperties.AutomationId="SessionsEmptyState"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="No sessions match your search."
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(Sessions.HasNoMatches), Mode=OneWay}" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <toolkit:GridSplitter
+            Grid.Column="1"
+            AutomationProperties.AutomationId="SessionsGridSplitter"
+            AutomationProperties.Name="Resize sessions and workspace panes"
+            Width="4"
+            ResizeBehavior="PreviousAndNext"
+            ResizeDirection="Columns"
+            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(Sessions.IsPaneCollapsed), Mode=OneWay}" />
+
+        <Grid Grid.Column="2" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Padding="24,20,20,12" ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Workspace" Style="{StaticResource TitleTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock
+                            AutomationProperties.AutomationId="RuntimeSummaryText"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                            Text="·"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.PermissionModeText, Mode=OneWay}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+                </StackPanel>
+                <CommandBar
+                    Grid.Column="1"
+                    Background="Transparent"
+                    DefaultLabelPosition="Right">
+                    <AppBarButton
+                        AutomationProperties.AutomationId="ToggleSessionsPaneButton"
+                        Command="{x:Bind Sessions.TogglePaneCommand}"
+                        Icon="List"
+                        Label="Sessions">
+                        <AppBarButton.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="B" Modifiers="Control" />
+                        </AppBarButton.KeyboardAccelerators>
+                    </AppBarButton>
+                    <AppBarButton
+                        AutomationProperties.AutomationId="CompactToolbarButton"
+                        Command="{x:Bind ViewModel.CompactCommand}"
+                        Icon="Refresh"
+                        Label="Compact">
+                        <AppBarButton.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="K" Modifiers="Control,Shift" />
+                        </AppBarButton.KeyboardAccelerators>
+                    </AppBarButton>
+                    <AppBarButton
+                        AutomationProperties.AutomationId="ClearContextToolbarButton"
+                        Command="{x:Bind ViewModel.ClearContextCommand}"
+                        Icon="Clear"
+                        Label="Clear">
+                        <AppBarButton.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="Delete" Modifiers="Control,Shift" />
+                        </AppBarButton.KeyboardAccelerators>
+                    </AppBarButton>
+                    <AppBarButton
+                        AutomationProperties.AutomationId="StopToolbarButton"
+                        Command="{x:Bind ViewModel.StopCommand}"
+                        Icon="Stop"
+                        Label="Stop">
+                        <AppBarButton.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="Escape" Invoked="StopAccelerator_Invoked" />
+                        </AppBarButton.KeyboardAccelerators>
+                    </AppBarButton>
+                    <AppBarButton
+                        AutomationProperties.AutomationId="ShortcutsToolbarButton"
+                        Click="ShortcutsButton_Click"
+                        Icon="Help"
+                        Label="Shortcuts" />
+                </CommandBar>
+            </Grid>
+
+            <Grid Grid.Row="1">
+                <ScrollViewer
+                    x:Name="TranscriptScrollViewer"
+                    AutomationProperties.AutomationId="ChatTranscript"
+                    IsVerticalScrollChainingEnabled="False"
+                    Padding="16,4,16,16"
+                    ViewChanged="TranscriptScrollViewer_ViewChanged">
+                    <Grid>
+                        <StackPanel
+                            MaxWidth="680"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="16"
+                            Visibility="{x:Bind local:ChatPage.EmptyStateVisibility(ViewModel.HasMessages, ShowFirstRunWelcome), Mode=OneWay}">
+                            <FontIcon
+                                HorizontalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Glyph="&#xE8BD;" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                Text="Start with a task, not a command"
+                                Style="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="Ask Caliper to inspect code, explain a plan, make a scoped edit, or run verification. Tools, permissions, and diffs will appear inline and in the inspector."
+                                TextAlignment="Center"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <Border
+                            MaxWidth="520"
+                            Padding="28,24"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="{ThemeResource OverlayCornerRadius}"
+                            Visibility="{x:Bind local:ChatPage.WelcomeCardVisibility(ViewModel.HasMessages, ShowFirstRunWelcome), Mode=OneWay}">
+                            <StackPanel Spacing="16">
+                                <FontIcon
+                                    HorizontalAlignment="Center"
+                                    FontSize="28"
+                                    Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                    Glyph="&#xE945;" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    Text="{x:Bind WelcomeTitle, Mode=OneWay}"
+                                    Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind WelcomeMessage, Mode=OneWay}"
+                                    TextAlignment="Center"
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    AutomationProperties.AutomationId="FirstRunGoToSettingsButton"
+                                    HorizontalAlignment="Center"
+                                    Click="GoToProviderSettings_Click"
+                                    Content="Open Models &amp; providers settings"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ShowAddKeyWelcome), Mode=OneWay}" />
+                                <Button
+                                    AutomationProperties.AutomationId="FirstRunRestartButton"
+                                    HorizontalAlignment="Center"
+                                    Click="RestartApp_Click"
+                                    Content="Restart Caliper"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ShowRestartWelcome), Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+                        <ItemsRepeater
+                            ItemTemplate="{StaticResource ChatItemTemplateSelector}"
+                            ItemsSource="{x:Bind ViewModel.Messages, Mode=OneWay}">
+                            <ItemsRepeater.Layout>
+                                <StackLayout Spacing="4" />
+                            </ItemsRepeater.Layout>
+                        </ItemsRepeater>
+                    </Grid>
+                </ScrollViewer>
+                <Button
+                    x:Name="JumpToLatestButton"
+                    Margin="0,0,0,16"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Bottom"
+                    AutomationProperties.AutomationId="JumpToLatestButton"
+                    Click="JumpToLatest_Click"
+                    CornerRadius="16"
+                    Style="{StaticResource AccentButtonStyle}"
+                    Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="12" Glyph="&#xE74B;" />
+                        <TextBlock Text="Jump to latest" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <ContentControl
+                Grid.Row="2"
+                Margin="20,0,20,4"
+                HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                Content="{x:Bind ViewModel.PendingApproval, Mode=OneWay}"
+                ContentTemplate="{StaticResource ApprovalTemplate}"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasPendingApproval), Mode=OneWay}" />
+            <TextBlock
+                x:Name="ApprovalCountdownText"
+                Grid.Row="3"
+                Margin="24,0,24,8"
+                AutomationProperties.AutomationId="ApprovalCountdownText"
+                HorizontalAlignment="Right"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasPendingApproval), Mode=OneWay}" />
+
+            <Border
+                Grid.Row="4"
+                Margin="20,0,20,12"
+                Padding="12"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}"
+                Opacity="{x:Bind converters:XamlConverters.DimOpacity(ViewModel.HasPendingApproval), Mode=OneWay}">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Name="PromptTextBox"
+                        AutomationProperties.AutomationId="PromptTextBox"
+                        AutomationProperties.Name="Message"
+                        AcceptsReturn="True"
+                        BorderThickness="0"
+                        Header="Message"
+                        KeyDown="PromptTextBox_KeyDown"
+                        MaxHeight="176"
+                        PlaceholderText="Describe the outcome you want. Enter sends, Shift+Enter for a new line."
+                        Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        TextWrapping="Wrap" />
+                    <Grid Grid.Column="1" VerticalAlignment="Bottom">
+                        <Button
+                            AutomationProperties.AutomationId="SendButton"
+                            Command="{x:Bind ViewModel.SendCommand}"
+                            Content="Send"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.IsRunning), Mode=OneWay}">
+                            <Button.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="Enter" Modifiers="Control" />
+                            </Button.KeyboardAccelerators>
+                        </Button>
+                        <Button
+                            AutomationProperties.AutomationId="ComposerStopButton"
+                            Command="{x:Bind ViewModel.StopCommand}"
+                            Content="Stop"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsRunning), Mode=OneWay}" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="5" Padding="24,0,24,12" ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ProgressRing
+                        Width="16"
+                        Height="16"
+                        IsActive="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsRunning), Mode=OneWay}" />
+                    <TextBlock
+                        AutomationProperties.AutomationId="RunStatusText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <Button
+                        AutomationProperties.AutomationId="QueuedMessageChip"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Command="{x:Bind ViewModel.EditQueuedMessageCommand}"
+                        Padding="6,2"
+                        ToolTipService.ToolTip="Queued message — click to edit"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasQueuedMessage), Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <FontIcon FontSize="12" Glyph="&#xE81C;" />
+                            <TextBlock
+                                MaxWidth="240"
+                                Text="{x:Bind ViewModel.QueuedMessagePreview, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                Style="{StaticResource CaptionTextBlockStyle}" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <TextBlock
+                    Grid.Column="1"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.UsageText, Mode=OneWay}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+            </Grid>
+        </Grid>
+
+        <toolkit:GridSplitter
+            Grid.Column="3"
+            AutomationProperties.AutomationId="DetailsGridSplitter"
+            AutomationProperties.Name="Resize workspace and inspector panes"
+            Width="4"
+            ResizeBehavior="PreviousAndNext"
+            ResizeDirection="Columns" />
+
+        <Border
+            Grid.Column="4"
+            Padding="16"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
+            BorderThickness="1,0,0,0">
+            <Grid RowSpacing="16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Inspector" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Run state, context controls, and selected tool output"
+                        TextWrapping="Wrap"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+
+                <Grid Grid.Row="1" RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <settings:SettingsCard Header="Runtime" Description="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}" />
+                    <settings:SettingsCard Grid.Row="1" Header="Context" Description="{x:Bind ViewModel.ContextStatusMessage, Mode=OneWay}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button
+                                AutomationProperties.AutomationId="InspectorCompactButton"
+                                Command="{x:Bind ViewModel.CompactCommand}"
+                                Content="Compact" />
+                            <Button
+                                AutomationProperties.AutomationId="InspectorClearContextButton"
+                                Command="{x:Bind ViewModel.ClearContextCommand}"
+                                Content="Clear" />
+                        </StackPanel>
+                    </settings:SettingsCard>
+                </Grid>
+
+                <Grid Grid.Row="2">
+                    <TextBlock
+                        Margin="16"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="Select a tool call to inspect arguments, output, and file diffs."
+                        TextAlignment="Center"
+                        TextWrapping="Wrap"
+                        Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.HasSelectedTool), Mode=OneWay}" />
+                    <Grid Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasSelectedTool), Mode=OneWay}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    Text="{x:Bind ViewModel.SelectedToolName, Mode=OneWay}"
+                                    TextTrimming="CharacterEllipsis"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind ViewModel.SelectedToolStatus, Mode=OneWay}"
+                                    Style="{StaticResource CaptionTextBlockStyle}" />
+                            </StackPanel>
+                            <Button
+                                Grid.Column="1"
+                                AutomationProperties.AutomationId="CloseDetailsButton"
+                                AutomationProperties.Name="Close tool details"
+                                Click="CloseDetails_Click">
+                                <FontIcon Glyph="&#xE711;" />
+                            </Button>
+                        </Grid>
+                        <TabView
+                            Grid.Row="1"
+                            AutomationProperties.AutomationId="ToolDetailsTabs"
+                            IsAddTabButtonVisible="False">
+                            <TabViewItem AutomationProperties.AutomationId="ToolOutputTab" Header="Output" IsClosable="False">
+                                <ScrollViewer Padding="12" HorizontalScrollBarVisibility="Auto">
+                                    <TextBlock
+                                        FontFamily="{StaticResource CodeFontFamily}"
+                                        IsTextSelectionEnabled="True"
+                                        Text="{x:Bind ViewModel.SelectedToolOutput, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                </ScrollViewer>
+                            </TabViewItem>
+                            <TabViewItem AutomationProperties.AutomationId="SideBySideDiffTab" Header="Side by side" IsClosable="False" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.SelectedToolHasDiff), Mode=OneWay}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <StackPanel Padding="12,8" Spacing="4">
+                                        <TextBlock Text="{x:Bind ViewModel.SelectedDiffPath, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Diff preview truncated to 64 KiB per side." Style="{StaticResource CaptionTextBlockStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsSelectedDiffTruncated), Mode=OneWay}" />
+                                    </StackPanel>
+                                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
+                                        <ItemsRepeater ItemTemplate="{StaticResource SideBySideDiffTemplate}" ItemsSource="{x:Bind ViewModel.SelectedSideBySideRows, Mode=OneWay}">
+                                            <ItemsRepeater.Layout>
+                                                <StackLayout />
+                                            </ItemsRepeater.Layout>
+                                        </ItemsRepeater>
+                                    </ScrollViewer>
+                                </Grid>
+                            </TabViewItem>
+                            <TabViewItem AutomationProperties.AutomationId="InlineDiffTab" Header="Inline" IsClosable="False" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.SelectedToolHasDiff), Mode=OneWay}">
+                                <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                                    <ItemsRepeater ItemTemplate="{StaticResource InlineDiffTemplate}" ItemsSource="{x:Bind ViewModel.SelectedInlineRows, Mode=OneWay}">
+                                        <ItemsRepeater.Layout>
+                                            <StackLayout />
+                                        </ItemsRepeater.Layout>
+                                    </ItemsRepeater>
+                                </ScrollViewer>
+                            </TabViewItem>
+                        </TabView>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

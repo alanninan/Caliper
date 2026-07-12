@@ -63,7 +63,7 @@ public sealed partial class FetchUrlTool(IOptions<CaliperOptions> opts) : ITool
                     return new ToolResult(false, $"Unsupported content type: {contentType}");
 
                 var bytes = await ReadLimitedAsync(response.Content, MaxBytes, timeout.Token).ConfigureAwait(false);
-                var text = Encoding.UTF8.GetString(bytes);
+                var text = ResolveEncoding(response.Content.Headers.ContentType?.CharSet).GetString(bytes);
                 if (contentType == "text/html")
                     text = ExtractHtmlText(text);
 
@@ -135,6 +135,23 @@ public sealed partial class FetchUrlTool(IOptions<CaliperOptions> opts) : ITool
         html = StripBlockRegex().Replace(html, " ");
         html = TagRegex().Replace(html, " ");
         return System.Net.WebUtility.HtmlDecode(html);
+    }
+
+    private static Encoding ResolveEncoding(string? charSet)
+    {
+        if (string.IsNullOrWhiteSpace(charSet))
+            return Encoding.UTF8;
+
+        try
+        {
+            return Encoding.GetEncoding(charSet.Trim().Trim('"'));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            // Unknown or unsupported charset (many code pages aren't available under trimming) —
+            // fall back to UTF-8.
+            return Encoding.UTF8;
+        }
     }
 
     private static bool IsAllowedMime(string mediaType) =>

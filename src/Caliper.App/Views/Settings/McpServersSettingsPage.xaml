@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.McpServersSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Caliper.App.ViewModels.Settings">
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="960" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="MCP servers" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="External tool servers connected to the runtime." TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="McpReconnectButton" Command="{x:Bind ViewModel.ReconnectCommand}" Content="Reconnect all" />
+                    <Button AutomationProperties.AutomationId="SaveMcpButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </Grid>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <settings:SettingsCard Header="Configured" Description="{x:Bind ViewModel.ServerCountText, Mode=OneWay}" />
+                <settings:SettingsCard Grid.Column="1" Header="Tools" Description="{x:Bind ViewModel.ToolCountText, Mode=OneWay}" />
+                <settings:SettingsCard Grid.Column="2" Header="Status" Description="{x:Bind ViewModel.HealthText, Mode=OneWay}" />
+            </Grid>
+
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <ListView AutomationProperties.AutomationId="McpServerStatusList" ItemsSource="{x:Bind ViewModel.McpServers, Mode=OneWay}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="vm:McpStatusViewModel">
+                            <Grid Padding="16" ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="120" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock Grid.Column="1" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Detail}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Column="2" HorizontalAlignment="Right" Text="{x:Bind State}" Style="{StaticResource CaptionTextBlockStyle}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Border>
+
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="320" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button AutomationProperties.AutomationId="AddMcpServerButton" Command="{x:Bind ViewModel.AddServerCommand}" Content="Add" />
+                        <Button AutomationProperties.AutomationId="RemoveMcpServerButton" Command="{x:Bind ViewModel.RemoveSelectedServerCommand}" Content="Remove" />
+                    </StackPanel>
+                    <ListView
+                        AutomationProperties.AutomationId="McpServerEditList"
+                        MaxHeight="360"
+                        ItemsSource="{x:Bind ViewModel.Servers, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.SelectedServer, Mode=TwoWay}"
+                        SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate x:DataType="vm:McpServerSettingViewModel">
+                                <StackPanel Spacing="2">
+                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind Name, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind Summary, Mode=OneWay}" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </StackPanel>
+                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+                    <ContentControl Content="{x:Bind ViewModel.SelectedServer, Mode=OneWay}">
+                        <ContentControl.ContentTemplate>
+                            <DataTemplate x:DataType="vm:McpServerSettingViewModel">
+                                <StackPanel Spacing="8" MinWidth="280">
+                                    <TextBox AutomationProperties.AutomationId="McpNameTextBox" Header="Name" Text="{x:Bind Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <ComboBox AutomationProperties.AutomationId="McpTypePicker" Header="Transport" SelectedItem="{x:Bind Type, Mode=TwoWay}">
+                                        <x:String>stdio</x:String>
+                                        <x:String>http</x:String>
+                                    </ComboBox>
+                                    <TextBox AutomationProperties.AutomationId="McpUrlTextBox" Header="HTTP URL" Text="{x:Bind Url, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox AutomationProperties.AutomationId="McpCommandTextBox" Header="stdio command" Text="{x:Bind Command, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBox AutomationProperties.AutomationId="McpArgsTextBox" AcceptsReturn="True" Header="Arguments" MaxHeight="100" Text="{x:Bind ArgsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                                    <PasswordBox AutomationProperties.AutomationId="McpBearerTokenPasswordBox" Header="Bearer token" Password="{x:Bind BearerToken, Mode=TwoWay}" PasswordRevealMode="Peek" />
+                                    <TextBox AutomationProperties.AutomationId="McpHeadersTextBox" AcceptsReturn="True" Header="Headers" MaxHeight="100" PlaceholderText="Header-Name=value" Text="{x:Bind HeadersText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                    </ContentControl>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

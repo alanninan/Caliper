@@ -65,6 +65,96 @@ public sealed class NativeToolStrategyTests
     }
 
     [Fact]
+    public async Task Replay_tolerates_payload_less_tool_message_from_compaction()
+    {
+        var store = new InMemorySessionStoreStub();
+        var sessionId = await store.CreateAsync(null, CancellationToken.None);
+        // A compaction placeholder (or legacy row): a Tool-role result with no stored payload.
+        // Rehydrating it must not throw or emit an orphaned tool message on the next turn.
+        await store.AppendAsync(
+            sessionId,
+            new CaliperChatMessage(CaliperChatRole.Tool, MessageKind.ToolResult, "[earlier tool results omitted]"),
+            CancellationToken.None);
+
+        var client = new ScriptedChatClient([[new ChatResponseUpdate(AIChatRole.Assistant, "recovered")]]);
+        var options = new CaliperOptions { Model = "test/model", MaxSteps = 2, DuplicateCallLimit = 10, EnabledTools = ["echo"] };
+        var runtime = new RuntimeSettings(Options.Create(options), Options.Create(new PermissionsOptions()));
+        var capabilities = new StaticCapabilityProvider(new ModelCapabilities(true, true, true, 32768));
+        var strategy = new NativeToolStrategy(
+            new SingleChatClientProvider(client),
+            capabilities,
+            runtime,
+            NullLogger<NativeToolStrategy>.Instance);
+        var runner = new AgentRunner(
+            strategy,
+            BuildRegistry(new EchoTool()),
+            new EmptySkillStore(),
+            new PassthroughContextManager(),
+            new SimpleTokenCounter(),
+            store,
+            new NativeEmptyMemoryStore(),
+            new NativeEmptyCaliperMdProvider(),
+            new NullHttpClientFactory(),
+            capabilities,
+            new NativeAllowAllGate(),
+            runtime,
+            NullLogger<AgentRunner>.Instance);
+
+        var events = await RunAll(runner, sessionId, "continue");
+
+        Assert.Contains(events, e => e is AssistantMessage { Content: "recovered" });
+        Assert.DoesNotContain(events, e => e is RunFailed);
+        Assert.DoesNotContain(client.Requests[0], message => message.Role == AIChatRole.Tool);
+    }
+
+    [Fact]
+    public async Task Replay_heals_dangling_tool_call_with_a_synthetic_result()
+    {
+        var store = new InMemorySessionStoreStub();
+        var sessionId = await store.CreateAsync(null, CancellationToken.None);
+        // A run cancelled or killed mid-tool: a ToolCall persisted with no matching ToolResult.
+        var args = JsonDocument.Parse("""{"text":"hi"}""").RootElement.Clone();
+        await store.AppendAsync(
+            sessionId,
+            CaliperChatMessage.FromToolCall(new ToolCall("call_orphan", "echo", args)),
+            CancellationToken.None);
+
+        var client = new ScriptedChatClient([[new ChatResponseUpdate(AIChatRole.Assistant, "recovered")]]);
+        var options = new CaliperOptions { Model = "test/model", MaxSteps = 2, DuplicateCallLimit = 10, EnabledTools = ["echo"] };
+        var runtime = new RuntimeSettings(Options.Create(options), Options.Create(new PermissionsOptions()));
+        var capabilities = new StaticCapabilityProvider(new ModelCapabilities(true, true, true, 32768));
+        var strategy = new NativeToolStrategy(
+            new SingleChatClientProvider(client),
+            capabilities,
+            runtime,
+            NullLogger<NativeToolStrategy>.Instance);
+        var runner = new AgentRunner(
+            strategy,
+            BuildRegistry(new EchoTool()),
+            new EmptySkillStore(),
+            new PassthroughContextManager(),
+            new SimpleTokenCounter(),
+            store,
+            new NativeEmptyMemoryStore(),
+            new NativeEmptyCaliperMdProvider(),
+            new NullHttpClientFactory(),
+            capabilities,
+            new NativeAllowAllGate(),
+            runtime,
+            NullLogger<AgentRunner>.Instance);
+
+        var events = await RunAll(runner, sessionId, "continue");
+
+        Assert.DoesNotContain(events, e => e is RunFailed);
+        Assert.Contains(events, e => e is AssistantMessage { Content: "recovered" });
+        // The orphaned assistant tool_calls message must be followed by a synthesized tool result
+        // so an OpenAI-compatible endpoint would accept the turn.
+        Assert.Contains(client.Requests[0], message =>
+            message.Role == AIChatRole.Tool &&
+            message.Contents.OfType<FunctionResultContent>().Any(r => r.CallId == "call_orphan"));
+    }
+
+    [Fact]
     public async Task Auto_mode_omits_tools_and_reasoning_when_capabilities_do_not_support_them()
     {
         var client = new ScriptedChatClient([[new ChatResponseUpdate(AIChatRole.Assistant, "plain answer")]]);
@@ -465,6 +555,14 @@ sealed class InMemorySessionStoreStub : ISessionStore
 
     public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<SessionSummary>>([]);
+
+    public Task DeleteAsync(string sessionId, CancellationToken ct)
+    {
+        _data.Remove(sessionId);
+        return Task.CompletedTask;
+    }
+
+    public Task RenameAsync(string sessionId, string title, CancellationToken ct) => Task.CompletedTask;
 
     public Task ReplaceWithCompactionAsync(string sessionId, ContextFit fit, CancellationToken ct)
     {

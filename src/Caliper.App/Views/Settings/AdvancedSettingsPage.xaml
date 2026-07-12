@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.AdvancedSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="820" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Advanced" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Storage location and the raw config file, for comments or hand edits." TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" AutomationProperties.AutomationId="OpenConfigFileButton" Click="OpenConfig_Click" Content="Open config file" />
+            </Grid>
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+
+            <settings:SettingsCard Header="Persistence database">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox AutomationProperties.AutomationId="PersistencePathTextBox" MinWidth="320" Text="{x:Bind ViewModel.PersistencePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button AutomationProperties.AutomationId="BrowsePersistencePathButton" Click="BrowsePersistencePath_Click" Content="Browse" />
+                    <Button AutomationProperties.AutomationId="SavePersistenceButton" Command="{x:Bind ViewModel.SavePersistenceCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </settings:SettingsCard>
+
+            <StackPanel Spacing="4">
+                <TextBlock Text="Raw config.json" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Escape hatch for fields not yet exposed elsewhere; no typed validation." Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                <TextBox
+                    AutomationProperties.AutomationId="RawJsonTextBox"
+                    AcceptsReturn="True"
+                    FontFamily="{StaticResource CodeFontFamily}"
+                    Height="360"
+                    Text="{x:Bind ViewModel.RawJson, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="NoWrap"
+                    ScrollViewer.VerticalScrollBarVisibility="Auto"
+                    ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                <Button AutomationProperties.AutomationId="SaveRawJsonButton" Command="{x:Bind ViewModel.SaveRawCommand}" Content="Save raw JSON" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

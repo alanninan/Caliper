@@ -7,12 +7,21 @@ namespace Caliper.Core.Configuration;
 
 internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
 {
+    private static readonly string[] s_reasoningEfforts =
+        ["none", "low", "medium", "high", "extra-high", "extrahigh"];
+
     public ValidateOptionsResult Validate(string? name, CaliperOptions options)
     {
         var failures = new List<string>();
 
         if (string.IsNullOrWhiteSpace(options.Provider))
             failures.Add($"{nameof(CaliperOptions.Provider)} must not be empty.");
+
+        if (options.Temperature is < 0 or > 2)
+            failures.Add($"{nameof(CaliperOptions.Temperature)} must be between 0 and 2 (was {options.Temperature}).");
+
+        if (!s_reasoningEfforts.Contains(options.Reasoning.Effort, StringComparer.OrdinalIgnoreCase))
+            failures.Add($"{nameof(ReasoningOptions.Effort)} must be one of: {string.Join(", ", s_reasoningEfforts)} (was '{options.Reasoning.Effort}').");
 
         if (string.IsNullOrWhiteSpace(options.Model))
             failures.Add($"{nameof(CaliperOptions.Model)} must not be empty.");

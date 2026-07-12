@@ -76,6 +76,52 @@ public sealed class PermissionGateTests
     }
 
     [Fact]
+    public async Task Denylist_matches_command_boundaries_not_substrings()
+    {
+        var prompt = new ScriptedPrompt(PermissionDecision.Deny, PermissionDecision.Allow);
+        var gate = Build(PermissionMode.Auto, prompt);
+
+        // "dd " fires on a real dd command...
+        Assert.Equal(PermissionDecision.Deny, await gate.EvaluateAsync(Shell("dd if=/dev/zero of=x"), CancellationToken.None));
+        Assert.StartsWith(PermissionGate.DenylistReasonPrefix, prompt.Requests[0].Reason, StringComparison.Ordinal);
+
+        // ...but not as a substring inside an unrelated command like "git add .".
+        Assert.Equal(PermissionDecision.Allow, await gate.EvaluateAsync(Shell("git add ."), CancellationToken.None));
+        Assert.Null(prompt.Requests[1].Reason);
+    }
+
+    [Fact]
+    public async Task Auto_does_not_auto_allow_chained_allowlisted_command()
+    {
+        var prompt = new ScriptedPrompt(PermissionDecision.Deny);
+        var gate = Build(PermissionMode.Auto, prompt);
+
+        // "git status" is allowlisted, but a chaining operator must not smuggle a second command
+        // through on its coattails.
+        var decision = await gate.EvaluateAsync(Shell("git status; echo pwned"), CancellationToken.None);
+
+        Assert.Equal(PermissionDecision.Deny, decision);
+        Assert.Equal(1, prompt.Count);
+    }
+
+    [Fact]
+    public async Task Untrusted_readonly_tool_is_not_auto_allowed()
+    {
+        var untrusted = Request("server__search", SideEffect.ReadOnly) with { TrustedReadOnly = false };
+
+        // AskAlways: an MCP self-declared read-only tool still prompts.
+        var prompt = new ScriptedPrompt(PermissionDecision.Allow);
+        Assert.Equal(PermissionDecision.Allow, await Build(PermissionMode.AskAlways, prompt).EvaluateAsync(untrusted, CancellationToken.None));
+        Assert.Equal(1, prompt.Count);
+
+        // Plan: it is denied, not silently allowed.
+        Assert.Equal(PermissionDecision.Deny, await Build(PermissionMode.Plan, new ScriptedPrompt(PermissionDecision.Allow)).EvaluateAsync(untrusted, CancellationToken.None));
+
+        // A trusted built-in read-only tool is still auto-allowed, even in Plan.
+        Assert.Equal(PermissionDecision.Allow, await Build(PermissionMode.Plan, new ScriptedPrompt(PermissionDecision.Deny)).EvaluateAsync(Request("read_file", SideEffect.ReadOnly), CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Plan_denies_side_effects_and_allows_readonly()
     {
         var prompt = new ScriptedPrompt(PermissionDecision.Allow);

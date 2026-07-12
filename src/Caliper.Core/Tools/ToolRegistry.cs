@@ -15,6 +15,7 @@ namespace Caliper.Core.Tools;
 public sealed class ToolRegistry : IToolRegistry
 {
     private readonly Dictionary<string, ITool> _tools;
+    private readonly IReadOnlyList<ITool> _allTools;
     private readonly IMcpHub? _mcpHub;
 
     public ToolRegistry(
@@ -25,16 +26,22 @@ public sealed class ToolRegistry : IToolRegistry
     {
         _mcpHub = mcpHub;
         var enabled = new HashSet<string>(options.Value.EnabledTools, StringComparer.OrdinalIgnoreCase);
-        _tools = [];
+        // Case-insensitive so lookups match regardless of how the model cased the tool name,
+        // consistent with the MCP tool lookup below.
+        _tools = new Dictionary<string, ITool>(StringComparer.OrdinalIgnoreCase);
+        var all = new List<ITool>();
 
         foreach (var tool in tools)
         {
+            all.Add(tool);
             if (!enabled.Contains(tool.Name))
                 continue;
 
             ValidateFlatness(tool, logger);
             _tools[tool.Name] = tool;
         }
+
+        _allTools = all;
 
         // Warn about tools listed in config but not registered.
         foreach (var name in enabled)
@@ -45,6 +52,8 @@ public sealed class ToolRegistry : IToolRegistry
     }
 
     public IReadOnlyList<ITool> Enabled => [.. AllTools()];
+
+    public IReadOnlyList<ITool> All => _allTools;
 
     public ITool? Find(string name) =>
         _tools.GetValueOrDefault(name) ??

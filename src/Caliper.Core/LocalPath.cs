@@ -7,12 +7,15 @@ public static class LocalPath
 {
     public static string ResolveHome(string path)
     {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        if (path == "~")
+            return home;
+
         if (path.StartsWith("~/", StringComparison.Ordinal) ||
             path.StartsWith("~\\", StringComparison.Ordinal))
         {
-            return Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                path[2..]);
+            return Path.Combine(home, path[2..]);
         }
 
         return path;

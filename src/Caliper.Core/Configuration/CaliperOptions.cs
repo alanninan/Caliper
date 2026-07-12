@@ -54,6 +54,7 @@ public sealed class MemoryOptions
 public sealed class ProvidersOptions
 {
     public OpenRouterOptions OpenRouter { get; set; } = new();
+    public GeminiOptions Gemini { get; set; } = new();
 }
 
 public sealed class OpenRouterOptions
@@ -61,6 +62,14 @@ public sealed class OpenRouterOptions
     public string Endpoint { get; set; } = "https://openrouter.ai/api/v1";
     public string AppTitle { get; set; } = "Caliper";
     public string? AppReferer { get; set; }
+    public string? ApiKey { get; set; }
+}
+
+public sealed class GeminiOptions
+{
+    // Gemini's OpenAI-compatible surface; Caliper talks to it via the same OpenAI client used
+    // for OpenRouter, so no dedicated Gemini SDK or wire format is needed.
+    public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/openai/";
     public string? ApiKey { get; set; }
 }
 
