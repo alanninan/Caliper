@@ -13,6 +13,7 @@ using Caliper.Core.Models;
 using Caliper.Core.Permissions;
 using Caliper.Core.Protocol;
 using Caliper.Core.Tools;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -119,6 +120,68 @@ public sealed class ConversationOrchestratorTests
         Assert.Empty(result.Denials);
         Assert.Equal("hello", result.AssistantMessage);
     }
+
+    [Fact]
+    public async Task Unattended_deny_of_a_non_allowlisted_shell_call_appears_in_Denials()
+    {
+        // End-to-end through the *real*, unmodified PermissionGate (Auto mode, no allowlist match)
+        // with UnattendedPermissionPrompt standing in for a human: the gate's Auto-mode fallback
+        // calls the prompt, the prompt denies, and — because AgentRunner emits the same
+        // PermissionRequested/PermissionResolved pair regardless of which decision path fired —
+        // the denial is still correlated into ConversationRunResult.Denials with zero gate changes.
+        var tool = new ShellStub();
+        var args = JsonSerializer.SerializeToElement(new { command = "some-unlisted-tool --flag" });
+        var strategy = new ScriptedTurnStrategy(
+            new TurnCompleted(new ModelTurn(null, [new ToolCall("call_1", tool.Name, args)], null, new UsageInfo(1, 1, 2))),
+            new TurnCompleted(new ModelTurn("adapted", [], null, new UsageInfo(1, 1, 2))));
+
+        var sessions = new InMemorySessionStore();
+        var sessionId = await sessions.CreateAsync(null, CancellationToken.None);
+        var runtime = new RuntimeSettings(
+            Options.Create(new CaliperOptions { Model = "test", MaxSteps = 4, DuplicateCallLimit = 4, WorkingRoot = "." }),
+            Options.Create(new PermissionsOptions { Mode = PermissionMode.Auto }));
+
+        var promptServices = new ServiceCollection()
+            .AddSingleton<IPermissionPrompt>(new UnattendedPermissionPrompt(NullLogger<UnattendedPermissionPrompt>.Instance))
+            .BuildServiceProvider();
+        var gate = new PermissionGate(runtime, promptServices);
+
+        var runner = new AgentRunner(
+            strategy,
+            new SingleToolRegistry(tool),
+            new EmptySkillStore(),
+            new PassthroughContextManager(),
+            new SimpleTokenCounter(),
+            sessions,
+            new EmptyMemoryStore(),
+            new EmptyCaliperMdProvider(),
+            new NullHttpClientFactory(),
+            new StaticCapabilityProvider(),
+            gate,
+            runtime,
+            NullLogger<AgentRunner>.Instance);
+
+        var orchestrator = new ConversationOrchestrator(
+            runner,
+            sessions,
+            new EmptySkillStore(),
+            new SingleToolRegistry(tool),
+            new EmptyMemoryStore(),
+            new EmptyCaliperMdProvider(),
+            new PassthroughContextManager(),
+            new StaticCapabilityProvider(),
+            runtime);
+
+        var result = await orchestrator.RunToCompletionAsync(
+            new RunSpec(sessionId, "run something"),
+            onEvent: null,
+            CancellationToken.None);
+
+        var denial = Assert.Single(result.Denials);
+        Assert.Equal("shell_stub", denial.Tool);
+        Assert.Equal(0, tool.InvocationCount);
+        Assert.Equal("adapted", result.AssistantMessage);
+    }
 }
 
 // ── Test doubles ────────────────────────────────────────────────────────────
@@ -153,6 +216,25 @@ file sealed class WriteToolStub : ITool
     {
         InvocationCount++;
         return Task.FromResult(new ToolResult(true, "wrote"));
+    }
+}
+
+file sealed class ShellStub : ITool
+{
+    private static readonly JsonElement s_parameterSchema = JsonDocument.Parse(
+        """{"type":"object","additionalProperties":false,"required":["command"],"properties":{"command":{"type":"string"}}}""")
+        .RootElement.Clone();
+
+    public int InvocationCount { get; private set; }
+    public string Name => "shell_stub";
+    public string Description => "Runs a shell command in tests.";
+    public JsonElement ParameterSchema => s_parameterSchema;
+    public SideEffect SideEffect => SideEffect.Execute;
+
+    public Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct)
+    {
+        InvocationCount++;
+        return Task.FromResult(new ToolResult(true, "ran"));
     }
 }
 

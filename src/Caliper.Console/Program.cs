@@ -22,7 +22,7 @@ using Spectre.Console;
 var oneShotPrompt = GetOption(args, "--prompt");
 var permissionMode = GetOption(args, "--permissions");
 var oneShotPrint = HasOption(args, "--print");
-var oneShotReadOnly = !string.IsNullOrWhiteSpace(oneShotPrompt) && string.IsNullOrWhiteSpace(permissionMode);
+var unattended = HasOption(args, "--unattended");
 
 if (!string.IsNullOrWhiteSpace(permissionMode) &&
     !Enum.TryParse<PermissionMode>(permissionMode, ignoreCase: true, out _))
@@ -31,13 +31,19 @@ if (!string.IsNullOrWhiteSpace(permissionMode) &&
     Environment.Exit(1);
 }
 
+var permissionPlan = OneShotPermissionResolver.Resolve(
+    unattended, !string.IsNullOrWhiteSpace(oneShotPrompt), permissionMode);
+if (!permissionPlan.IsValid)
+{
+    AnsiConsole.MarkupLine($"[red]{Markup.Escape(permissionPlan.Error!)}[/]");
+    Environment.Exit(1);
+}
+
 CaliperHome.EnsureInitialized();
 
 var cliOverrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-if (oneShotReadOnly)
-    cliOverrides["Permissions:Mode"] = PermissionMode.Plan.ToString();
-else if (!string.IsNullOrWhiteSpace(permissionMode))
-    cliOverrides["Permissions:Mode"] = permissionMode;
+if (permissionPlan.ForcedPermissionMode is { } forcedPermissionMode)
+    cliOverrides["Permissions:Mode"] = forcedPermissionMode;
 
 var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
@@ -58,14 +64,19 @@ builder.Configuration
     .AddInMemoryCollection(cliOverrides);
 
 builder.Services.AddCaliperCore(builder.Configuration);
-if (oneShotReadOnly)
+if (permissionPlan.ReadOnlyToolsOnly)
 {
     builder.Services.PostConfigure<CaliperOptions>(options =>
     {
         options.EnabledTools = ["read_file", "list_dir", "glob", "grep", "load_skill"];
     });
 }
-builder.Services.AddSingleton<IPermissionPrompt, ConsolePermissionPrompt>();
+// Unattended runs never get the interactive prompt: UnattendedPermissionPrompt always denies and
+// logs (Warning) instead of asking a human. The Console/App interactive prompts are untouched.
+if (unattended)
+    builder.Services.AddSingleton<IPermissionPrompt, UnattendedPermissionPrompt>();
+else
+    builder.Services.AddSingleton<IPermissionPrompt, ConsolePermissionPrompt>();
 
 var host = builder.Build();
 
@@ -125,7 +136,8 @@ RenderMcpStatus(mcpHub, showEmpty: false);
 if (!string.IsNullOrWhiteSpace(oneShotPrompt))
 {
     var oneShotSessionId = await sessions.CreateAsync(SessionTitle(oneShotPrompt), appCts.Token);
-    await RunOneShotAsync(conversations, oneShotSessionId, oneShotPrompt, oneShotPrint, footer, appCts.Token);
+    var oneShotLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Caliper.Console.OneShot");
+    await RunOneShotAsync(conversations, oneShotSessionId, oneShotPrompt, oneShotPrint, unattended, footer, oneShotLogger, appCts.Token);
     await mcpHub.DisposeAllAsync();
     return;
 }
@@ -668,7 +680,9 @@ static async Task RunOneShotAsync(
     string sessionId,
     string prompt,
     bool printOnly,
+    bool unattended,
     StatusFooter footer,
+    ILogger oneShotLogger,
     CancellationToken ct)
 {
     var renderer = new EventRenderer(footer, printOnly: true);
@@ -687,6 +701,22 @@ static async Task RunOneShotAsync(
         AnsiConsole.MarkupLine($"[red]Error: {Markup.Escape(result.Error)}[/]");
     else if (!printOnly && result.AssistantMessage is not null)
         Console.WriteLine(result.AssistantMessage);
+
+    // Unattended contract: deny + report, never silent-drop. Each denial was already logged
+    // (Warning) by UnattendedPermissionPrompt as it happened; this is the run-level summary —
+    // both to the terminal (so a human watching stderr sees it immediately) and, via the
+    // aggregate Warning below, to the same file log.
+    if (unattended && result.Denials.Count > 0)
+    {
+        oneShotLogger.LogWarning("Unattended run denied {Count} action(s).", result.Denials.Count);
+
+        Console.Error.WriteLine($"{result.Denials.Count} action(s) denied (unattended):");
+        foreach (var denial in result.Denials)
+        {
+            var reasonSuffix = string.IsNullOrWhiteSpace(denial.Reason) ? "" : $" — {denial.Reason}";
+            Console.Error.WriteLine($"  {denial.Tool}{reasonSuffix}");
+        }
+    }
 }
 
 sealed class ConsolePermissionPrompt : IPermissionPrompt
