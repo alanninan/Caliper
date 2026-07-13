@@ -64,6 +64,7 @@ public sealed partial class ToolCallViewModel(
     public string CallId { get; } = callId;
     public string ToolName { get; } = toolName;
     public string Arguments { get; } = arguments;
+    public string ArgumentsPretty { get; } = PrettyPrintJson(arguments);
     public string Headline { get; } = ComputeHeadline(toolName, arguments);
     public string InspectAutomationId => $"InspectTool_{CallId}";
     public bool HasDiff => Diff is not null;
@@ -88,6 +89,26 @@ public sealed partial class ToolCallViewModel(
 
     public void SetFileChange(FileChange? change) =>
         Diff = change is null ? null : FileDiffViewModel.Create(change);
+
+    private static readonly JsonSerializerOptions s_prettyJson = new() { WriteIndented = true };
+
+    // Indent the raw call arguments for the inspector's Arguments tab; falls back to the raw text
+    // for anything that isn't valid JSON.
+    private static string PrettyPrintJson(string arguments)
+    {
+        if (string.IsNullOrWhiteSpace(arguments))
+            return string.Empty;
+
+        try
+        {
+            using var document = JsonDocument.Parse(arguments);
+            return JsonSerializer.Serialize(document.RootElement, s_prettyJson);
+        }
+        catch (JsonException)
+        {
+            return arguments;
+        }
+    }
 
     private static string ComputeHeadline(string toolName, string arguments)
     {
@@ -190,4 +211,21 @@ public sealed class RunStatusViewModel(string title, string message, bool isErro
     public string Title { get; } = title;
     public string Message { get; } = message;
     public bool IsError { get; } = isError;
+}
+
+// A full-width divider marking a context boundary in the transcript (compaction or clear), so a
+// reader can tell at a glance where earlier turns stopped being sent to the model.
+public sealed partial class CompactionMarkerViewModel(
+    string label,
+    string detail = "",
+    string summary = "") : ChatItemViewModel
+{
+    public string Label { get; } = label;
+    public string Detail { get; } = detail;
+    public string Summary { get; } = summary;
+    public bool HasDetail => !string.IsNullOrWhiteSpace(Detail);
+    public bool HasSummary => !string.IsNullOrWhiteSpace(Summary);
+
+    [ObservableProperty]
+    public partial bool IsExpanded { get; set; }
 }

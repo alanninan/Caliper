@@ -87,6 +87,8 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     public string SelectedToolName => SelectedTool?.ToolName ?? "Details";
     public string SelectedToolStatus => SelectedTool?.Status ?? string.Empty;
     public string SelectedToolOutput => SelectedTool?.Output ?? string.Empty;
+    public string SelectedToolArguments => SelectedTool?.ArgumentsPretty ?? string.Empty;
+    public bool SelectedToolHasArguments => SelectedTool?.HasArguments == true;
     public string SelectedDiffPath => SelectedTool?.Diff?.Path ?? string.Empty;
     public bool IsSelectedDiffTruncated => SelectedTool?.Diff?.IsTruncated == true;
     public IReadOnlyList<SideBySideDiffRowViewModel> SelectedSideBySideRows =>
@@ -172,6 +174,8 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         OnPropertyChanged(nameof(SelectedToolName));
         OnPropertyChanged(nameof(SelectedToolStatus));
         OnPropertyChanged(nameof(SelectedToolOutput));
+        OnPropertyChanged(nameof(SelectedToolArguments));
+        OnPropertyChanged(nameof(SelectedToolHasArguments));
         OnPropertyChanged(nameof(SelectedDiffPath));
         OnPropertyChanged(nameof(IsSelectedDiffTruncated));
         OnPropertyChanged(nameof(SelectedSideBySideRows));

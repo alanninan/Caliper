@@ -10,6 +10,11 @@ namespace Caliper.App.ViewModels;
 
 public static class PersistedTranscriptFactory
 {
+    // Auto-compaction stores the summary as "Earlier conversation summary:\n{summary}" (see
+    // AutoCompactingContextManager). The divider label already conveys the "earlier" framing, so the
+    // redundant prefix is trimmed for display; unrecognised content is shown verbatim.
+    private const string SummaryPrefix = "Earlier conversation summary:";
+
     public static ObservableCollection<ChatItemViewModel> Create(
         IReadOnlyList<ChatMessage> messages)
     {
@@ -32,14 +37,21 @@ public static class PersistedTranscriptFactory
                 case MessageKind.Summary:
                     activity = null;
                     items.Add(message.Content.StartsWith(AgentRunner.ContextResetMarker, StringComparison.Ordinal)
-                        ? new RunStatusViewModel("Context cleared", "Earlier messages remain in the transcript but are no longer sent to the model.")
-                        : new RunStatusViewModel("Conversation summary", message.Content));
+                        ? new CompactionMarkerViewModel("Context cleared")
+                        : new CompactionMarkerViewModel(
+                            "Conversation compacted",
+                            summary: StripSummaryPrefix(message.Content)));
                     break;
             }
         }
 
         return items;
     }
+
+    private static string StripSummaryPrefix(string content) =>
+        content.StartsWith(SummaryPrefix, StringComparison.Ordinal)
+            ? content[SummaryPrefix.Length..].TrimStart('\r', '\n', ' ')
+            : content;
 
     private static ToolActivityViewModel EnsureActivity(
         ObservableCollection<ChatItemViewModel> items,

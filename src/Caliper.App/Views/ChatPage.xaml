@@ -142,79 +142,76 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ToolTemplate" x:DataType="vm:ToolCallViewModel">
-            <Expander
-                Margin="0,0,0,8"
+            <Grid
+                Margin="0,0,0,4"
+                Padding="12,8"
                 HorizontalAlignment="Stretch"
-                IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
-                <Expander.Header>
-                    <Grid ColumnSpacing="12">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <FontIcon
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Glyph="&#xE90F;" />
-                        <StackPanel Grid.Column="1" Spacing="2">
-                            <TextBlock
-                                Text="{x:Bind ToolName}"
-                                TextTrimming="CharacterEllipsis"
-                                Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="{x:Bind Status, Mode=OneWay}"
-                                Style="{StaticResource CaptionTextBlockStyle}" />
-                        </StackPanel>
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                ColumnSpacing="12"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <FontIcon
+                    VerticalAlignment="Center"
+                    FontSize="16"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Glyph="&#xE90F;" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock
+                        Text="{x:Bind ToolName}"
+                        TextTrimming="CharacterEllipsis"
+                        Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind Headline}"
+                        TextTrimming="CharacterEllipsis"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+                <StackPanel
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="8">
+                    <Border
+                        Padding="6,1"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorDefaultBrush}"
+                        CornerRadius="4"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasDiff), Mode=OneWay}">
                         <TextBlock
-                            Grid.Column="2"
-                            VerticalAlignment="Center"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="Diff"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasDiff), Mode=OneWay}" />
-                        <Button
-                            Grid.Column="3"
-                            AutomationProperties.AutomationId="{x:Bind InspectAutomationId}"
-                            AutomationProperties.Name="Inspect tool details"
-                            Click="InspectTool_Click">
-                            <FontIcon Glyph="&#xE946;" />
-                        </Button>
-                    </Grid>
-                </Expander.Header>
-                <Grid Padding="0,8,0,0" RowSpacing="8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </Border>
                     <TextBlock
+                        VerticalAlignment="Center"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="Arguments"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasArguments), Mode=OneWay}" />
-                    <TextBlock
-                        Grid.Row="1"
-                        FontFamily="{StaticResource CodeFontFamily}"
-                        IsTextSelectionEnabled="True"
-                        Text="{x:Bind Arguments}"
-                        TextWrapping="Wrap"
-                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasArguments), Mode=OneWay}" />
-                    <TextBlock
-                        Grid.Row="1"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="No arguments were supplied."
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(HasArguments), Mode=OneWay}" />
-                </Grid>
-            </Expander>
+                        Text="{x:Bind Status, Mode=OneWay}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+                <Button
+                    Grid.Column="3"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="{x:Bind InspectAutomationId}"
+                    AutomationProperties.Name="Inspect tool details"
+                    Click="InspectTool_Click"
+                    Tag="{x:Bind}">
+                    <FontIcon FontSize="14" Glyph="&#xE946;" />
+                </Button>
+            </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="ToolActivityTemplate" x:DataType="vm:ToolActivityViewModel">
             <Expander
                 Margin="48,8,64,8"
                 HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
                 IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
                 <Expander.Header>
                     <Grid ColumnSpacing="12">
@@ -266,6 +263,63 @@
                 Message="{x:Bind Message, Mode=OneWay}"
                 Severity="{x:Bind converters:XamlConverters.StatusSeverity(IsError), Mode=OneWay}"
                 Title="{x:Bind Title, Mode=OneWay}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="CompactionMarkerTemplate" x:DataType="vm:CompactionMarkerViewModel">
+            <StackPanel Margin="48,16,64,16" Spacing="8">
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Border
+                        Height="1"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                    <Border
+                        Grid.Column="1"
+                        Padding="10,3"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource ControlFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind Label}"
+                                Style="{StaticResource CaptionTextBlockStyle}" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                Text="{x:Bind Detail}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasDetail), Mode=OneTime}" />
+                        </StackPanel>
+                    </Border>
+                    <Border
+                        Grid.Column="2"
+                        Height="1"
+                        VerticalAlignment="Center"
+                        Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                </Grid>
+                <Expander
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Stretch"
+                    IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasSummary), Mode=OneTime}">
+                    <Expander.Header>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="Summary of earlier conversation"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </Expander.Header>
+                    <TextBlock
+                        IsTextSelectionEnabled="True"
+                        Text="{x:Bind Summary}"
+                        TextWrapping="Wrap" />
+                </Expander>
+            </StackPanel>
         </DataTemplate>
 
         <DataTemplate x:Key="ApprovalTemplate" x:DataType="vm:ApprovalViewModel">
@@ -404,21 +458,22 @@
             SessionTemplate="{StaticResource SessionTemplate}" />
 
         <DataTemplate x:Key="SideBySideDiffTemplate" x:DataType="vm:SideBySideDiffRowViewModel">
-            <Grid MinHeight="24">
+            <Grid MinHeight="20">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="36" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="36" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Border Grid.ColumnSpan="2" Background="{ThemeResource DiffRemovedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsRemoved(OldKind), Mode=OneTime}" />
                 <Border Grid.ColumnSpan="2" Background="{ThemeResource DiffModifiedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsModified(OldKind), Mode=OneTime}" />
                 <Border Grid.Column="2" Grid.ColumnSpan="2" Background="{ThemeResource DiffAddedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsAdded(NewKind), Mode=OneTime}" />
                 <Border Grid.Column="2" Grid.ColumnSpan="2" Background="{ThemeResource DiffModifiedBackgroundBrush}" Visibility="{x:Bind local:ChatPage.IsModified(NewKind), Mode=OneTime}" />
-                <TextBlock Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind local:ChatPage.FormatLineNumber(OldLineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
-                <TextBlock Grid.Column="1" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind OldText}" />
-                <TextBlock Grid.Column="2" Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind local:ChatPage.FormatLineNumber(NewLineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
-                <TextBlock Grid.Column="3" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind NewText}" />
+                <Border Grid.Column="2" Width="1" HorizontalAlignment="Left" Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
+                <TextBlock VerticalAlignment="Top" Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind local:ChatPage.FormatLineNumber(OldLineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock Grid.Column="1" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind OldText}" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="2" VerticalAlignment="Top" Padding="4,2" HorizontalAlignment="Right" FontFamily="{StaticResource CodeFontFamily}" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind local:ChatPage.FormatLineNumber(NewLineNumber), Mode=OneTime}" Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock Grid.Column="3" Padding="4,2" FontFamily="{StaticResource CodeFontFamily}" Text="{x:Bind NewText}" TextWrapping="Wrap" />
             </Grid>
         </DataTemplate>
 
@@ -442,6 +497,7 @@
             x:Key="ChatItemTemplateSelector"
             ApprovalTemplate="{StaticResource ApprovalTranscriptTemplate}"
             AssistantTemplate="{StaticResource AssistantMessageTemplate}"
+            CompactionMarkerTemplate="{StaticResource CompactionMarkerTemplate}"
             ReasoningTemplate="{StaticResource ReasoningTemplate}"
             StatusTemplate="{StaticResource StatusTemplate}"
             ToolActivityTemplate="{StaticResource ToolActivityTemplate}"
@@ -758,7 +814,6 @@
                         AcceptsReturn="True"
                         BorderThickness="0"
                         Header="Message"
-                        KeyDown="PromptTextBox_KeyDown"
                         MaxHeight="176"
                         PlaceholderText="Describe the outcome you want. Enter sends, Shift+Enter for a new line."
                         Text="{x:Bind ViewModel.InputText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -925,6 +980,15 @@
                                         TextWrapping="Wrap" />
                                 </ScrollViewer>
                             </TabViewItem>
+                            <TabViewItem AutomationProperties.AutomationId="ToolArgumentsTab" Header="Arguments" IsClosable="False" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.SelectedToolHasArguments), Mode=OneWay}">
+                                <ScrollViewer Padding="12" HorizontalScrollBarVisibility="Auto">
+                                    <TextBlock
+                                        FontFamily="{StaticResource CodeFontFamily}"
+                                        IsTextSelectionEnabled="True"
+                                        Text="{x:Bind ViewModel.SelectedToolArguments, Mode=OneWay}"
+                                        TextWrapping="Wrap" />
+                                </ScrollViewer>
+                            </TabViewItem>
                             <TabViewItem AutomationProperties.AutomationId="SideBySideDiffTab" Header="Side by side" IsClosable="False" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.SelectedToolHasDiff), Mode=OneWay}">
                                 <Grid>
                                     <Grid.RowDefinitions>
@@ -935,7 +999,7 @@
                                         <TextBlock Text="{x:Bind ViewModel.SelectedDiffPath, Mode=OneWay}" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
                                         <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Diff preview truncated to 64 KiB per side." Style="{StaticResource CaptionTextBlockStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsSelectedDiffTruncated), Mode=OneWay}" />
                                     </StackPanel>
-                                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto">
+                                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
                                         <ItemsRepeater ItemTemplate="{StaticResource SideBySideDiffTemplate}" ItemsSource="{x:Bind ViewModel.SelectedSideBySideRows, Mode=OneWay}">
                                             <ItemsRepeater.Layout>
                                                 <StackLayout />

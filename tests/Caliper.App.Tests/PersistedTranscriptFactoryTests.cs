@@ -45,9 +45,27 @@ public sealed class PersistedTranscriptFactoryTests
                 Assert.Equal("Done", assistant.Content);
                 Assert.False(assistant.IsStreaming);
             },
-            item => Assert.Equal(
-                "Earlier context",
-                Assert.IsType<RunStatusViewModel>(item).Message));
+            item =>
+            {
+                var marker = Assert.IsType<CompactionMarkerViewModel>(item);
+                Assert.Equal("Conversation compacted", marker.Label);
+                Assert.Equal("Earlier context", marker.Summary);
+            });
+    }
+
+    [Fact]
+    public void Create_strips_summary_prefix_from_compaction_marker()
+    {
+        var message = new ChatMessage(
+            ChatRole.User,
+            MessageKind.Summary,
+            "Earlier conversation summary:\nWe discussed VRAM reporting.");
+
+        var marker = Assert.IsType<CompactionMarkerViewModel>(
+            Assert.Single(PersistedTranscriptFactory.Create([message])));
+
+        Assert.Equal("Conversation compacted", marker.Label);
+        Assert.Equal("We discussed VRAM reporting.", marker.Summary);
     }
 
     [Fact]
@@ -93,9 +111,9 @@ public sealed class PersistedTranscriptFactoryTests
             MessageKind.Summary,
             AgentRunner.ContextResetMarker);
 
-        var status = Assert.IsType<RunStatusViewModel>(Assert.Single(PersistedTranscriptFactory.Create([message])));
+        var marker = Assert.IsType<CompactionMarkerViewModel>(Assert.Single(PersistedTranscriptFactory.Create([message])));
 
-        Assert.Equal("Context cleared", status.Title);
+        Assert.Equal("Context cleared", marker.Label);
     }
 
     [Fact]

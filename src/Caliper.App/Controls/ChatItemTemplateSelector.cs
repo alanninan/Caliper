@@ -16,6 +16,7 @@ public sealed class ChatItemTemplateSelector : DataTemplateSelector
     public DataTemplate? ToolActivityTemplate { get; set; }
     public DataTemplate? ApprovalTemplate { get; set; }
     public DataTemplate? StatusTemplate { get; set; }
+    public DataTemplate? CompactionMarkerTemplate { get; set; }
 
     protected override DataTemplate? SelectTemplateCore(object item) =>
         item switch
@@ -26,6 +27,7 @@ public sealed class ChatItemTemplateSelector : DataTemplateSelector
             ToolActivityViewModel => ToolActivityTemplate,
             ToolCallViewModel => ToolTemplate,
             ApprovalViewModel => ApprovalTemplate,
+            CompactionMarkerViewModel => CompactionMarkerTemplate,
             RunStatusViewModel => StatusTemplate,
             _ => base.SelectTemplateCore(item),
         };

@@ -97,9 +97,9 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
                 items.Add(new RunStatusViewModel("MCP connection failed", $"{failed.Name}: {failed.Error}", isError: true));
                 return true;
             case ContextCompacted compacted:
-                items.Add(new RunStatusViewModel(
-                    "Context compacted",
-                    $"{compacted.BeforeTokens} to {compacted.AfterTokens} tokens"));
+                items.Add(new CompactionMarkerViewModel(
+                    "Conversation compacted",
+                    detail: $"{compacted.BeforeTokens:N0} → {compacted.AfterTokens:N0} tokens"));
                 return true;
             case RunCompleted completed:
                 LastCompletionReason = completed.Reason;

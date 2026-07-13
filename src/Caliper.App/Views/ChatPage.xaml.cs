@@ -102,6 +102,14 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     {
         InitializeComponent();
         RefreshFirstRunState();
+        // A multi-line TextBox (AcceptsReturn=True) handles the Enter KeyDown itself — inserting the
+        // newline and marking the routed event Handled — so a XAML-registered KeyDown handler is
+        // never invoked for Enter. Register with handledEventsToo:true so Enter can send while
+        // Shift+Enter still inserts a newline.
+        PromptTextBox.AddHandler(
+            UIElement.KeyDownEvent,
+            new KeyEventHandler(PromptTextBox_KeyDown),
+            handledEventsToo: true);
         ViewModel.TranscriptChanged += ViewModel_TranscriptChanged;
         ViewModel.RunActivityChanged += ViewModel_RunActivityChanged;
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -160,7 +168,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
 
     private void InspectTool_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: ToolCallViewModel tool })
+        // An ItemsRepeater with an x:Bind DataTemplate does not set each element's DataContext
+        // (unlike ListView), so read the item captured via Tag="{x:Bind}" rather than DataContext.
+        if (sender is FrameworkElement { Tag: ToolCallViewModel tool })
             ViewModel.SelectTool(tool);
     }
 
