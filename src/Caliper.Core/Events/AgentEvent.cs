@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for full license information.
 using System.Text.Json;
 using Caliper.Core.Abstractions;
+using Caliper.Core.Configuration;
 
 namespace Caliper.Core.Events;
 
@@ -48,5 +49,12 @@ public sealed record PermissionRequest(
     /// another. Null (e.g. a host that doesn't track sessions) falls back to a single shared scope.
     /// </summary>
     public string? SessionId { get; init; }
+
+    /// <summary>
+    /// Per-run permission overlay (<c>RunSpec.PermissionsOverlay</c>). Null falls back to
+    /// <c>runtimeSettings.Permissions</c>. <c>PermissionGate</c> still merges the global shell
+    /// denylist into an overlay's own denylist (union, never replace) as a safety floor.
+    /// </summary>
+    public PermissionsOptions? Overlay { get; init; }
 }
 public enum PermissionDecision { Allow, AllowForSession, Deny }

@@ -488,7 +488,107 @@ public sealed class AgentRunnerGuardrailTests
         Assert.Equal((2, 2), (usageEvents[1].CumulativePrompt, usageEvents[1].CumulativeCompletion));
     }
 
+    // ── RunSpec tests (F1) ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RunSpec_overload_produces_identical_events_to_legacy_overload()
+    {
+        var legacyEvents = await RunAll(Build(FakeTurnStrategy.Returning(Respond("hello"))), "test-session", "hi");
+
+        var specRunner = Build(FakeTurnStrategy.Returning(Respond("hello")));
+        var specEvents = new List<AgentEvent>();
+        await foreach (var e in specRunner.RunAsync(new RunSpec("test-session", "hi"), CancellationToken.None))
+            specEvents.Add(e);
+
+        Assert.Equal(legacyEvents, specEvents);
+    }
+
+    [Fact]
+    public async Task ToolFilter_excludes_tool_from_turn_context_schema()
+    {
+        var tool = new WriteToolStub();
+        var args = JsonDocument.Parse("""{"value":"go"}""").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallTool(tool.Name, args),
+            Respond("done"));
+
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool));
+        var spec = new RunSpec("test-session", "use a tool") { ToolFilter = ["some_other_tool"] };
+
+        _ = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.NotEmpty(strategy.Contexts);
+        Assert.Empty(strategy.Contexts[0].Tools.Enabled);
+    }
+
+    [Fact]
+    public async Task ToolFilter_excluded_tool_call_resolves_as_unknown_and_never_invokes()
+    {
+        var tool = new WriteToolStub();
+        var args = JsonDocument.Parse("""{"value":"go"}""").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallTool(tool.Name, args),
+            Respond("done"));
+
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool));
+        var spec = new RunSpec("test-session", "use a tool") { ToolFilter = ["some_other_tool"] };
+
+        var events = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.Equal(0, tool.InvocationCount);
+        Assert.DoesNotContain(events, e => e is PermissionRequested);
+        Assert.Contains(events, e => e is ToolFailed { Tool: "write_stub" } failed && failed.Error.Contains("Unknown tool", StringComparison.Ordinal));
+        Assert.Contains(events, e => e is AssistantMessage { Content: "done" });
+    }
+
+    [Fact]
+    public async Task MaxSteps_override_bounds_loop_independent_of_options_MaxSteps()
+    {
+        var strategy = FakeTurnStrategy.AlwaysReturning(CallTool("nonexistent", JsonDocument.Parse("{}").RootElement.Clone()));
+        var runner = Build(strategy, new CaliperOptions { Model = "x", MaxSteps = 50, DuplicateCallLimit = 100 });
+        var spec = new RunSpec("test-session", "go") { MaxSteps = 3 };
+
+        var events = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.Contains(events, e => e is RunCompleted { Reason: CompletionReason.StepLimit });
+        Assert.Equal(3, events.Count(e => e is TurnStarted));
+    }
+
+    [Fact]
+    public async Task Model_override_feeds_turn_context()
+    {
+        var strategy = CapturingTurnStrategy.Returning(Respond("done"));
+        var runner = Build(strategy, new CaliperOptions { Model = "opts-model", MaxSteps = 4, DuplicateCallLimit = 2 });
+        var spec = new RunSpec("test-session", "hi") { Model = "spec-model" };
+
+        _ = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.Single(strategy.Contexts);
+        Assert.Equal("spec-model", strategy.Contexts[0].Model);
+    }
+
+    [Fact]
+    public async Task Model_not_overridden_falls_back_to_options_model()
+    {
+        var strategy = CapturingTurnStrategy.Returning(Respond("done"));
+        var runner = Build(strategy, new CaliperOptions { Model = "opts-model", MaxSteps = 4, DuplicateCallLimit = 2 });
+        var spec = new RunSpec("test-session", "hi");
+
+        _ = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.Single(strategy.Contexts);
+        Assert.Equal("opts-model", strategy.Contexts[0].Model);
+    }
+
     // ── Private helpers ────────────────────────────────────────────────────
+
+    private static async Task<List<AgentEvent>> Collect(IAsyncEnumerable<AgentEvent> events)
+    {
+        var list = new List<AgentEvent>();
+        await foreach (var e in events)
+            list.Add(e);
+        return list;
+    }
 
     private static string CreateSession() => "test-session";
 

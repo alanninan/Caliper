@@ -189,6 +189,63 @@ public sealed class PermissionGateTests
         }
     }
 
+    [Fact]
+    public async Task Overlay_allowlist_is_honored_when_global_allowlist_does_not_match()
+    {
+        var prompt = new ScriptedPrompt(PermissionDecision.Deny);
+        var gate = Build(PermissionMode.Auto, prompt);
+        var overlay = new PermissionsOptions
+        {
+            Mode = PermissionMode.Auto,
+            ShellAutoAllowlist = ["my-custom-tool"],
+        };
+        var request = Shell("my-custom-tool --flag") with { Overlay = overlay };
+
+        var decision = await gate.EvaluateAsync(request, CancellationToken.None);
+
+        Assert.Equal(PermissionDecision.Allow, decision);
+        Assert.Equal(0, prompt.Count);
+    }
+
+    [Fact]
+    public async Task Overlay_does_not_bypass_global_denylist()
+    {
+        var prompt = new ScriptedPrompt(PermissionDecision.Deny);
+        var gate = Build(PermissionMode.Auto, prompt);
+        // The overlay's own denylist is empty and its allowlist would otherwise permit the
+        // command, but the global denylist (which bans "rm -rf") must still be merged in.
+        var overlay = new PermissionsOptions
+        {
+            Mode = PermissionMode.Auto,
+            ShellAutoAllowlist = ["rm -rf"],
+            ShellDenylist = [],
+        };
+        var request = Shell("rm -rf /tmp/whatever") with { Overlay = overlay };
+
+        var decision = await gate.EvaluateAsync(request, CancellationToken.None);
+
+        Assert.Equal(PermissionDecision.Deny, decision);
+        Assert.Equal(1, prompt.Count);
+        Assert.StartsWith(PermissionGate.DenylistReasonPrefix, prompt.Requests[0].Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Overlay_null_falls_back_to_global_settings()
+    {
+        var prompt = new ScriptedPrompt(PermissionDecision.Allow);
+        var gate = Build(PermissionMode.Plan, prompt);
+        var request = Request("write_file", SideEffect.Write);
+
+        // No overlay: Plan mode denies, exactly like the existing global-settings-only path.
+        Assert.Equal(PermissionDecision.Deny, await gate.EvaluateAsync(request, CancellationToken.None));
+        Assert.Equal(0, prompt.Count);
+
+        // The identical request with an overlay that raises the mode to Auto is honored instead,
+        // proving the fallback above wasn't a coincidence of some other short-circuit.
+        var overlaid = request with { Overlay = new PermissionsOptions { Mode = PermissionMode.Auto } };
+        Assert.Equal(PermissionDecision.Allow, await gate.EvaluateAsync(overlaid, CancellationToken.None));
+    }
+
     private static PermissionGate Build(
         PermissionMode mode,
         IPermissionPrompt prompt,

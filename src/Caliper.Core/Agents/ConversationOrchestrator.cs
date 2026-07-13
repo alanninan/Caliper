@@ -22,17 +22,29 @@ public sealed class ConversationOrchestrator(
     IModelCapabilityProvider capabilityProvider,
     IRuntimeSettings runtimeSettings) : IConversationOrchestrator
 {
-    public async Task<ConversationRunResult> RunToCompletionAsync(
+    public Task<ConversationRunResult> RunToCompletionAsync(
         string sessionId,
         string prompt,
+        Func<AgentEvent, CancellationToken, ValueTask>? onEvent,
+        CancellationToken ct) =>
+        RunToCompletionAsync(new RunSpec(sessionId, prompt), onEvent, ct);
+
+    public async Task<ConversationRunResult> RunToCompletionAsync(
+        RunSpec spec,
         Func<AgentEvent, CancellationToken, ValueTask>? onEvent,
         CancellationToken ct)
     {
         string? final = null;
         string? error = null;
         CompletionReason? reason = null;
+        var denials = new List<DeniedAction>();
+        // Denials are collected by correlating the existing PermissionRequested/PermissionResolved
+        // event pair (keyed by RequestId == the tool call id) rather than inventing a parallel side
+        // channel or a new AgentEvent: PermissionRequested carries the arguments/reason, and
+        // PermissionResolved carries the final decision.
+        var pendingRequests = new Dictionary<string, PermissionRequest>(StringComparer.Ordinal);
 
-        await foreach (var evt in runner.RunAsync(sessionId, prompt, ct).ConfigureAwait(false))
+        await foreach (var evt in runner.RunAsync(spec, ct).ConfigureAwait(false))
         {
             if (onEvent is not null)
                 await onEvent(evt, ct).ConfigureAwait(false);
@@ -48,10 +60,23 @@ public sealed class ConversationOrchestrator(
                 case RunCompleted completed:
                     reason = completed.Reason;
                     break;
+                case PermissionRequested requested:
+                    if (requested.Request.RequestId is { } requestId)
+                        pendingRequests[requestId] = requested.Request;
+                    break;
+                case PermissionResolved { Decision: PermissionDecision.Deny } resolved:
+                    var key = resolved.RequestId ?? string.Empty;
+                    pendingRequests.TryGetValue(key, out var deniedRequest);
+                    pendingRequests.Remove(key);
+                    denials.Add(new DeniedAction(
+                        resolved.Tool,
+                        deniedRequest?.Arguments.GetRawText() ?? string.Empty,
+                        deniedRequest?.Reason));
+                    break;
             }
         }
 
-        return new ConversationRunResult(final, error, reason);
+        return new ConversationRunResult(final, error, reason, denials);
     }
 
     public async Task<ContextFit> ForceCompactAsync(string sessionId, CancellationToken ct)
@@ -140,4 +165,8 @@ public sealed class ConversationOrchestrator(
 public sealed record ConversationRunResult(
     string? AssistantMessage,
     string? Error,
-    CompletionReason? Reason);
+    CompletionReason? Reason,
+    IReadOnlyList<DeniedAction> Denials);
+
+/// <summary>A permission denial observed during a run: which tool, its arguments, and why.</summary>
+public sealed record DeniedAction(string Tool, string Signature, string? Reason);

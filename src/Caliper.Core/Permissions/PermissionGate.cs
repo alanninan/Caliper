@@ -25,7 +25,7 @@ public sealed class PermissionGate(
 
     public async Task<PermissionDecision> EvaluateAsync(PermissionRequest request, CancellationToken ct)
     {
-        var opts = runtimeSettings.Permissions;
+        var opts = ResolveEffectiveOptions(request.Overlay, runtimeSettings.Permissions);
         var fileAccess = new FileAccessPolicy(runtimeSettings.Caliper, opts);
         var effect = EffectiveSideEffect(request, fileAccess);
 
@@ -75,6 +75,32 @@ public sealed class PermissionGate(
 
     public static string NormalizeCommand(string command) =>
         Regex.Replace(command.Trim(), @"\s+", " ");
+
+    // Safety invariant (RunSpec.PermissionsOverlay): an overlay can restrict shell access further,
+    // but it can never lift the global ban on a denylisted command. The overlay's own denylist
+    // (if any) is unioned with — never replaces — the global one. Every other overlay field
+    // (Mode, RememberApprovals, ShellAutoAllowlist, AutoAllowFileRoots) is taken as-is from the
+    // overlay, matching the roadmap's "Overlay ?? runtimeSettings.Permissions" contract.
+    private static PermissionsOptions ResolveEffectiveOptions(PermissionsOptions? overlay, PermissionsOptions global)
+    {
+        if (overlay is null)
+            return global;
+
+        return new PermissionsOptions
+        {
+            Mode = overlay.Mode,
+            RememberApprovals = overlay.RememberApprovals,
+            ShellAutoAllowlist = overlay.ShellAutoAllowlist,
+            ShellDenylist = MergeDenylist(overlay.ShellDenylist, global.ShellDenylist),
+            AutoAllowFileRoots = overlay.AutoAllowFileRoots,
+        };
+    }
+
+    private static List<string> MergeDenylist(IList<string> overlay, IList<string> global) =>
+        overlay
+            .Concat(global)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     public static string? ExtractCommand(JsonElement arguments) =>
         arguments.ValueKind == JsonValueKind.Object &&

@@ -29,7 +29,8 @@ public sealed class NativeToolStrategy(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var options = runtimeSettings.Caliper;
-        var capabilities = await capabilityProvider.GetAsync(options.Model, ct).ConfigureAwait(false);
+        var modelSlug = context.Model ?? options.Model;
+        var capabilities = await capabilityProvider.GetAsync(modelSlug, ct).ConfigureAwait(false);
         var messages = BuildMessages(context);
         var tools = context.Tools.AsAIFunctions().Cast<AITool>().ToList();
         if (options.TurnStrategy == TurnStrategyKind.Auto && !capabilities.SupportsTools)
@@ -38,7 +39,7 @@ public sealed class NativeToolStrategy(
             {
                 logger.LogWarning(
                     "Model '{Model}' is not known to support native tools; continuing in respond-only mode.",
-                    options.Model);
+                    modelSlug);
             }
             tools = [];
         }
@@ -64,7 +65,7 @@ public sealed class NativeToolStrategy(
         var reasoning = new StringBuilder();
         UsageInfo usage = new(null, null, null);
 
-        var chatClient = chatClients.GetClient(options.Model);
+        var chatClient = chatClients.GetClient(modelSlug);
         await foreach (var update in chatClient.GetStreamingResponseAsync(messages, chatOptions, ct).ConfigureAwait(false))
         {
             foreach (var item in update.Contents)

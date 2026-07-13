@@ -26,6 +26,7 @@ public sealed class ConstrainedEnvelopeStrategy(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var options = runtimeSettings.Caliper;
+        var modelSlug = context.Model ?? options.Model;
         var schema = context.Tools.BuildResponseSchema(context.SkillMenu ?? []);
         var chatOptions = new ChatOptions
         {
@@ -42,7 +43,7 @@ public sealed class ConstrainedEnvelopeStrategy(
         var usage = new UsageInfo(null, null, null);
         var raw = new StringBuilder();
 
-        var chatClient = chatClients.GetClient(options.Model);
+        var chatClient = chatClients.GetClient(modelSlug);
         await foreach (var update in chatClient.GetStreamingResponseAsync(BuildMessages(context), chatOptions, ct).ConfigureAwait(false))
         {
             foreach (var item in update.Contents)

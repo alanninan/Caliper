@@ -11,4 +11,5 @@ public sealed record TurnContext(
     IReadOnlyList<ChatMessage> Messages,
     IToolRegistry Tools,
     GenerationParameters Parameters,
-    IReadOnlyList<string>? SkillMenu = null);
+    IReadOnlyList<string>? SkillMenu = null,
+    string? Model = null);

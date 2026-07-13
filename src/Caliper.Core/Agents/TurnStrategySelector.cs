@@ -20,18 +20,19 @@ public sealed class TurnStrategySelector(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
     {
         var options = runtimeSettings.Caliper;
-        var capabilities = await capabilityProvider.GetAsync(options.Model, ct).ConfigureAwait(false);
+        var modelSlug = context.Model ?? options.Model;
+        var capabilities = await capabilityProvider.GetAsync(modelSlug, ct).ConfigureAwait(false);
         var selected = options.TurnStrategy switch
         {
             TurnStrategyKind.Native => capabilities.SupportsTools
                 ? native
-                : throw new InvalidOperationException($"Model '{options.Model}' does not advertise native tool support required by TurnStrategy=Native."),
+                : throw new InvalidOperationException($"Model '{modelSlug}' does not advertise native tool support required by TurnStrategy=Native."),
 
             TurnStrategyKind.Constrained or TurnStrategyKind.SingleEnvelope or TurnStrategyKind.TwoPhase => capabilities.SupportsStructuredOutputs
                 ? constrained
-                : throw new InvalidOperationException($"Model '{options.Model}' does not advertise structured output support required by TurnStrategy={options.TurnStrategy}."),
+                : throw new InvalidOperationException($"Model '{modelSlug}' does not advertise structured output support required by TurnStrategy={options.TurnStrategy}."),
 
-            TurnStrategyKind.Auto => SelectAuto(context, capabilities.SupportsTools, capabilities.SupportsStructuredOutputs, options.Model),
+            TurnStrategyKind.Auto => SelectAuto(context, capabilities.SupportsTools, capabilities.SupportsStructuredOutputs, modelSlug),
 
             _ => throw new InvalidOperationException($"Unsupported turn strategy: {options.TurnStrategy}."),
         };

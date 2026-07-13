@@ -35,18 +35,26 @@ public sealed class AgentRunner(
     ILogger<AgentRunner> logger,
     ISkillSelector? skillSelector = null) : IAgentRunner
 {
-    public async IAsyncEnumerable<AgentEvent> RunAsync(
+    public IAsyncEnumerable<AgentEvent> RunAsync(
         string sessionId,
         string userMessage,
+        CancellationToken ct = default) =>
+        RunAsync(new RunSpec(sessionId, userMessage), ct);
+
+    public async IAsyncEnumerable<AgentEvent> RunAsync(
+        RunSpec spec,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
         var opts = runtimeSettings.Caliper;
-        await sessions.AppendAsync(sessionId, ChatMessage.Text(ChatRole.User, userMessage), ct)
+        var effectiveToolRegistry = spec.ToolFilter is null
+            ? toolRegistry
+            : new FilteredToolRegistry(toolRegistry, spec.ToolFilter);
+        await sessions.AppendAsync(spec.SessionId, ChatMessage.Text(ChatRole.User, spec.Prompt), ct)
             .ConfigureAwait(false);
 
         var allSkills = skillStore.List();
         var selectedSkillNames = skillSelector is not null
-            ? await skillSelector.SelectAsync(userMessage, allSkills, opts.MaxSurfacedSkills, ct).ConfigureAwait(false)
+            ? await skillSelector.SelectAsync(spec.Prompt, allSkills, opts.MaxSurfacedSkills, ct).ConfigureAwait(false)
             : allSkills.Select(s => s.Name).ToList();
         var skillMenu = selectedSkillNames
             .Select(name => allSkills.FirstOrDefault(s => s.Name == name))
@@ -70,15 +78,16 @@ public sealed class AgentRunner(
         // load_skill call/result pairs persist in the transcript, so on a resumed session the model
         // believes a skill is loaded — but loadedBodies is per-RunAsync, so its body would be
         // missing from the prompt. Rebuild the set from prior successful loads before the loop.
-        await RebuildLoadedSkillsAsync(sessionId, loadedBodies, ct).ConfigureAwait(false);
+        await RebuildLoadedSkillsAsync(spec.SessionId, loadedBodies, ct).ConfigureAwait(false);
 
-        for (var step = 1; step <= opts.MaxSteps; step++)
+        for (var step = 1; step <= (spec.MaxSteps ?? opts.MaxSteps); step++)
         {
             opts = runtimeSettings.Caliper;
+            var effectiveModel = spec.Model ?? opts.Model;
             yield return new TurnStarted(step);
 
             var active = ConversationOrchestrator.ActiveHistory(
-                await sessions.LoadAsync(sessionId, ct).ConfigureAwait(false));
+                await sessions.LoadAsync(spec.SessionId, ct).ConfigureAwait(false));
             var history = active.Messages;
             if (memoryEnabled && (memoryDirty || cachedMemoryRender is null))
             {
@@ -89,9 +98,9 @@ public sealed class AgentRunner(
             var memoryBlock = memoryEnabled
                 ? ConversationOrchestrator.BuildMemoryBlock(cachedMemoryRender ?? string.Empty, projectDocument)
                 : string.Empty;
-            var system = PromptBuilder.Build(opts, skillMenu, loadedBodies, memoryBlock, userMessage);
-            var capabilities = await capabilityProvider.GetAsync(opts.Model, ct).ConfigureAwait(false);
-            var fit = await FitHistoryAsync(history, system, capabilities, opts, ct).ConfigureAwait(false);
+            var system = PromptBuilder.Build(opts, skillMenu, loadedBodies, memoryBlock, spec.Prompt);
+            var capabilities = await capabilityProvider.GetAsync(effectiveModel, ct).ConfigureAwait(false);
+            var fit = await FitHistoryAsync(history, system, capabilities, opts, effectiveToolRegistry, ct).ConfigureAwait(false);
             fit = fit with { ActiveStartIndex = active.StartIndex };
             var hardLimit = Math.Max(0, capabilities.ContextWindowTokens - opts.Context.ReservedOutputTokens);
             if (opts.Context.AutoCompact &&
@@ -104,7 +113,7 @@ public sealed class AgentRunner(
 
             if (fit.Compacted)
             {
-                await sessions.ReplaceWithCompactionAsync(sessionId, fit, ct).ConfigureAwait(false);
+                await sessions.ReplaceWithCompactionAsync(spec.SessionId, fit, ct).ConfigureAwait(false);
                 yield return new ContextCompacted(fit.BeforeTokens ?? 0, fit.AfterTokens ?? 0);
             }
             else if (!opts.Context.AutoCompact &&
@@ -121,7 +130,7 @@ public sealed class AgentRunner(
                 Temperature: opts.Temperature,
                 Seed: opts.Seed,
                 MaxOutputTokens: opts.Context.ReservedOutputTokens);
-            var ctx = new TurnContext(system, fit.Messages, toolRegistry, parameters, skillMenu.Select(s => s.Name).ToList());
+            var ctx = new TurnContext(system, fit.Messages, effectiveToolRegistry, parameters, skillMenu.Select(s => s.Name).ToList(), effectiveModel);
 
             ModelTurn? turn = null;
             var reasoning = new StringBuilder();
@@ -194,7 +203,7 @@ public sealed class AgentRunner(
             if (turn.ToolCalls.Count == 0)
             {
                 var answer = turn.Content ?? content.ToString();
-                await sessions.AppendAsync(sessionId, ChatMessage.Text(ChatRole.Assistant, answer), ct)
+                await sessions.AppendAsync(spec.SessionId, ChatMessage.Text(ChatRole.Assistant, answer), ct)
                     .ConfigureAwait(false);
                 yield return new AssistantMessage(answer);
                 yield return new RunCompleted(CompletionReason.Completed);
@@ -206,7 +215,7 @@ public sealed class AgentRunner(
             // and dropped (native tool calls carry no Content, so use the streamed text).
             var preamble = turn.Content ?? content.ToString();
             if (!string.IsNullOrWhiteSpace(preamble))
-                await sessions.AppendAsync(sessionId, ChatMessage.Text(ChatRole.Assistant, preamble), ct)
+                await sessions.AppendAsync(spec.SessionId, ChatMessage.Text(ChatRole.Assistant, preamble), ct)
                     .ConfigureAwait(false);
 
             foreach (var call in turn.ToolCalls)
@@ -215,7 +224,7 @@ public sealed class AgentRunner(
                 {
                     // Persist the tool-call message first so the stored transcript is a valid
                     // call→result pair; a result without its call is rejected on the next model turn.
-                    await sessions.AppendAsync(sessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
+                    await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
 
                     var name = call.Arguments.TryGetProperty("name", out var nameEl)
                         ? nameEl.GetString()
@@ -223,14 +232,14 @@ public sealed class AgentRunner(
                     if (string.IsNullOrWhiteSpace(name))
                     {
                         var failed = new ToolResult(false, "Missing required argument: name");
-                        await sessions.AppendAsync(sessionId, ChatMessage.FromToolResult(call, failed), ct).ConfigureAwait(false);
+                        await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolResult(call, failed), ct).ConfigureAwait(false);
                         yield return new ToolFailed(call.CallId, call.Tool, failed.Output);
                         continue;
                     }
 
                     loadedBodies[name] = await skillStore.LoadBodyAsync(name, ct).ConfigureAwait(false);
                     var loadResult = new ToolResult(true, $"loaded skill {name}");
-                    await sessions.AppendAsync(sessionId, ChatMessage.FromToolResult(call, loadResult), ct).ConfigureAwait(false);
+                    await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolResult(call, loadResult), ct).ConfigureAwait(false);
                     yield return new SkillLoaded(name);
                     continue;
                 }
@@ -248,7 +257,7 @@ public sealed class AgentRunner(
                     yield break;
                 }
 
-                var tool = toolRegistry.Find(call.Tool);
+                var tool = effectiveToolRegistry.Find(call.Tool);
                 if (tool is not null)
                 {
                     var permissionRequest = new PermissionRequest(
@@ -259,21 +268,22 @@ public sealed class AgentRunner(
                         RequestId: call.CallId)
                     {
                         TrustedReadOnly = tool is not IMcpTool,
-                        SessionId = sessionId,
+                        SessionId = spec.SessionId,
+                        Overlay = spec.PermissionsOverlay,
                     };
                     yield return new PermissionRequested(permissionRequest);
                     var decision = await permissionGate.EvaluateAsync(permissionRequest, ct).ConfigureAwait(false);
                     yield return new PermissionResolved(call.Tool, decision, call.CallId);
                     if (decision == PermissionDecision.Deny)
                     {
-                        await sessions.AppendAsync(sessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
-                        await sessions.AppendAsync(sessionId, ChatMessage.FromToolResult(call, ToolResult.Denied), ct).ConfigureAwait(false);
+                        await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
+                        await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolResult(call, ToolResult.Denied), ct).ConfigureAwait(false);
                         yield return new ToolFailed(call.CallId, call.Tool, ToolResult.Denied.Output);
                         continue;
                     }
                 }
 
-                await sessions.AppendAsync(sessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
+                await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
                 yield return new ToolInvoked(call.CallId, call.Tool, call.Arguments);
 
                 ToolResult? result = null;
@@ -295,7 +305,7 @@ public sealed class AgentRunner(
                     // would break every later turn in this session. Append a synthetic result so the
                     // stored transcript stays a valid call→result pair. Use None: ct is cancelled.
                     await sessions.AppendAsync(
-                        sessionId,
+                        spec.SessionId,
                         ChatMessage.FromToolResult(call, new ToolResult(false, "Cancelled by user before the tool finished.")),
                         CancellationToken.None).ConfigureAwait(false);
                     yield return new RunCompleted(CompletionReason.Cancelled);
@@ -315,7 +325,7 @@ public sealed class AgentRunner(
                 if (memoryEnabled && result.Success && IsMemoryMutation(call))
                     memoryDirty = true;
 
-                await sessions.AppendAsync(sessionId, ChatMessage.FromToolResult(call, result), ct)
+                await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolResult(call, result), ct)
                     .ConfigureAwait(false);
             }
         }
@@ -383,9 +393,10 @@ public sealed class AgentRunner(
         string system,
         ModelCapabilities capabilities,
         CaliperOptions opts,
+        IToolRegistry tools,
         CancellationToken ct)
     {
-        var toolSchemas = toolRegistry.Enabled.Select(tool => tool.ParameterSchema).ToList();
+        var toolSchemas = tools.Enabled.Select(tool => tool.ParameterSchema).ToList();
         var frame = new PromptFrame(system, history, toolSchemas);
         var budget = new ContextBudget(
             capabilities.ContextWindowTokens,
