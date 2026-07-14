@@ -26,7 +26,14 @@ public sealed class PermissionGate(
     public async Task<PermissionDecision> EvaluateAsync(PermissionRequest request, CancellationToken ct)
     {
         var opts = ResolveEffectiveOptions(request.Overlay, runtimeSettings.Permissions);
-        var fileAccess = new FileAccessPolicy(runtimeSettings.Caliper, opts);
+        // Per-run working root (RunSpec.WorkingRoot, roadmap §3.2b): FileAccessPolicy only reads
+        // CaliperOptions.WorkingRoot, and runtimeSettings.Caliper is a defensive clone, so
+        // swapping the root on the clone scopes this evaluation to the run's own root without
+        // changing FileAccessPolicy's semantics — null keeps today's global-root behavior.
+        var caliperOpts = runtimeSettings.Caliper;
+        if (!string.IsNullOrWhiteSpace(request.WorkingRoot))
+            caliperOpts.WorkingRoot = request.WorkingRoot;
+        var fileAccess = new FileAccessPolicy(caliperOpts, opts);
         var effect = EffectiveSideEffect(request, fileAccess);
 
         // Only auto-allow read-only calls we trust. An MCP server's read-only annotation is an

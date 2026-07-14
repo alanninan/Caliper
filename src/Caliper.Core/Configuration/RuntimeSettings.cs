@@ -277,7 +277,26 @@ internal sealed class RuntimeSettings(
                 ProjectFile = source.Memory.ProjectFile,
             },
             Subagents = CloneSubagents(source.Subagents),
+            Scheduler = new SchedulerOptions
+            {
+                MaxConcurrentJobs = source.Scheduler.MaxConcurrentJobs,
+            },
+            Schedules = CloneSchedules(source.Schedules),
         };
+
+    internal static List<ScheduleOptions> CloneSchedules(IList<ScheduleOptions> source) =>
+        source.Select(schedule => new ScheduleOptions
+        {
+            Name = schedule.Name,
+            Cron = schedule.Cron,
+            TimeZone = schedule.TimeZone,
+            Prompt = schedule.Prompt,
+            WorkingRoot = schedule.WorkingRoot,
+            Model = schedule.Model,
+            MaxSteps = schedule.MaxSteps,
+            Enabled = schedule.Enabled,
+            Permissions = schedule.Permissions is { } permissions ? Clone(permissions) : null,
+        }).ToList();
 
     private static SubagentsOptions CloneSubagents(SubagentsOptions source)
     {

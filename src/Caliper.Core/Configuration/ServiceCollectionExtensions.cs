@@ -10,12 +10,14 @@ using Caliper.Core.Memory;
 using Caliper.Core.Models;
 using Caliper.Core.Permissions;
 using Caliper.Core.Persistence;
+using Caliper.Core.Scheduling;
 using Caliper.Core.Skills;
 using Caliper.Core.Tools;
 using Caliper.Core.Tools.BuiltIn;
 using Caliper.Core.Tools.Mcp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -167,6 +169,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ConversationOrchestrator>();
         services.AddSingleton<IConversationOrchestrator>(services =>
             services.GetRequiredService<ConversationOrchestrator>());
+
+        // Scheduling (roadmap §3.2b). TryAdd: the App already registers TimeProvider.System
+        // itself and hosts/tests may supply their own (e.g. FakeTimeProvider) — first one wins.
+        // SchedulerHostedService is deliberately NOT registered here; only headless entry points
+        // (the console's --serve flag) add it, so interactive hosts never tick cron jobs.
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddSingleton<ScheduleJobRunner>();
 
         return services;
     }

@@ -16,6 +16,11 @@ The project is designed around deterministic host-side control: model output pro
 - Tool permission modes: `AskAlways`, `Auto`, and `Plan`.
 - Built-in tools for search, URL fetch, file reads/writes/edits, glob, grep, shell, memory, and skill loading.
 - MCP client support for stdio and HTTP servers.
+- Unattended runs (`--unattended` one-shot, `--serve` cron scheduler) with a deny+report
+  permission policy — no prompt is ever silently allowed or silently dropped.
+- Cron-scheduled jobs (`Caliper.Schedules` + `--serve`), each with its own prompt, model, step
+  budget, working root, and permission overlay; `/schedule list` and `/schedule run <name>` manage
+  them from the REPL.
 - SQLite-backed sessions, memory, and resumable transcripts.
 - Context-window fitting with optional automatic compaction.
 - Skill discovery from `~/.caliper/skills`.
@@ -131,6 +136,8 @@ Interactive mode starts a persisted session and accepts natural-language prompts
 /memory                       Show project memory
 /compact                      Force context compaction
 /clear                        Clear active context while keeping transcript
+/schedule list                List configured schedules, next occurrence, last result
+/schedule run <name>          Trigger a schedule now via the unattended path
 /quit                         Exit
 ```
 
@@ -145,6 +152,59 @@ To allow a different permission mode:
 ```powershell
 dotnet run --project src/Caliper.Console -- --prompt "Run the test suite" --permissions AskAlways
 ```
+
+### Unattended one-shot runs
+
+`--unattended` runs a one-shot prompt with no human in the loop: permission mode defaults to
+`Auto`, and anything the gate would normally ask about is **denied and reported** (never silently
+allowed, never silently dropped). Denials are logged at Warning and summarized on stderr.
+
+```powershell
+dotnet run --project src/Caliper.Console -- --prompt "Check for outdated packages" --unattended
+```
+
+### Scheduled jobs (`--serve`)
+
+`--serve` starts the headless scheduler host: no REPL, jobs from `Caliper.Schedules` run on their
+cron expressions through the same unattended deny+report policy, until Ctrl+C. It cannot be
+combined with `--prompt` or `--unattended`.
+
+```powershell
+dotnet run --project src/Caliper.Console -- --serve
+```
+
+Schedules live in `~/.caliper/config.json` (config is the source of truth; the list is re-read
+live, so edits apply without restarting `--serve`):
+
+```json
+{
+  "Caliper": {
+    "Schedules": [
+      {
+        "Name": "nightly-deps-report",
+        "Cron": "0 6 * * *",
+        "TimeZone": "local",
+        "Prompt": "Check for outdated NuGet packages and summarize.",
+        "WorkingRoot": "~/source/repos/Caliper",
+        "Model": null,
+        "MaxSteps": 20,
+        "Enabled": true,
+        "Permissions": {
+          "Mode": "Auto",
+          "ShellAutoAllowlist": [ "dotnet list", "dotnet restore" ]
+        }
+      }
+    ]
+  }
+}
+```
+
+Notes: job names are unique (case-insensitive); `TimeZone` is `"local"` or a system time zone id;
+the per-job `Permissions` overlay should set `"Mode": "Auto"` so its allowlists apply (the global
+shell denylist is always merged in and can never be lifted by a job); overlapping occurrences are
+skipped, and occurrences missed while the process was down are not replayed. Each run is stored as
+a normal session titled `[job] {name}`. From the interactive REPL, `/schedule run <name>` triggers
+the identical unattended path — useful for testing a job's allowlist before trusting the cron.
 
 ## Configuration
 
@@ -167,6 +227,8 @@ Important settings:
 | `Caliper.WorkingRoot` | Workspace root exposed to file tools. |
 | `Caliper.EnabledTools` | Tool allowlist surfaced to the agent. |
 | `Permissions.Mode` | Permission mode for side-effecting tools. |
+| `Caliper.Schedules` | Cron job definitions for `--serve` / `/schedule` (name, cron, prompt, per-job overlay). |
+| `Caliper.Scheduler.MaxConcurrentJobs` | How many scheduled jobs may run at once (default 1; applies at `--serve` start). |
 | `Mcp.Servers` | MCP server definitions. |
 | `Search.Backend` | `Stub` for local/dev use or `Tavily` when configured. |
 | `Persistence.SqlitePath` | SQLite database path for sessions and memory. |

@@ -65,7 +65,10 @@ public sealed class AgentRunner(
         UsageInfo? lastUsage = null;
         var cumulativePrompt = 0;
         var cumulativeCompletion = 0;
-        var workingRoot = ResolveRoot(opts.WorkingRoot);
+        // Per-run root (roadmap §3.2b): a scheduled job runs in its own working root; interactive
+        // runs (spec.WorkingRoot == null) keep using the global one. The same fallback feeds the
+        // memory scope here, every ToolContext below, and PermissionRequest.WorkingRoot.
+        var workingRoot = ResolveRoot(spec.WorkingRoot ?? opts.WorkingRoot);
         var memoryEnabled = opts.Memory.Enabled;
         var projectScope = memoryEnabled ? MemoryScope.Project(workingRoot) : string.Empty;
         var projectDocument = memoryEnabled
@@ -286,6 +289,8 @@ public sealed class AgentRunner(
                         TrustedReadOnly = tool is not IMcpTool,
                         SessionId = spec.SessionId,
                         Overlay = spec.PermissionsOverlay,
+                        WorkingRoot = spec.WorkingRoot,
+                        Unattended = spec.Unattended,
                     };
                     yield return new PermissionRequested(permissionRequest);
                     var decision = await permissionGate.EvaluateAsync(permissionRequest, ct).ConfigureAwait(false);
@@ -309,14 +314,15 @@ public sealed class AgentRunner(
                     httpClientFactory,
                     logger,
                     opts.SkillsDirectory,
-                    ResolveRoot(opts.WorkingRoot),
+                    ResolveRoot(spec.WorkingRoot ?? opts.WorkingRoot),
                     allowOutsideWorkingRoot,
                     ct,
                     spec.SessionId,
                     call.CallId,
                     spec.SubagentDepth,
                     subagentState,
-                    spec.PermissionsOverlay);
+                    spec.PermissionsOverlay,
+                    spec.Unattended);
 
                 ToolResult? result = null;
                 var toolCancelled = false;

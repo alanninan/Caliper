@@ -76,5 +76,21 @@ public sealed record PermissionRequest(
     /// denylist into an overlay's own denylist (union, never replace) as a safety floor.
     /// </summary>
     public PermissionsOptions? Overlay { get; init; }
+
+    /// <summary>
+    /// Per-run working root (<c>RunSpec.WorkingRoot</c>). Null falls back to
+    /// <c>runtimeSettings.Caliper.WorkingRoot</c>. <c>PermissionGate</c> builds its
+    /// <c>FileAccessPolicy</c> against this root, so a scheduled job's in-root file writes
+    /// auto-allow under <c>Auto</c> relative to the job's own root, not the global one.
+    /// </summary>
+    public string? WorkingRoot { get; init; }
+
+    /// <summary>
+    /// True when this request belongs to an unattended run (<c>RunSpec.Unattended</c>: scheduled
+    /// jobs and manual <c>/schedule run</c> triggers). A <c>RoutingPermissionPrompt</c> uses it to
+    /// send the request to the deny+report <c>UnattendedPermissionPrompt</c> instead of an
+    /// interactive prompt; the gate's own policy evaluation ignores it.
+    /// </summary>
+    public bool Unattended { get; init; }
 }
 public enum PermissionDecision { Allow, AllowForSession, Deny }

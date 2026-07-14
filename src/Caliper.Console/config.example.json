@@ -27,7 +27,9 @@
       "Enabled": true,
       "GlobalDir": "~/.caliper/memory",
       "ProjectFile": "CALIPER.md"
-    }
+    },
+    "Scheduler": { "MaxConcurrentJobs": 1 },
+    "Schedules": []
   },
   "Providers": {
     "OpenRouter": {

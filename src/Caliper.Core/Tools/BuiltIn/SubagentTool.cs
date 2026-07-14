@@ -102,6 +102,12 @@ public sealed class SubagentTool(
             MaxSteps = profile.MaxSteps,
             SubagentDepth = ctx.SubagentDepth + 1,
             PermissionsOverlay = childOverlay,
+            // Children inherit the parent run's working root (roadmap §3.1) — for a scheduled
+            // job's subagent that's the job root, not the global one — and its unattended flag,
+            // so a job's children keep routing prompts to the deny+report path (roadmap §3.2a:
+            // "subagents under unattended inherit the same prompt + overlay").
+            WorkingRoot = ctx.WorkingRoot,
+            Unattended = ctx.Unattended,
         };
 
         // Belt-and-suspenders alongside ToolTimeoutOverride: DispatchWithRetry already bounds `ct`

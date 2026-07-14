@@ -62,6 +62,9 @@ internal sealed class ConfigWriter(
     public async Task<SubagentsOptions> LoadSubagentsAsync(CancellationToken ct) =>
         (await LoadCaliperAsync(ct).ConfigureAwait(false)).Subagents;
 
+    public async Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct) =>
+        (await LoadCaliperAsync(ct).ConfigureAwait(false)).Schedules;
+
     public async Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct)
     {
         var validation = caliperValidator.Validate(null, value);
@@ -103,11 +106,19 @@ internal sealed class ConfigWriter(
             c.Memory.GlobalDir = value.Memory.GlobalDir;
             c.Memory.ProjectFile = value.Memory.ProjectFile;
             c.Subagents = CloneSubagents(value.Subagents);
+            // Schedules is a live seam: SchedulerHostedService re-reads the job list from
+            // runtimeSettings.Caliper.Schedules on every tick (and its sleep is interrupted by
+            // SettingsChanged), so saved add/edit/remove/enable changes apply without a restart.
+            // Scheduler.MaxConcurrentJobs is the exception — it sizes the cross-job semaphore once
+            // at scheduler start, so it's counted in restartRequired below.
+            c.Scheduler.MaxConcurrentJobs = value.Scheduler.MaxConcurrentJobs;
+            c.Schedules = RuntimeSettings.CloneSchedules(value.Schedules);
         });
 
         var restartRequired =
             !string.Equals(previous.SkillsDirectory, value.SkillsDirectory, StringComparison.Ordinal) ||
             previous.SkillSelector != value.SkillSelector ||
+            previous.Scheduler.MaxConcurrentJobs != value.Scheduler.MaxConcurrentJobs ||
             !new HashSet<string>(previous.EnabledTools, StringComparer.OrdinalIgnoreCase)
                 .SetEquals(new HashSet<string>(value.EnabledTools, StringComparer.OrdinalIgnoreCase));
 
@@ -295,6 +306,19 @@ internal sealed class ConfigWriter(
         // even though it lives inside the Caliper section rather than being its own top-level one.
         var current = await LoadCaliperAsync(ct).ConfigureAwait(false);
         current.Subagents = value;
+        return await SaveCaliperAsync(current, ct).ConfigureAwait(false);
+    }
+
+    public async Task<ConfigWriteResult> SaveSchedulesAsync(IList<ScheduleOptions> value, CancellationToken ct)
+    {
+        // Same shape as SaveSubagentsAsync: swap just the Schedules slice into the current Caliper
+        // section and reuse SaveCaliperAsync's validate/persist/live-update pipeline. Validation
+        // (unique names, cron parse, time zone, working root, model) lives once in
+        // CaliperOptionsValidator.ValidateSchedules and therefore runs both here and at startup
+        // binding. The whole list is live (scheduler re-reads per tick) — see the comment inside
+        // SaveCaliperAsync's UpdateCaliper block.
+        var current = await LoadCaliperAsync(ct).ConfigureAwait(false);
+        current.Schedules = value;
         return await SaveCaliperAsync(current, ct).ConfigureAwait(false);
     }
 

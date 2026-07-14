@@ -20,6 +20,7 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public SearchOptions Search { get; set; } = new();
     public PersistenceOptions Persistence { get; set; } = new();
     public SubagentsOptions Subagents { get; set; } = new();
+    public IList<ScheduleOptions> Schedules { get; set; } = [];
 
     public bool NextSuccess { get; set; } = true;
     public string? NextError { get; set; }
@@ -32,6 +33,7 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public SearchOptions? SavedSearch { get; private set; }
     public PersistenceOptions? SavedPersistence { get; private set; }
     public SubagentsOptions? SavedSubagents { get; private set; }
+    public IList<ScheduleOptions>? SavedSchedules { get; private set; }
 
     public Task<CaliperOptions> LoadCaliperAsync(CancellationToken ct) => Task.FromResult(Caliper);
     public Task<PermissionsOptions> LoadPermissionsAsync(CancellationToken ct) => Task.FromResult(Permissions);
@@ -40,6 +42,7 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public Task<SearchOptions> LoadSearchAsync(CancellationToken ct) => Task.FromResult(Search);
     public Task<PersistenceOptions> LoadPersistenceAsync(CancellationToken ct) => Task.FromResult(Persistence);
     public Task<SubagentsOptions> LoadSubagentsAsync(CancellationToken ct) => Task.FromResult(Subagents);
+    public Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct) => Task.FromResult(Schedules);
 
     public Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct)
     {
@@ -80,6 +83,12 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public Task<ConfigWriteResult> SaveSubagentsAsync(SubagentsOptions value, CancellationToken ct)
     {
         SavedSubagents = value;
+        return Task.FromResult(Result());
+    }
+
+    public Task<ConfigWriteResult> SaveSchedulesAsync(IList<ScheduleOptions> value, CancellationToken ct)
+    {
+        SavedSchedules = value;
         return Task.FromResult(Result());
     }
 

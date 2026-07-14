@@ -19,6 +19,8 @@
     <PackageVersion Include="Microsoft.Extensions.AI"                     Version="10.6.0" />
     <PackageVersion Include="Microsoft.Extensions.AI.OpenAI"              Version="10.6.0" />
     <PackageVersion Include="ModelContextProtocol"                        Version="1.4.0" />
+    <!-- Cron scheduling (AOT/trim-safe; roadmap-approved over Quartz) -->
+    <PackageVersion Include="Cronos"                                      Version="0.13.0" />
     <!-- Console UI -->
     <PackageVersion Include="Spectre.Console"                             Version="0.49.1" />
     <!-- WinUI app -->
@@ -35,6 +37,7 @@
     <PackageVersion Include="Microsoft.Data.Sqlite.Core"                  Version="9.0.4" />
     <PackageVersion Include="SQLitePCLRaw.bundle_winsqlite3"              Version="2.1.10" />
     <!-- Tests -->
+    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing"   Version="10.7.0" />
     <PackageVersion Include="xunit"                                       Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio"                   Version="2.8.2" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk"                      Version="17.12.0" />

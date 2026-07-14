@@ -31,6 +31,12 @@ public interface IConfigWriter
     // owns" contract the top-level sections above already document.
     Task<SubagentsOptions> LoadSubagentsAsync(CancellationToken ct);
 
+    // Schedules follows the same nested-slice contract as Subagents above: it is a property of
+    // CaliperOptions (Caliper:Schedules), and this Load/Save pair reads/writes just that slice so
+    // schedule management (the console's /schedule surface today, an App settings page later)
+    // can save its edits without racing concurrent edits to unrelated Caliper fields.
+    Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct);
+
     Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SavePermissionsAsync(PermissionsOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SaveProvidersAsync(ProvidersOptions value, CancellationToken ct);
@@ -38,6 +44,7 @@ public interface IConfigWriter
     Task<ConfigWriteResult> SaveSearchAsync(SearchOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SavePersistenceAsync(PersistenceOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SaveSubagentsAsync(SubagentsOptions value, CancellationToken ct);
+    Task<ConfigWriteResult> SaveSchedulesAsync(IList<ScheduleOptions> value, CancellationToken ct);
 }
 
 public sealed record ConfigWriteResult(bool Success, string? Error, bool RestartRequired);

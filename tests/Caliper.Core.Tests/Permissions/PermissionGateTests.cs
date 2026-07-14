@@ -246,6 +246,40 @@ public sealed class PermissionGateTests
         Assert.Equal(PermissionDecision.Allow, await gate.EvaluateAsync(overlaid, CancellationToken.None));
     }
 
+    [Fact]
+    public async Task PerRun_working_root_scopes_auto_file_access_to_the_runs_own_root()
+    {
+        // Roadmap §3.2b RunSpec.WorkingRoot: the gate's FileAccessPolicy must evaluate against the
+        // per-run root when one is set — a job's write inside its own root auto-allows under Auto,
+        // and a write outside the job root is prompted even when it lands inside the *global* root.
+        var globalRoot = Path.Combine(Path.GetTempPath(), "caliper-global-" + Guid.NewGuid().ToString("N"));
+        var jobRoot = Path.Combine(Path.GetTempPath(), "caliper-job-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(globalRoot);
+        Directory.CreateDirectory(jobRoot);
+        try
+        {
+            var prompt = new ScriptedPrompt(PermissionDecision.Deny, PermissionDecision.Deny);
+            var gate = Build(PermissionMode.Auto, prompt, workingRoot: globalRoot);
+
+            var insideJobRoot = FileWrite(Path.Combine(jobRoot, "note.txt")) with { WorkingRoot = jobRoot };
+            Assert.Equal(PermissionDecision.Allow, await gate.EvaluateAsync(insideJobRoot, CancellationToken.None));
+            Assert.Equal(0, prompt.Count);
+
+            var insideGlobalOnly = FileWrite(Path.Combine(globalRoot, "note.txt")) with { WorkingRoot = jobRoot };
+            Assert.Equal(PermissionDecision.Deny, await gate.EvaluateAsync(insideGlobalOnly, CancellationToken.None));
+            Assert.Equal(1, prompt.Count);
+
+            // Null WorkingRoot keeps today's global-root behavior for the identical path.
+            Assert.Equal(PermissionDecision.Allow, await gate.EvaluateAsync(FileWrite(Path.Combine(globalRoot, "note.txt")), CancellationToken.None));
+            Assert.Equal(1, prompt.Count);
+        }
+        finally
+        {
+            Directory.Delete(globalRoot, recursive: true);
+            Directory.Delete(jobRoot, recursive: true);
+        }
+    }
+
     private static PermissionGate Build(
         PermissionMode mode,
         IPermissionPrompt prompt,
@@ -274,6 +308,9 @@ public sealed class PermissionGateTests
 
     private static PermissionRequest FileRead(string path) =>
         new("read_file", SideEffect.ReadOnly, JsonSerializer.SerializeToElement(new { path }), null);
+
+    private static PermissionRequest FileWrite(string path) =>
+        new("write_file", SideEffect.Write, JsonSerializer.SerializeToElement(new { path, content = "x" }), null);
 }
 
 file sealed class ScriptedPrompt(params PermissionDecision[] decisions) : IPermissionPrompt

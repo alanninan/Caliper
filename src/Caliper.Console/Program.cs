@@ -10,6 +10,7 @@ using Caliper.Core.Events;
 using Caliper.Core.Memory;
 using Caliper.Core.Models;
 using Caliper.Core.Permissions;
+using Caliper.Core.Scheduling;
 using Caliper.Console.Commands;
 using Caliper.Console.Rendering;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +24,15 @@ var oneShotPrompt = GetOption(args, "--prompt");
 var permissionMode = GetOption(args, "--permissions");
 var oneShotPrint = HasOption(args, "--print");
 var unattended = HasOption(args, "--unattended");
+var serve = HasOption(args, "--serve");
+
+// --serve is the headless scheduler host: no REPL, no one-shot. Reject the contradictory
+// combinations up front instead of silently ignoring a flag.
+if (serve && (!string.IsNullOrWhiteSpace(oneShotPrompt) || unattended))
+{
+    AnsiConsole.MarkupLine("[red]--serve cannot be combined with --prompt or --unattended.[/]");
+    Environment.Exit(1);
+}
 
 if (!string.IsNullOrWhiteSpace(permissionMode) &&
     !Enum.TryParse<PermissionMode>(permissionMode, ignoreCase: true, out _))
@@ -71,12 +81,30 @@ if (permissionPlan.ReadOnlyToolsOnly)
         options.EnabledTools = ["read_file", "list_dir", "glob", "grep", "load_skill"];
     });
 }
-// Unattended runs never get the interactive prompt: UnattendedPermissionPrompt always denies and
-// logs (Warning) instead of asking a human. The Console/App interactive prompts are untouched.
-if (unattended)
+// Prompt wiring per host mode (roadmap §3.2b):
+// - Headless (--unattended one-shot, --serve scheduler): UnattendedPermissionPrompt outright —
+//   it always denies and logs (Warning) instead of asking a human.
+// - Interactive REPL (and attended one-shot): RoutingPermissionPrompt, which sends requests from
+//   unattended runs (/schedule run builds RunSpec.Unattended = true) to the deny+report
+//   UnattendedPermissionPrompt and everything else to the interactive ConsolePermissionPrompt.
+//   PermissionGate itself is unchanged; the App keeps its own ApprovalService untouched.
+if (unattended || serve)
+{
     builder.Services.AddSingleton<IPermissionPrompt, UnattendedPermissionPrompt>();
+}
 else
-    builder.Services.AddSingleton<IPermissionPrompt, ConsolePermissionPrompt>();
+{
+    builder.Services.AddSingleton<ConsolePermissionPrompt>();
+    builder.Services.AddSingleton<UnattendedPermissionPrompt>();
+    builder.Services.AddSingleton<IPermissionPrompt>(sp => new RoutingPermissionPrompt(
+        sp.GetRequiredService<ConsolePermissionPrompt>(),
+        sp.GetRequiredService<UnattendedPermissionPrompt>()));
+}
+
+// The cron scheduler only ticks in the dedicated headless host; interactive sessions manage
+// schedules via /schedule list|run without a background loop.
+if (serve)
+    builder.Services.AddHostedService<SchedulerHostedService>();
 
 var host = builder.Build();
 
@@ -87,7 +115,8 @@ var skillStore = host.Services.GetRequiredService<ISkillStore>();
 AnsiConsole.MarkupLine("[bold cyan]Caliper[/] [dim]— lightweight agentic harness[/]");
 AnsiConsole.MarkupLine($"[dim]Model: {agentOpts.Model}  Provider: {agentOpts.Provider}[/]");
 AnsiConsole.MarkupLine($"[dim]Skills: {skillStore.List().Count}[/]");
-AnsiConsole.MarkupLine("[dim]Type your message, or /quit to exit.[/]");
+if (!serve)
+    AnsiConsole.MarkupLine("[dim]Type your message, or /quit to exit.[/]");
 AnsiConsole.WriteLine();
 
 var runner   = host.Services.GetRequiredService<AgentRunner>();
@@ -103,7 +132,31 @@ var modelCatalog = host.Services.GetRequiredService<IModelCatalog>();
 var runtimeSettings = host.Services.GetRequiredService<IRuntimeSettings>();
 var permissionGate = host.Services.GetRequiredService<IPermissionGate>();
 var configWriter = host.Services.GetRequiredService<IConfigWriter>();
+var scheduleRunner = host.Services.GetRequiredService<ScheduleJobRunner>();
+var timeProvider = host.Services.GetRequiredService<TimeProvider>();
 var footer = new StatusFooter(runtimeSettings, mcpHub);
+
+if (serve)
+{
+    // Headless scheduler host: connect MCP (jobs may use MCP tools), announce, then hand the
+    // process to the Host lifetime — SchedulerHostedService ticks until Ctrl+C / SIGTERM, and
+    // its stoppingToken chains the shutdown into every in-flight job run.
+    try
+    {
+        await mcpHub.ConnectAllAsync(CancellationToken.None);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        AnsiConsole.MarkupLine($"[yellow]MCP connect failed: {Markup.Escape(ex.Message)}[/]");
+    }
+
+    RenderMcpStatus(mcpHub, showEmpty: false);
+    var enabledSchedules = runtimeSettings.Caliper.Schedules.Count(schedule => schedule.Enabled);
+    AnsiConsole.MarkupLine($"[green]Serving {enabledSchedules} schedule(s).[/] [dim]Press Ctrl+C to stop.[/]");
+    await host.RunAsync();
+    await mcpHub.DisposeAllAsync();
+    return;
+}
 
 // One app-lifetime token plus a fresh per-run token each turn: the first Ctrl+C cancels the
 // in-flight run and returns to the prompt; Ctrl+C at the idle prompt exits.
@@ -166,7 +219,7 @@ while (!appCts.Token.IsCancellationRequested)
 
     if (input.StartsWith('/'))
     {
-        sessionId = await HandleSlashCommandAsync(input, sessionId, sessions, skillStore, tools, mcpHub, memoryStore, caliperMdProvider, contextManager, capabilityProvider, modelCatalog, runtimeSettings, permissionGate, configWriter, conversations, appCts.Token);
+        sessionId = await HandleSlashCommandAsync(input, sessionId, sessions, skillStore, tools, mcpHub, memoryStore, caliperMdProvider, contextManager, capabilityProvider, modelCatalog, runtimeSettings, permissionGate, configWriter, conversations, scheduleRunner, timeProvider, footer, appCts.Token);
         continue;
     }
 
@@ -218,6 +271,9 @@ static async Task<string> HandleSlashCommandAsync(
     IPermissionGate permissionGate,
     IConfigWriter configWriter,
     ConversationOrchestrator conversations,
+    ScheduleJobRunner scheduleRunner,
+    TimeProvider timeProvider,
+    StatusFooter footer,
     CancellationToken ct)
 {
     var parsed = SlashCommandParser.Parse(input);
@@ -476,6 +532,26 @@ static async Task<string> HandleSlashCommandAsync(
             return currentSessionId ?? "";
         }
 
+        case SlashCommandKind.Schedule:
+        {
+            var scheduleArgs = parsed.Argument.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            var subcommand = scheduleArgs.Length > 0 ? scheduleArgs[0].ToLowerInvariant() : "";
+            switch (subcommand)
+            {
+                case "list":
+                    RenderScheduleList(runtimeSettings, scheduleRunner, timeProvider);
+                    break;
+                case "run" when scheduleArgs.Length == 2 && !string.IsNullOrWhiteSpace(scheduleArgs[1]):
+                    await RunScheduleAsync(scheduleArgs[1].Trim(), runtimeSettings, scheduleRunner, footer, ct);
+                    break;
+                default:
+                    AnsiConsole.MarkupLine("[yellow]Usage: /schedule list | /schedule run <name>[/]");
+                    break;
+            }
+
+            return currentSessionId ?? "";
+        }
+
         case SlashCommandKind.Help:
         {
             RenderHelp();
@@ -634,6 +710,110 @@ static async Task RenderModelsAsync(IModelCatalog modelCatalog, CancellationToke
     AnsiConsole.Write(table);
     if (models.Count > 80)
         AnsiConsole.MarkupLine($"[dim]Showing 80 of {models.Count} models.[/]");
+}
+
+static void RenderScheduleList(
+    IRuntimeSettings runtimeSettings,
+    ScheduleJobRunner scheduleRunner,
+    TimeProvider timeProvider)
+{
+    var schedules = runtimeSettings.Caliper.Schedules;
+    if (schedules.Count == 0)
+    {
+        AnsiConsole.MarkupLine("[dim]No schedules configured. Add entries under Caliper:Schedules in ~/.caliper/config.json.[/]");
+        return;
+    }
+
+    // The scheduler service itself does not run in REPL mode, so the next occurrence is computed
+    // on demand from live config, and "last result" only reflects manual runs from this session.
+    var now = timeProvider.GetUtcNow();
+    var table = new Table()
+        .RoundedBorder()
+        .AddColumn("Name")
+        .AddColumn("Enabled")
+        .AddColumn("Cron")
+        .AddColumn("Next occurrence")
+        .AddColumn("Last result");
+
+    foreach (var job in schedules)
+    {
+        string next;
+        if (!job.Enabled)
+        {
+            next = "—";
+        }
+        else
+        {
+            var occurrence = ScheduleCron.GetNextOccurrence(job, now, out var error);
+            next = occurrence is { } wakeAt
+                ? wakeAt.ToLocalTime().ToString("g")
+                : error is null ? "never" : $"invalid — {error}";
+        }
+
+        var last = scheduleRunner.GetLastResult(job.Name);
+        var lastText = last is null
+            ? "—"
+            : $"{last.Reason?.ToString() ?? (last.Error is null ? "?" : "Error")}, {last.DenialCount} denial(s) at {last.CompletedAt.ToLocalTime():g}";
+
+        table.AddRow(
+            Markup.Escape(job.Name),
+            job.Enabled ? "yes" : "no",
+            Markup.Escape(job.Cron),
+            Markup.Escape(next),
+            Markup.Escape(lastText));
+    }
+
+    AnsiConsole.Write(table);
+}
+
+static async Task RunScheduleAsync(
+    string name,
+    IRuntimeSettings runtimeSettings,
+    ScheduleJobRunner scheduleRunner,
+    StatusFooter footer,
+    CancellationToken ct)
+{
+    var job = runtimeSettings.Caliper.Schedules
+        .FirstOrDefault(schedule => string.Equals(schedule.Name, name, StringComparison.OrdinalIgnoreCase));
+    if (job is null)
+    {
+        var known = string.Join(", ", runtimeSettings.Caliper.Schedules.Select(schedule => schedule.Name));
+        AnsiConsole.MarkupLine($"[red]Unknown schedule: {Markup.Escape(name)}[/]");
+        if (known.Length > 0)
+            AnsiConsole.MarkupLine($"[dim]Known schedules: {Markup.Escape(known)}[/]");
+        return;
+    }
+
+    if (!job.Enabled)
+        AnsiConsole.MarkupLine("[dim]Schedule is disabled for the cron scheduler; running it manually anyway.[/]");
+
+    // Identical unattended path to a --serve tick: ScheduleJobRunner builds the RunSpec with
+    // Unattended = true, so the RoutingPermissionPrompt denies+records every prompt while the
+    // run's events still render live below.
+    AnsiConsole.MarkupLine($"[green]Running schedule:[/] {Markup.Escape(job.Name)} [dim](unattended: permission prompts deny + report)[/]");
+    var renderer = new EventRenderer(footer);
+    var outcome = await scheduleRunner.RunJobAsync(
+        job,
+        concurrencyGate: null,
+        (evt, _) =>
+        {
+            renderer.Render(evt);
+            return ValueTask.CompletedTask;
+        },
+        ct);
+
+    if (outcome.Skipped)
+    {
+        AnsiConsole.MarkupLine("[yellow]Skipped: a previous occurrence of this job is still running.[/]");
+        return;
+    }
+
+    if (outcome.DenialCount > 0)
+        AnsiConsole.MarkupLine($"[yellow]{outcome.DenialCount} action(s) denied (unattended policy).[/]");
+    if (outcome.Error is { } jobError)
+        AnsiConsole.MarkupLine($"[red]Job error: {Markup.Escape(jobError)}[/]");
+    else
+        AnsiConsole.MarkupLine($"[dim]Job finished: {outcome.Reason?.ToString() ?? "?"}[/]");
 }
 
 static void RenderHelp()

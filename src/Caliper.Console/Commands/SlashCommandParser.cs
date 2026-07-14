@@ -20,6 +20,7 @@ public enum SlashCommandKind
     Models,
     Permissions,
     Config,
+    Schedule,
     Help,
     Quit,
 }
@@ -45,6 +46,8 @@ public static class SlashCommandParser
         new("/permissions <mode>", "Switch permission mode: AskAlways, Auto, or Plan."),
         new("/set <key> <value>", "Update supported runtime settings."),
         new("/config save", "Persist the session's runtime/permission settings to config.json."),
+        new("/schedule list", "List configured schedules with next occurrence and last result."),
+        new("/schedule run <name>", "Trigger a schedule now through the unattended path (prompts deny + report)."),
         new("/help", "Show this command list."),
         new("/quit", "Exit Caliper."),
     ];
@@ -73,6 +76,7 @@ public static class SlashCommandParser
             "/models" => SlashCommandKind.Models,
             "/permissions" => SlashCommandKind.Permissions,
             "/config" => SlashCommandKind.Config,
+            "/schedule" => SlashCommandKind.Schedule,
             "/help" => SlashCommandKind.Help,
             "/quit" => SlashCommandKind.Quit,
             _ => SlashCommandKind.Unknown,

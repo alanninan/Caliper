@@ -17,6 +17,12 @@ dotnet run --project src/Caliper.Console           # interactive REPL
 # one-shot, read-only (defaults to Plan mode + read-only tools)
 dotnet run --project src/Caliper.Console -- --prompt "Summarize this repo" --print
 
+# unattended one-shot (Auto mode; prompts are denied + reported, never asked)
+dotnet run --project src/Caliper.Console -- --prompt "Check outdated packages" --unattended
+
+# headless cron scheduler (runs Caliper:Schedules until Ctrl+C; rejects --prompt/--unattended)
+dotnet run --project src/Caliper.Console -- --serve
+
 # evals — hermetic (no model) / model-in-the-loop
 dotnet run --project tests/Caliper.Evals -- --suite all --out eval-report.json
 dotnet run --project tests/Caliper.Evals -- --suite tool-calling --model "<openrouter-slug>"
@@ -33,7 +39,8 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
 - `src/Caliper.Core/` — engine library. Agent loop (`Agents/AgentRunner.cs`), tools
   (`Tools/`, built-ins in `Tools/BuiltIn/`, MCP in `Tools/Mcp/`), model clients (`Models/`),
   persistence (`Persistence/`, SQLite), context/compaction (`Context/`), skills, memory,
-  permissions (`Permissions/`), JSON source-gen (`Protocol/CaliperJsonContext.cs`).
+  permissions (`Permissions/`), cron scheduling (`Scheduling/`, Cronos-based),
+  JSON source-gen (`Protocol/CaliperJsonContext.cs`).
 - `src/Caliper.Console/` — terminal host. `Program.cs` (entry + slash commands), `Rendering/`,
   `Commands/`, and `ConsolePermissionPrompt`.
 - `src/Caliper.App/` — WinUI 3 desktop host on the same engine. MVVM (`ViewModels/`, `Views/`),
@@ -55,6 +62,13 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   allow/deny lists + outside-root file checks; `AskAlways` prompts via `IPermissionPrompt`
   (null prompt ⇒ Deny; non-interactive console ⇒ Deny).
 - **Turn strategy:** default is `NativeToolStrategy` (chosen by `TurnStrategySelector`).
+- **Scheduling:** `Caliper:Schedules` (list; live — re-read every tick) drives
+  `SchedulerHostedService`, registered only under `--serve`. Jobs run via `ScheduleJobRunner`
+  with `RunSpec { Unattended = true }` — prompts deny + report (`UnattendedPermissionPrompt`;
+  in the REPL a `RoutingPermissionPrompt` routes by `PermissionRequest.Unattended`). Overlap:
+  skip; misfire: no catch-up. `/schedule list|run <name>` manages jobs interactively. A job's
+  `Permissions` overlay should set `Mode: Auto` for its allowlists to matter; the global shell
+  denylist is always merged in.
 - **Config precedence:** `~/.caliper/config.json` → `CALIPER_` env vars → CLI overrides.
   The live options class is **`CaliperOptions`** (the `Caliper:` section).
 
@@ -72,9 +86,12 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
 - **Tests use xUnit v2 (2.9.3), not v3.** Method naming: `Method_Condition_Expected`.
 - **Tool outcomes use `ToolResult`** (success + output), not a generic `Result<T>`. Exceptions
   are reserved for genuinely exceptional store/IO errors.
-- **`TimeProvider` is not yet wired in** — persistence timestamps use `DateTimeOffset.UtcNow`
-  directly (`SqliteStoreBase.NowString`). Any **new** time-sensitive code (e.g. scheduling)
-  should introduce `TimeProvider` rather than calling `DateTime/DateTimeOffset.Now/UtcNow`.
+- **`TimeProvider` is wired in for new time math** — the scheduler (`Scheduling/`) does all
+  timing via `TimeProvider` (`GetUtcNow()` + `Task.Delay(delay, timeProvider, ct)`, tested with
+  `FakeTimeProvider`), and Core registers `TimeProvider.System` via `TryAddSingleton`. Legacy
+  persistence timestamps still use `DateTimeOffset.UtcNow` (`SqliteStoreBase.NowString`) until
+  touched. Any **new** time-sensitive code must use `TimeProvider`, never
+  `DateTime/DateTimeOffset.Now/UtcNow`.
 - Followed from the global defaults: file-scoped namespaces, nullable, primary constructors,
   records for DTOs/events, async + `CancellationToken` everywhere, `ConfigureAwait(false)` in
   Core (it's a library; the Console app doesn't need it).

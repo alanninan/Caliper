@@ -54,10 +54,67 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
             failures.Add($"{nameof(ContextOptions.ReservedOutputTokens)} must be > 0 (was {options.Context.ReservedOutputTokens}).");
 
         ValidateSubagents(options.Subagents, failures);
+        ValidateScheduler(options.Scheduler, failures);
+        ValidateSchedules(options.Schedules, failures);
 
         return failures.Count > 0
             ? ValidateOptionsResult.Fail(failures)
             : ValidateOptionsResult.Success;
+    }
+
+    private static void ValidateScheduler(SchedulerOptions scheduler, List<string> failures)
+    {
+        if (scheduler.MaxConcurrentJobs < 1)
+            failures.Add($"{nameof(SchedulerOptions.MaxConcurrentJobs)} must be >= 1 (was {scheduler.MaxConcurrentJobs}).");
+    }
+
+    // Roadmap §3.2b: the same rules run at binding/startup (here) and at save time
+    // (ConfigWriter.SaveSchedulesAsync funnels through SaveCaliperAsync, which calls this
+    // validator), so an invalid schedule is rejected in both places by one implementation.
+    private static void ValidateSchedules(IList<ScheduleOptions> schedules, List<string> failures)
+    {
+        var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var schedule in schedules)
+        {
+            if (string.IsNullOrWhiteSpace(schedule.Name))
+            {
+                failures.Add("Every schedule needs a non-empty Name.");
+                continue;
+            }
+
+            var name = schedule.Name.Trim();
+            if (!seenNames.Add(name))
+                failures.Add($"Schedule name '{name}' is duplicated (names are case-insensitive).");
+
+            if (string.IsNullOrWhiteSpace(schedule.Prompt))
+                failures.Add($"Schedule '{name}' must have a non-empty Prompt.");
+
+            if (!Scheduling.ScheduleCron.TryParseCron(schedule.Cron, out _, out var cronError))
+                failures.Add($"Schedule '{name}' has an invalid Cron expression '{schedule.Cron}': {cronError}");
+
+            if (!Scheduling.ScheduleCron.TryResolveTimeZone(schedule.TimeZone, out _, out var zoneError))
+                failures.Add($"Schedule '{name}' has an unresolvable TimeZone '{schedule.TimeZone}': {zoneError}");
+
+            if (schedule.WorkingRoot is { } workingRoot)
+            {
+                if (string.IsNullOrWhiteSpace(workingRoot))
+                {
+                    failures.Add($"Schedule '{name}' WorkingRoot must not be blank when set (omit it to use the global working root).");
+                }
+                else
+                {
+                    var resolved = Path.GetFullPath(LocalPath.ResolveHome(workingRoot));
+                    if (!Directory.Exists(resolved))
+                        failures.Add($"Schedule '{name}' WorkingRoot does not exist: {resolved}");
+                }
+            }
+
+            if (schedule.Model is { } model && string.IsNullOrWhiteSpace(model))
+                failures.Add($"Schedule '{name}' Model must not be blank when set (omit it to use the default model).");
+
+            if (schedule.MaxSteps is { } maxSteps && maxSteps <= 0)
+                failures.Add($"Schedule '{name}' MaxSteps must be > 0 (was {maxSteps}).");
+        }
     }
 
     private static void ValidateSubagents(SubagentsOptions subagents, List<string> failures)

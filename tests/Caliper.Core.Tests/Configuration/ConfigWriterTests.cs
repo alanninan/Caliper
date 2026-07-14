@@ -302,6 +302,86 @@ public sealed class ConfigWriterTests
         Assert.False(result.Success);
     }
 
+    [Fact]
+    public async Task SaveSchedulesAsync_valid_schedule_round_trips_and_is_live()
+    {
+        var (writer, files, runtime) = Build();
+        var schedules = new List<ScheduleOptions>
+        {
+            new() { Name = "nightly", Cron = "0 6 * * *", Prompt = "check deps", TimeZone = "UTC" },
+        };
+
+        var result = await writer.SaveSchedulesAsync(schedules, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.False(result.RestartRequired);
+        using var document = JsonDocument.Parse(files.Content);
+        var persisted = document.RootElement.GetProperty("Caliper").GetProperty("Schedules");
+        Assert.Equal(1, persisted.GetArrayLength());
+        Assert.Equal("nightly", persisted[0].GetProperty("Name").GetString());
+        // Live seam: the scheduler re-reads runtimeSettings.Caliper.Schedules every tick, so the
+        // save must have pushed the new list into the runtime clone as well.
+        Assert.Equal("nightly", Assert.Single(runtime.Caliper.Schedules).Name);
+    }
+
+    [Fact]
+    public async Task SaveSchedulesAsync_invalid_cron_is_rejected_and_not_written()
+    {
+        var (writer, files, _) = Build();
+        var before = files.Content;
+
+        var result = await writer.SaveSchedulesAsync(
+            [new ScheduleOptions { Name = "bad", Cron = "not a cron", Prompt = "p" }],
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("Cron", result.Error, StringComparison.Ordinal);
+        Assert.Equal(before, files.Content);
+    }
+
+    [Fact]
+    public async Task SaveSchedulesAsync_duplicate_names_are_rejected()
+    {
+        var (writer, _, _) = Build();
+
+        var result = await writer.SaveSchedulesAsync(
+            [
+                new ScheduleOptions { Name = "Job", Cron = "0 6 * * *", Prompt = "p" },
+                new ScheduleOptions { Name = "job", Cron = "0 7 * * *", Prompt = "p" },
+            ],
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("duplicated", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SaveSchedulesAsync_bad_time_zone_is_rejected()
+    {
+        var (writer, _, _) = Build();
+
+        var result = await writer.SaveSchedulesAsync(
+            [new ScheduleOptions { Name = "job", Cron = "0 6 * * *", Prompt = "p", TimeZone = "Not/A_Zone" }],
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("TimeZone", result.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SaveCaliperAsync_flags_restart_when_MaxConcurrentJobs_changes()
+    {
+        var (writer, _, _) = Build();
+        await writer.SaveCaliperAsync(new CaliperOptions(), CancellationToken.None);
+
+        var changed = new CaliperOptions();
+        changed.Scheduler.MaxConcurrentJobs = 3;
+        var result = await writer.SaveCaliperAsync(changed, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.True(result.RestartRequired);
+    }
+
     private sealed class FakeConfigFileStore : IConfigFileStore
     {
         public string Content { get; private set; } = """{"Caliper":{},"Permissions":{},"Providers":{},"Mcp":{"Servers":{}},"Search":{},"Persistence":{}}""";

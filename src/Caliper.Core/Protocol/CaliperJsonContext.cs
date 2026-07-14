@@ -43,4 +43,7 @@ namespace Caliper.Core.Protocol;
 [JsonSerializable(typeof(PersistenceOptions))]
 [JsonSerializable(typeof(SubagentsOptions))]
 [JsonSerializable(typeof(SubagentProfileOptions))]
+[JsonSerializable(typeof(SchedulerOptions))]
+[JsonSerializable(typeof(ScheduleOptions))]
+[JsonSerializable(typeof(List<ScheduleOptions>))]
 internal sealed partial class CaliperJsonContext : JsonSerializerContext { }

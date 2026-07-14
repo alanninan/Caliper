@@ -29,6 +29,62 @@ public sealed class CaliperOptions
     public ContextOptions Context { get; set; } = new();
     public MemoryOptions Memory { get; set; } = new();
     public SubagentsOptions Subagents { get; set; } = new();
+    public SchedulerOptions Scheduler { get; set; } = new();
+    public IList<ScheduleOptions> Schedules { get; set; } = [];
+}
+
+/// <summary>
+/// Roadmap §3.2b scheduler-wide knobs (<c>Caliper:Scheduler</c>). <see cref="MaxConcurrentJobs"/>
+/// is bound once when <c>SchedulerHostedService</c> starts (its cross-job semaphore is sized
+/// then), so changing it requires restarting the <c>--serve</c> process; see
+/// <c>ConfigWriter.SaveCaliperAsync</c>'s restart-required bookkeeping.
+/// </summary>
+public sealed class SchedulerOptions
+{
+    /// <summary>How many scheduled jobs may run concurrently. Default 1 keeps resource use predictable.</summary>
+    public int MaxConcurrentJobs { get; set; } = 1;
+}
+
+/// <summary>
+/// One scheduled job (an entry in the <c>Caliper:Schedules</c> list, roadmap §3.2b). The whole
+/// list is a live seam: the scheduler re-reads it from <c>IRuntimeSettings.Caliper.Schedules</c>
+/// on every tick, so add/edit/remove/enable changes apply without a restart — see
+/// <c>ConfigWriter.SaveSchedulesAsync</c>.
+/// </summary>
+public sealed class ScheduleOptions
+{
+    /// <summary>Unique (case-insensitive) job name; also the session-title tag (<c>[job] name</c>).</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>Standard 5-field cron expression, parsed by Cronos.</summary>
+    public string Cron { get; set; } = "";
+
+    /// <summary>"local" (default) or a system time zone id resolvable by <c>TimeZoneInfo.FindSystemTimeZoneById</c>.</summary>
+    public string TimeZone { get; set; } = "local";
+
+    /// <summary>The prompt the job run starts from.</summary>
+    public string Prompt { get; set; } = "";
+
+    /// <summary>Per-job working root (<c>RunSpec.WorkingRoot</c>). Null falls back to <c>Caliper.WorkingRoot</c>.</summary>
+    public string? WorkingRoot { get; set; }
+
+    /// <summary>Model slug for job runs. Null falls back to the current default model.</summary>
+    public string? Model { get; set; }
+
+    /// <summary>Step budget for job runs. Null falls back to <c>Caliper.MaxSteps</c>.</summary>
+    public int? MaxSteps { get; set; }
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// Per-job permission overlay (<c>RunSpec.PermissionsOverlay</c>). Null falls back to the
+    /// global <c>Permissions</c> section. Remember to set <c>Mode</c> explicitly (usually
+    /// <c>Auto</c>): a job overlay left at the class default (<c>AskAlways</c>) prompts for every
+    /// side effect, and under the unattended prompt every prompt is a deny — so the job's own
+    /// allowlists only take effect with <c>"Mode": "Auto"</c>. The global shell denylist is always
+    /// merged in by <c>PermissionGate</c> regardless.
+    /// </summary>
+    public PermissionsOptions? Permissions { get; set; }
 }
 
 /// <summary>

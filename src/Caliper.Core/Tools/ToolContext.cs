@@ -19,7 +19,8 @@ public sealed class ToolContext(
     string callId = "",
     int subagentDepth = 0,
     SubagentRunState? subagentState = null,
-    PermissionsOptions? permissionsOverlay = null)
+    PermissionsOptions? permissionsOverlay = null,
+    bool unattended = false)
 {
     public IHttpClientFactory HttpClientFactory { get; } = httpClientFactory;
     public ILogger Logger { get; } = logger;
@@ -52,6 +53,14 @@ public sealed class ToolContext(
     /// across nested spawns (a child of a Plan-mode child must itself stay Plan).
     /// </summary>
     public PermissionsOptions? PermissionsOverlay { get; } = permissionsOverlay;
+
+    /// <summary>
+    /// True when this dispatch belongs to an unattended run (<c>RunSpec.Unattended</c>). Exposed
+    /// so a tool that spawns nested runs (the subagent tool) can propagate the flag to its child
+    /// spec — a subagent spawned by a scheduled job must keep routing its permission prompts to
+    /// the deny+report path, even when the host's registered prompt is interactive.
+    /// </summary>
+    public bool Unattended { get; } = unattended;
 
     private readonly List<AgentEvent> _emittedEvents = [];
 

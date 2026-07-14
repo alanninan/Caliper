@@ -40,4 +40,21 @@ public sealed record RunSpec(string SessionId, string Prompt)
 
     /// <summary>Set by the scheduler for job runs; null for interactive runs.</summary>
     public string? JobName { get; init; }
+
+    /// <summary>
+    /// Per-run working root (roadmap §3.2b: scheduled jobs run in their own root). Null falls back
+    /// to <c>runtimeSettings.Caliper.WorkingRoot</c>. Threaded into every <c>ToolContext</c> this
+    /// run builds and onto <c>PermissionRequest.WorkingRoot</c>, so both file-tool path resolution
+    /// and <c>PermissionGate</c>'s <c>FileAccessPolicy</c> evaluate against this run's root.
+    /// </summary>
+    public string? WorkingRoot { get; init; }
+
+    /// <summary>
+    /// True for runs that must never wait on a human (scheduled jobs and <c>/schedule run</c>
+    /// manual triggers). Threaded onto <c>PermissionRequest.Unattended</c> so a
+    /// <c>RoutingPermissionPrompt</c> can send this run's prompts to the deny+report
+    /// <c>UnattendedPermissionPrompt</c> even inside an interactive host. <c>PermissionGate</c>
+    /// itself is unchanged by this flag.
+    /// </summary>
+    public bool Unattended { get; init; }
 }
