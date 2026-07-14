@@ -282,6 +282,18 @@ internal sealed class RuntimeSettings(
                 MaxConcurrentJobs = source.Scheduler.MaxConcurrentJobs,
             },
             Schedules = CloneSchedules(source.Schedules),
+            Execution = CloneExecution(source.Execution),
+        };
+
+    internal static ExecutionOptions CloneExecution(ExecutionOptions source) =>
+        new()
+        {
+            Backend = source.Backend,
+            Image = source.Image,
+            Network = source.Network,
+            Cpus = source.Cpus,
+            MemoryMb = source.MemoryMb,
+            User = source.User,
         };
 
     internal static List<ScheduleOptions> CloneSchedules(IList<ScheduleOptions> source) =>

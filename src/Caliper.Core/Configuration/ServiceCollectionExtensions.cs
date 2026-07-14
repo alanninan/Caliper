@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using Caliper.Core.Abstractions;
 using Caliper.Core.Agents;
 using Caliper.Core.Context;
+using Caliper.Core.Execution;
 using Caliper.Core.Memory;
 using Caliper.Core.Models;
 using Caliper.Core.Permissions;
@@ -60,6 +61,11 @@ public static class ServiceCollectionExtensions
         // Validation — triggers eagerly on first resolution
         services.AddSingleton<IValidateOptions<CaliperOptions>, CaliperOptionsValidator>();
         services.AddSingleton<IValidateOptions<SearchOptions>, SearchOptionsValidator>();
+        // Cross-section: the global Permissions.ShellAutoAllowlist is subject to the same
+        // wildcard-requires-container rule as a per-schedule overlay (roadmap §3.3) — see
+        // PermissionsOptionsValidator's doc comment for why this needs its own IValidateOptions<T>
+        // rather than living inside CaliperOptionsValidator.
+        services.AddSingleton<IValidateOptions<PermissionsOptions>, PermissionsOptionsValidator>();
         services.AddSingleton<IRuntimeSettings, RuntimeSettings>();
         services.AddSingleton<IConfigFileStore, ConfigFileStore>();
         services.AddSingleton<IConfigWriter, ConfigWriter>();
@@ -134,10 +140,26 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITool, WriteFileTool>();
         services.AddSingleton<ITool, EditFileTool>();
         services.AddSingleton<ITool, MemoryTool>();
+        // Roadmap §3.3: both execution backends are always constructed regardless of the configured
+        // Execution.Backend — ShellTool below picks between them per call via the live
+        // runtimeSettings.Caliper.Execution.Backend seam, so there is no "swap the DI wiring" step
+        // that could race a concurrent run when Backend changes.
+        services.AddSingleton<HostExecutionBackend>();
+        services.AddSingleton<ContainerExecutionBackend>();
         // Register both shells and let EnabledTools decide; this keeps cross-platform configs
         // working and avoids a startup warning about the OS's non-default shell name.
-        services.AddSingleton<ITool>(sp => new ShellTool(sp.GetRequiredService<IOptions<CaliperOptions>>(), "powershell"));
-        services.AddSingleton<ITool>(sp => new ShellTool(sp.GetRequiredService<IOptions<CaliperOptions>>(), "bash"));
+        services.AddSingleton<ITool>(sp => new ShellTool(
+            sp.GetRequiredService<IOptions<CaliperOptions>>(),
+            "powershell",
+            sp.GetRequiredService<HostExecutionBackend>(),
+            sp.GetRequiredService<ContainerExecutionBackend>(),
+            sp.GetRequiredService<IRuntimeSettings>()));
+        services.AddSingleton<ITool>(sp => new ShellTool(
+            sp.GetRequiredService<IOptions<CaliperOptions>>(),
+            "bash",
+            sp.GetRequiredService<HostExecutionBackend>(),
+            sp.GetRequiredService<ContainerExecutionBackend>(),
+            sp.GetRequiredService<IRuntimeSettings>()));
         // SubagentTool resolves IConversationOrchestrator lazily from IServiceProvider inside
         // InvokeAsync rather than a constructor dependency — see its DI-cycle comment — so it can be
         // registered here like any other ITool without closing the ToolRegistry -> orchestrator cycle.

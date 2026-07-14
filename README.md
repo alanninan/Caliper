@@ -21,6 +21,9 @@ The project is designed around deterministic host-side control: model output pro
 - Cron-scheduled jobs (`Caliper.Schedules` + `--serve`), each with its own prompt, model, step
   budget, working root, and permission overlay; `/schedule list` and `/schedule run <name>` manage
   them from the REPL.
+- Sandboxed shell execution (`Caliper.Execution.Backend: Container`): shell commands run inside a
+  disposable, network-isolated `docker` container instead of on the host; fails closed (never
+  falls back to the host) when Docker is unavailable.
 - SQLite-backed sessions, memory, and resumable transcripts.
 - Context-window fitting with optional automatic compaction.
 - Skill discovery from `~/.caliper/skills`.
@@ -206,6 +209,49 @@ skipped, and occurrences missed while the process was down are not replayed. Eac
 a normal session titled `[job] {name}`. From the interactive REPL, `/schedule run <name>` triggers
 the identical unattended path — useful for testing a job's allowlist before trusting the cron.
 
+### Sandboxed shell execution
+
+The `bash`/`powershell` tools run through a pluggable execution backend
+(`Caliper.Execution`), configured under `Caliper:Execution`:
+
+```json
+{
+  "Caliper": {
+    "Execution": {
+      "Backend": "Host",
+      "Image": "mcr.microsoft.com/dotnet/sdk:10.0",
+      "Network": "none",
+      "Cpus": 2,
+      "MemoryMb": 4096,
+      "User": "1000"
+    }
+  }
+}
+```
+
+- `Backend: "Host"` (default) runs commands directly on the host, exactly as before this option
+  existed. `Backend: "Container"` runs them via `docker run` — bind-mounting the run's working
+  root at `/workspace`, applying `Network`/`Cpus`/`MemoryMb`/`User` as container limits, and never
+  string-concatenating the command (it's passed through `ArgumentList`). All five fields are a
+  live setting: a change (including flipping `Backend`) applies to the very next shell call, no
+  restart required.
+- **Windows reality:** the container backend requires Docker Desktop with the WSL2/Linux
+  containers backend — Windows containers are not supported. The container always runs `bash`
+  regardless of host OS; the `powershell` tool is rejected outright under `Backend: "Container"`
+  with a clear error (bash-only in v1). File tools (`read_file`, `write_file`, etc.) are **not**
+  sandboxed by this feature — they remain host-side, confined by `WorkingRoot`/
+  `AutoAllowFileRoots` as always.
+- **Fail-closed:** if Docker isn't available (`docker info` fails), every container-backend shell
+  call returns a failed result — it never silently falls back to running on the host. Availability
+  is probed lazily on first container-backed call and cached briefly, so a Docker Desktop restart
+  is noticed again within seconds, not only at Caliper startup.
+- **Wildcard allowlist requires the container backend.** A bare `"*"` entry in
+  `ShellAutoAllowlist` (the global `Permissions` section, or a schedule job's own overlay) is
+  rejected by config validation unless `Execution.Backend` is `"Container"` — the idea being that
+  "allow all shell" is only a safe unattended policy once the blast radius is a disposable,
+  network-isolated container, not the host. This is enforced both at startup (config binding) and
+  at every relevant `/set --save`-style config write.
+
 ## Configuration
 
 Caliper reads configuration from:
@@ -229,6 +275,8 @@ Important settings:
 | `Permissions.Mode` | Permission mode for side-effecting tools. |
 | `Caliper.Schedules` | Cron job definitions for `--serve` / `/schedule` (name, cron, prompt, per-job overlay). |
 | `Caliper.Scheduler.MaxConcurrentJobs` | How many scheduled jobs may run at once (default 1; applies at `--serve` start). |
+| `Caliper.Execution.Backend` | `Host` (default) or `Container` — where `bash`/`powershell` commands run. Live. |
+| `Caliper.Execution.Image` / `Network` / `Cpus` / `MemoryMb` / `User` | Container-backend knobs (image, `none`\|`bridge` network, CPU/memory limits, `docker run --user`). Live. |
 | `Mcp.Servers` | MCP server definitions. |
 | `Search.Backend` | `Stub` for local/dev use or `Tavily` when configured. |
 | `Persistence.SqlitePath` | SQLite database path for sessions and memory. |

@@ -37,6 +37,12 @@ public interface IConfigWriter
     // can save its edits without racing concurrent edits to unrelated Caliper fields.
     Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct);
 
+    // Execution follows the same nested-slice contract as Subagents/Schedules above (roadmap
+    // §3.3): it is a property of CaliperOptions (Caliper:Execution). SaveExecutionAsync also
+    // re-validates Schedules[].Permissions against the new Backend, since CaliperOptionsValidator
+    // validates the whole CaliperOptions together — see ConfigWriter.SaveExecutionAsync.
+    Task<ExecutionOptions> LoadExecutionAsync(CancellationToken ct);
+
     Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SavePermissionsAsync(PermissionsOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SaveProvidersAsync(ProvidersOptions value, CancellationToken ct);
@@ -45,6 +51,7 @@ public interface IConfigWriter
     Task<ConfigWriteResult> SavePersistenceAsync(PersistenceOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SaveSubagentsAsync(SubagentsOptions value, CancellationToken ct);
     Task<ConfigWriteResult> SaveSchedulesAsync(IList<ScheduleOptions> value, CancellationToken ct);
+    Task<ConfigWriteResult> SaveExecutionAsync(ExecutionOptions value, CancellationToken ct);
 }
 
 public sealed record ConfigWriteResult(bool Success, string? Error, bool RestartRequired);

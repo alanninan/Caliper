@@ -382,6 +382,129 @@ public sealed class ConfigWriterTests
         Assert.True(result.RestartRequired);
     }
 
+    [Fact]
+    public async Task SavePermissionsAsync_wildcard_allowlist_fails_when_execution_backend_is_host()
+    {
+        var (writer, files, _) = Build();
+        var before = files.Content;
+
+        var result = await writer.SavePermissionsAsync(
+            new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] },
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("wildcard", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before, files.Content);
+    }
+
+    [Fact]
+    public async Task SavePermissionsAsync_wildcard_allowlist_succeeds_when_execution_backend_is_container()
+    {
+        var (writer, _, _) = Build();
+        await writer.SaveExecutionAsync(new ExecutionOptions { Backend = ExecutionBackendKind.Container }, CancellationToken.None);
+
+        var result = await writer.SavePermissionsAsync(
+            new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] },
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SavePermissionsAsync_non_wildcard_allowlist_succeeds_under_host_backend()
+    {
+        var (writer, _, _) = Build();
+
+        var result = await writer.SavePermissionsAsync(
+            new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["git status", "dotnet build"] },
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+    }
+
+    [Fact]
+    public async Task SaveExecutionAsync_valid_options_round_trips_and_is_live()
+    {
+        var (writer, files, runtime) = Build();
+
+        var result = await writer.SaveExecutionAsync(
+            new ExecutionOptions { Backend = ExecutionBackendKind.Container, Image = "custom:latest", MemoryMb = 8192 },
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.False(result.RestartRequired);
+        using var document = JsonDocument.Parse(files.Content);
+        var execution = document.RootElement.GetProperty("Caliper").GetProperty("Execution");
+        Assert.Equal("custom:latest", execution.GetProperty("Image").GetString());
+        Assert.Equal(ExecutionBackendKind.Container, runtime.Caliper.Execution.Backend);
+        Assert.Equal(8192, runtime.Caliper.Execution.MemoryMb);
+    }
+
+    [Fact]
+    public async Task SaveExecutionAsync_flipping_backend_back_to_host_is_rejected_when_a_saved_schedule_has_a_wildcard_allowlist()
+    {
+        var (writer, _, _) = Build();
+        await writer.SaveExecutionAsync(new ExecutionOptions { Backend = ExecutionBackendKind.Container }, CancellationToken.None);
+        await writer.SaveSchedulesAsync(
+            [
+                new ScheduleOptions
+                {
+                    Name = "job",
+                    Cron = "0 6 * * *",
+                    Prompt = "p",
+                    Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] },
+                },
+            ],
+            CancellationToken.None);
+
+        var result = await writer.SaveExecutionAsync(new ExecutionOptions { Backend = ExecutionBackendKind.Host }, CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("wildcard", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SaveSchedulesAsync_wildcard_overlay_is_rejected_when_execution_backend_is_host()
+    {
+        var (writer, _, _) = Build();
+
+        var result = await writer.SaveSchedulesAsync(
+            [
+                new ScheduleOptions
+                {
+                    Name = "job",
+                    Cron = "0 6 * * *",
+                    Prompt = "p",
+                    Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] },
+                },
+            ],
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+        Assert.Contains("wildcard", result.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SaveSchedulesAsync_wildcard_overlay_succeeds_when_execution_backend_is_container()
+    {
+        var (writer, _, _) = Build();
+        await writer.SaveExecutionAsync(new ExecutionOptions { Backend = ExecutionBackendKind.Container }, CancellationToken.None);
+
+        var result = await writer.SaveSchedulesAsync(
+            [
+                new ScheduleOptions
+                {
+                    Name = "job",
+                    Cron = "0 6 * * *",
+                    Prompt = "p",
+                    Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] },
+                },
+            ],
+            CancellationToken.None);
+
+        Assert.True(result.Success);
+    }
+
     private sealed class FakeConfigFileStore : IConfigFileStore
     {
         public string Content { get; private set; } = """{"Caliper":{},"Permissions":{},"Providers":{},"Mcp":{"Servers":{}},"Search":{},"Persistence":{}}""";

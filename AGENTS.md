@@ -39,7 +39,8 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
 - `src/Caliper.Core/` — engine library. Agent loop (`Agents/AgentRunner.cs`), tools
   (`Tools/`, built-ins in `Tools/BuiltIn/`, MCP in `Tools/Mcp/`), model clients (`Models/`),
   persistence (`Persistence/`, SQLite), context/compaction (`Context/`), skills, memory,
-  permissions (`Permissions/`), cron scheduling (`Scheduling/`, Cronos-based),
+  permissions (`Permissions/`), cron scheduling (`Scheduling/`, Cronos-based), sandboxed shell
+  execution (`Execution/` — `IExecutionBackend`, Host/Container backends, `docker` CLI),
   JSON source-gen (`Protocol/CaliperJsonContext.cs`).
 - `src/Caliper.Console/` — terminal host. `Program.cs` (entry + slash commands), `Rendering/`,
   `Commands/`, and `ConsolePermissionPrompt`.
@@ -71,6 +72,19 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   denylist is always merged in.
 - **Config precedence:** `~/.caliper/config.json` → `CALIPER_` env vars → CLI overrides.
   The live options class is **`CaliperOptions`** (the `Caliper:` section).
+- **Sandboxed shell execution:** `ShellTool` (bash/powershell) delegates process launch to an
+  `IExecutionBackend`, picked per call from the live `Caliper:Execution:Backend` (`Host` default |
+  `Container`) — never at construction time, since both backends are always-constructed DI
+  singletons. `HostExecutionBackend` is a behavior-preserving extraction of the pre-existing
+  process logic. `ContainerExecutionBackend` runs `docker run` (bash only; a `powershell` call
+  under `Container` fails with a clear message) with the run's working root bind-mounted at
+  `/workspace`, `--network none` by default, and resource limits from `Caliper:Execution`. **Fails
+  closed:** if `docker info` doesn't succeed (probed lazily, cached briefly via `TimeProvider`),
+  every container-backend call returns a failed `ToolResult` — it never silently falls back to the
+  host. **Wildcard allowlist requires Container:** a bare `"*"` in `ShellAutoAllowlist` (global
+  `Permissions` section or a schedule job's overlay) is rejected by validation unless
+  `Execution.Backend == Container` — enforced in `CaliperOptionsValidator`,
+  `PermissionsOptionsValidator`, and the corresponding `ConfigWriter.SaveXAsync` cross-checks.
 
 ## Conventions / exceptions to the global .NET defaults
 

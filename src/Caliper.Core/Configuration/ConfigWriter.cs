@@ -65,6 +65,9 @@ internal sealed class ConfigWriter(
     public async Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct) =>
         (await LoadCaliperAsync(ct).ConfigureAwait(false)).Schedules;
 
+    public async Task<ExecutionOptions> LoadExecutionAsync(CancellationToken ct) =>
+        (await LoadCaliperAsync(ct).ConfigureAwait(false)).Execution;
+
     public async Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct)
     {
         var validation = caliperValidator.Validate(null, value);
@@ -113,6 +116,15 @@ internal sealed class ConfigWriter(
             // at scheduler start, so it's counted in restartRequired below.
             c.Scheduler.MaxConcurrentJobs = value.Scheduler.MaxConcurrentJobs;
             c.Schedules = RuntimeSettings.CloneSchedules(value.Schedules);
+            // Execution is entirely live (roadmap §3.3): ShellTool re-reads
+            // runtimeSettings.Caliper.Execution.Backend per call, and both HostExecutionBackend and
+            // ContainerExecutionBackend are always-constructed DI singletons, so flipping Backend or
+            // tuning Image/Network/Cpus/MemoryMb/User never needs a restart. The only thing that
+            // *is* cached across calls is ContainerExecutionBackend's docker-availability probe
+            // result (a short TimeProvider-driven TTL, not tied to this save path) — a save here
+            // doesn't need to (and can't cheaply) invalidate that cache; a stale "unavailable"
+            // verdict self-heals within the TTL.
+            c.Execution = RuntimeSettings.CloneExecution(value.Execution);
         });
 
         var restartRequired =
@@ -128,6 +140,19 @@ internal sealed class ConfigWriter(
     public async Task<ConfigWriteResult> SavePermissionsAsync(PermissionsOptions value, CancellationToken ct)
     {
         var root = await ReadRootAsync(ct).ConfigureAwait(false);
+
+        // Cross-section guard (roadmap §3.3 payoff): the global ShellAutoAllowlist can be used
+        // unattended (--unattended/--serve fall back to it when a job has no overlay of its own),
+        // so it is subject to the same wildcard-requires-container rule as a per-schedule overlay
+        // (see CaliperOptionsValidator.ValidateSchedules and PermissionsOptionsValidator, which
+        // enforces the same rule at bind time). Read the *currently persisted* Execution section
+        // fresh from the file rather than runtimeSettings — ReadRootAsync always re-reads
+        // config.json, so this sees the latest saved Backend even if this call raced a concurrent
+        // SaveExecutionAsync.
+        var currentCaliper = ReadSection(root, CaliperSection, CaliperJsonContext.Default.CaliperOptions) ?? new CaliperOptions();
+        if (UnattendedAllowlistGuard.Validate(value.ShellAutoAllowlist, currentCaliper.Execution.Backend, "The global Permissions section's") is { } wildcardError)
+            return Invalid([wildcardError]);
+
         root[PermissionsSection] = JsonSerializer.SerializeToNode(value, CaliperJsonContext.Default.PermissionsOptions);
         await WriteRootAsync(root, ct).ConfigureAwait(false);
 
@@ -319,6 +344,23 @@ internal sealed class ConfigWriter(
         // SaveCaliperAsync's UpdateCaliper block.
         var current = await LoadCaliperAsync(ct).ConfigureAwait(false);
         current.Schedules = value;
+        return await SaveCaliperAsync(current, ct).ConfigureAwait(false);
+    }
+
+    public async Task<ConfigWriteResult> SaveExecutionAsync(ExecutionOptions value, CancellationToken ct)
+    {
+        // Same nested-slice pattern as SaveSubagentsAsync/SaveSchedulesAsync: Execution lives inside
+        // the Caliper section, so reuse SaveCaliperAsync's validate/persist/live-update pipeline
+        // against a copy of the current Caliper section with just Execution swapped in.
+        // CaliperOptionsValidator validates the *whole* CaliperOptions together, so this call also
+        // re-validates every already-saved Schedules[].Permissions.ShellAutoAllowlist against the
+        // new Backend (UnattendedAllowlistGuard) — flipping Backend back to Host after a schedule
+        // was saved with a bare "*" allowlist under Container is rejected here, not just at
+        // SaveSchedulesAsync time. The whole section is live; see the comment inside
+        // SaveCaliperAsync's UpdateCaliper block for what "live" does and doesn't cover (the docker
+        // probe cache in particular).
+        var current = await LoadCaliperAsync(ct).ConfigureAwait(false);
+        current.Execution = value;
         return await SaveCaliperAsync(current, ct).ConfigureAwait(false);
     }
 

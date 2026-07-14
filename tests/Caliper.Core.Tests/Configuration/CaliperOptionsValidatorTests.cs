@@ -245,4 +245,103 @@ public sealed class CaliperOptionsValidatorTests
         Assert.False(result.Succeeded);
         Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(SchedulerOptions.MaxConcurrentJobs), StringComparison.Ordinal));
     }
+
+    [Fact]
+    public void Default_execution_options_pass()
+    {
+        var result = Validate(new CaliperOptions());
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Execution_non_positive_cpus_fails()
+    {
+        var options = new CaliperOptions();
+        options.Execution.Cpus = 0;
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(ExecutionOptions.Cpus), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Execution_non_positive_memory_fails()
+    {
+        var options = new CaliperOptions();
+        options.Execution.MemoryMb = 0;
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(ExecutionOptions.MemoryMb), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Execution_blank_image_is_fine_under_Host_but_fails_under_Container()
+    {
+        var hostOptions = new CaliperOptions();
+        hostOptions.Execution.Image = "";
+        Assert.True(Validate(hostOptions).Succeeded);
+
+        var containerOptions = new CaliperOptions();
+        containerOptions.Execution.Backend = ExecutionBackendKind.Container;
+        containerOptions.Execution.Image = " ";
+
+        var result = Validate(containerOptions);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(ExecutionOptions.Image), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Execution_blank_user_fails_only_under_Container()
+    {
+        var options = new CaliperOptions();
+        options.Execution.Backend = ExecutionBackendKind.Container;
+        options.Execution.User = "";
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(ExecutionOptions.User), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_bare_wildcard_allowlist_fails_under_Host_backend()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] };
+        var options = new CaliperOptions { Schedules = [schedule], Execution = new ExecutionOptions { Backend = ExecutionBackendKind.Host } };
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains("wildcard", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_bare_wildcard_allowlist_passes_under_Container_backend()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["*"] };
+        var options = new CaliperOptions { Schedules = [schedule], Execution = new ExecutionOptions { Backend = ExecutionBackendKind.Container } };
+
+        var result = Validate(options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_non_wildcard_allowlist_passes_under_Host_backend()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["git status", "dotnet build"] };
+        var options = new CaliperOptions { Schedules = [schedule], Execution = new ExecutionOptions { Backend = ExecutionBackendKind.Host } };
+
+        var result = Validate(options);
+
+        Assert.True(result.Succeeded);
+    }
 }

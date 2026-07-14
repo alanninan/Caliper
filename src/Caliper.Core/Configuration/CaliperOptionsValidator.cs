@@ -55,11 +55,39 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
 
         ValidateSubagents(options.Subagents, failures);
         ValidateScheduler(options.Scheduler, failures);
-        ValidateSchedules(options.Schedules, failures);
+        ValidateExecution(options.Execution, failures);
+        ValidateSchedules(options.Schedules, options.Execution, failures);
 
         return failures.Count > 0
             ? ValidateOptionsResult.Fail(failures)
             : ValidateOptionsResult.Success;
+    }
+
+    // Roadmap §3.3: enum values, positive resource limits, and (only when the container backend is
+    // actually selected) a non-blank image/user — a Host-backend config doesn't need those two
+    // populated since docker is never invoked.
+    private static void ValidateExecution(ExecutionOptions execution, List<string> failures)
+    {
+        if (!Enum.IsDefined(execution.Backend))
+            failures.Add($"{nameof(ExecutionOptions.Backend)} must be Host or Container (was '{execution.Backend}').");
+
+        if (!Enum.IsDefined(execution.Network))
+            failures.Add($"{nameof(ExecutionOptions.Network)} must be None or Bridge (was '{execution.Network}').");
+
+        if (execution.Cpus <= 0)
+            failures.Add($"{nameof(ExecutionOptions.Cpus)} must be > 0 (was {execution.Cpus}).");
+
+        if (execution.MemoryMb <= 0)
+            failures.Add($"{nameof(ExecutionOptions.MemoryMb)} must be > 0 (was {execution.MemoryMb}).");
+
+        if (execution.Backend == ExecutionBackendKind.Container)
+        {
+            if (string.IsNullOrWhiteSpace(execution.Image))
+                failures.Add($"{nameof(ExecutionOptions.Image)} must not be empty when {nameof(ExecutionOptions.Backend)} is Container.");
+
+            if (string.IsNullOrWhiteSpace(execution.User))
+                failures.Add($"{nameof(ExecutionOptions.User)} must not be empty when {nameof(ExecutionOptions.Backend)} is Container.");
+        }
     }
 
     private static void ValidateScheduler(SchedulerOptions scheduler, List<string> failures)
@@ -71,7 +99,7 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
     // Roadmap §3.2b: the same rules run at binding/startup (here) and at save time
     // (ConfigWriter.SaveSchedulesAsync funnels through SaveCaliperAsync, which calls this
     // validator), so an invalid schedule is rejected in both places by one implementation.
-    private static void ValidateSchedules(IList<ScheduleOptions> schedules, List<string> failures)
+    private static void ValidateSchedules(IList<ScheduleOptions> schedules, ExecutionOptions execution, List<string> failures)
     {
         var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var schedule in schedules)
@@ -114,6 +142,15 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
 
             if (schedule.MaxSteps is { } maxSteps && maxSteps <= 0)
                 failures.Add($"Schedule '{name}' MaxSteps must be > 0 (was {maxSteps}).");
+
+            // Roadmap §3.3 payoff: a job overlay's own ShellAutoAllowlist is subject to the same
+            // wildcard-requires-container rule as the global Permissions section (see
+            // ConfigWriter.SavePermissionsAsync) — a schedule always runs unattended.
+            if (schedule.Permissions is { } overlay &&
+                UnattendedAllowlistGuard.Validate(overlay.ShellAutoAllowlist, execution.Backend, $"Schedule '{name}'") is { } wildcardError)
+            {
+                failures.Add(wildcardError);
+            }
         }
     }
 

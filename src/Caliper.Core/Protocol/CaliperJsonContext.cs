@@ -46,4 +46,5 @@ namespace Caliper.Core.Protocol;
 [JsonSerializable(typeof(SchedulerOptions))]
 [JsonSerializable(typeof(ScheduleOptions))]
 [JsonSerializable(typeof(List<ScheduleOptions>))]
+[JsonSerializable(typeof(ExecutionOptions))]
 internal sealed partial class CaliperJsonContext : JsonSerializerContext { }

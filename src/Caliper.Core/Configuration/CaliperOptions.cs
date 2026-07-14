@@ -31,6 +31,7 @@ public sealed class CaliperOptions
     public SubagentsOptions Subagents { get; set; } = new();
     public SchedulerOptions Scheduler { get; set; } = new();
     public IList<ScheduleOptions> Schedules { get; set; } = [];
+    public ExecutionOptions Execution { get; set; } = new();
 }
 
 /// <summary>
@@ -134,6 +135,68 @@ public sealed class SubagentProfileOptions
 
     /// <summary>Null means "don't tighten beyond the parent's own effective mode".</summary>
     public PermissionMode? Mode { get; set; }
+}
+
+/// <summary>
+/// Roadmap §3.3 sandboxed shell execution (<c>Caliper:Execution</c>). Read fresh per shell-tool
+/// invocation via <c>IRuntimeSettings.Caliper.Execution</c> — the whole section is a live seam
+/// (see <c>ConfigWriter.SaveExecutionAsync</c>), so flipping <see cref="Backend"/> between
+/// <see cref="ExecutionBackendKind.Host"/> and <see cref="ExecutionBackendKind.Container"/>, or
+/// tuning the container knobs, applies to the very next shell call without a restart. Both
+/// backends are always constructed (DI registers both singletons unconditionally); only the live
+/// <see cref="Backend"/> read decides which one a given call uses, which is what makes the live
+/// seam safe — there is no "swap the wiring" step that could race a concurrent run.
+/// </summary>
+public sealed class ExecutionOptions
+{
+    /// <summary>
+    /// <see cref="ExecutionBackendKind.Host"/> (default) runs shell commands directly on the host,
+    /// exactly as before this feature existed. <see cref="ExecutionBackendKind.Container"/> routes
+    /// them through <c>docker run</c> (Linux containers only; see <see cref="Image"/>'s remarks) —
+    /// fail-closed: if Docker is unavailable, shell tools return a failed <c>ToolResult</c> rather
+    /// than silently falling back to the host.
+    /// </summary>
+    public ExecutionBackendKind Backend { get; set; } = ExecutionBackendKind.Host;
+
+    /// <summary>
+    /// The container image `docker run` uses. Only consulted when <see cref="Backend"/> is
+    /// <see cref="ExecutionBackendKind.Container"/>. Requires Docker Desktop with the WSL2/Linux
+    /// containers backend on Windows — Windows containers are not supported, and the
+    /// <c>powershell</c> tool is rejected outright under the container backend (bash only in v1).
+    /// </summary>
+    public string Image { get; set; } = "mcr.microsoft.com/dotnet/sdk:10.0";
+
+    /// <summary>
+    /// Container network mode. <see cref="ExecutionNetworkKind.None"/> (default) gives the
+    /// container no network access at all — the setting that makes a broad shell allowlist safe to
+    /// pair with the container backend (see <c>UnattendedAllowlistGuard</c>: a bare <c>"*"</c>
+    /// entry in <c>ShellAutoAllowlist</c> is rejected unless <see cref="Backend"/> is Container).
+    /// </summary>
+    public ExecutionNetworkKind Network { get; set; } = ExecutionNetworkKind.None;
+
+    /// <summary>CPU limit passed to `docker run --cpus`. Fractional values are allowed.</summary>
+    public double Cpus { get; set; } = 2;
+
+    /// <summary>Memory limit in megabytes, passed to `docker run --memory {N}m`.</summary>
+    public int MemoryMb { get; set; } = 4096;
+
+    /// <summary>
+    /// The `docker run --user` value. Defaults to a non-root uid so a command running inside the
+    /// container can't write as root onto the bind-mounted working root.
+    /// </summary>
+    public string User { get; set; } = "1000";
+}
+
+public enum ExecutionBackendKind
+{
+    Host,
+    Container,
+}
+
+public enum ExecutionNetworkKind
+{
+    None,
+    Bridge,
 }
 
 public sealed class ReasoningOptions
