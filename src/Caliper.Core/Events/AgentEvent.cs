@@ -7,6 +7,17 @@ using Caliper.Core.Configuration;
 
 namespace Caliper.Core.Events;
 
+/// <summary>
+/// Every new subtype needs a decision (even if it's "no-op") in each of the three consumers, or a
+/// host silently drops it:
+/// <list type="bullet">
+/// <item>Console <c>Rendering/EventRenderer.cs</c> — render or intentionally ignore.</item>
+/// <item>App <c>ViewModels/AgentEventMapper.cs</c> (transcript, live) and, if the effect should
+/// survive a reload, <c>ViewModels/PersistedTranscriptFactory.cs</c> (stored messages, replay).</item>
+/// <item><c>tests/Caliper.Evals</c> — anywhere events are pattern-matched exhaustively; a default/
+/// ignore arm is fine, it just needs to exist deliberately rather than by omission.</item>
+/// </list>
+/// </summary>
 public abstract record AgentEvent;
 public sealed record TurnStarted(int Step)                                      : AgentEvent;
 public sealed record ReasoningDelta(string Text)                                : AgentEvent;
@@ -29,6 +40,15 @@ public sealed record McpServerFailed(string Name, string Error)                 
 public sealed record UsageReported(int? Prompt, int? Completion, int? CumulativePrompt, int? CumulativeCompletion) : AgentEvent;
 public sealed record RunCompleted(CompletionReason Reason)                      : AgentEvent;
 public sealed record RunFailed(string Error)                                    : AgentEvent;
+
+/// <summary>
+/// Raised by the <c>task</c> subagent tool (roadmap §3.1) via <c>ToolContext.Emit</c> — see that
+/// method's doc comment for why a tool surfaces events this way instead of an AgentRunner special
+/// case. <paramref name="CallId"/> correlates back to the owning <c>ToolInvoked</c>/<c>ToolSucceeded</c>
+/// call.
+/// </summary>
+public sealed record SubagentStarted(string CallId, string ChildSessionId, string Title)       : AgentEvent;
+public sealed record SubagentCompleted(string CallId, string ChildSessionId, CompletionReason? Reason) : AgentEvent;
 
 public sealed record PermissionRequest(
     string Tool,

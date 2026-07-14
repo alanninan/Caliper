@@ -262,6 +262,46 @@ public sealed class ConfigWriterTests
         Assert.Equal("db.sqlite", document.RootElement.GetProperty("Persistence").GetProperty("SqlitePath").GetString());
     }
 
+    [Fact]
+    public async Task SaveSubagentsAsync_round_trips_through_the_Caliper_section_without_disturbing_other_fields()
+    {
+        var (writer, files, _) = Build();
+        await writer.SaveCaliperAsync(new CaliperOptions { Model = "kept-model" }, CancellationToken.None);
+
+        var subagents = new SubagentsOptions { MaxDepth = 3, MaxChildrenPerRun = 4 };
+        var result = await writer.SaveSubagentsAsync(subagents, CancellationToken.None);
+
+        Assert.True(result.Success);
+        using var document = JsonDocument.Parse(files.Content);
+        var caliper = document.RootElement.GetProperty("Caliper");
+        Assert.Equal("kept-model", caliper.GetProperty("Model").GetString());
+        Assert.Equal(3, caliper.GetProperty("Subagents").GetProperty("MaxDepth").GetInt32());
+    }
+
+    [Fact]
+    public async Task SaveSubagentsAsync_is_live_no_restart_required()
+    {
+        var (writer, _, runtime) = Build();
+
+        var result = await writer.SaveSubagentsAsync(new SubagentsOptions { MaxDepth = 3 }, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.False(result.RestartRequired);
+        Assert.Equal(3, runtime.Caliper.Subagents.MaxDepth);
+    }
+
+    [Fact]
+    public async Task SaveSubagentsAsync_invalid_default_profile_fails_validation()
+    {
+        var (writer, _, _) = Build();
+
+        var result = await writer.SaveSubagentsAsync(
+            new SubagentsOptions { DefaultProfile = "missing-profile" },
+            CancellationToken.None);
+
+        Assert.False(result.Success);
+    }
+
     private sealed class FakeConfigFileStore : IConfigFileStore
     {
         public string Content { get; private set; } = """{"Caliper":{},"Permissions":{},"Providers":{},"Mcp":{"Servers":{}},"Search":{},"Persistence":{}}""";

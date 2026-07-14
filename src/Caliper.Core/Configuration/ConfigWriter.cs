@@ -59,6 +59,9 @@ internal sealed class ConfigWriter(
         ReadSection(await ReadRootAsync(ct).ConfigureAwait(false), PersistenceSection, CaliperJsonContext.Default.PersistenceOptions)
             ?? new PersistenceOptions();
 
+    public async Task<SubagentsOptions> LoadSubagentsAsync(CancellationToken ct) =>
+        (await LoadCaliperAsync(ct).ConfigureAwait(false)).Subagents;
+
     public async Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct)
     {
         var validation = caliperValidator.Validate(null, value);
@@ -99,6 +102,7 @@ internal sealed class ConfigWriter(
             c.Memory.Enabled = value.Memory.Enabled;
             c.Memory.GlobalDir = value.Memory.GlobalDir;
             c.Memory.ProjectFile = value.Memory.ProjectFile;
+            c.Subagents = CloneSubagents(value.Subagents);
         });
 
         var restartRequired =
@@ -281,6 +285,40 @@ internal sealed class ConfigWriter(
         // SqliteStoreBase binds IOptions<PersistenceOptions> once at singleton construction — no
         // live seam exists.
         return Success(restartRequired: true);
+    }
+
+    public async Task<ConfigWriteResult> SaveSubagentsAsync(SubagentsOptions value, CancellationToken ct)
+    {
+        // Reuse SaveCaliperAsync's own validation/persistence/live-update pipeline against a copy
+        // of the current Caliper section with just Subagents swapped in, rather than duplicating
+        // that logic here — see the interface comment for why Subagents gets its own Save method
+        // even though it lives inside the Caliper section rather than being its own top-level one.
+        var current = await LoadCaliperAsync(ct).ConfigureAwait(false);
+        current.Subagents = value;
+        return await SaveCaliperAsync(current, ct).ConfigureAwait(false);
+    }
+
+    private static SubagentsOptions CloneSubagents(SubagentsOptions source)
+    {
+        var profiles = new Dictionary<string, SubagentProfileOptions>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, profile) in source.Profiles)
+        {
+            profiles[name] = new SubagentProfileOptions
+            {
+                EnabledTools = [.. profile.EnabledTools],
+                MaxSteps = profile.MaxSteps,
+                Mode = profile.Mode,
+            };
+        }
+
+        return new SubagentsOptions
+        {
+            MaxDepth = source.MaxDepth,
+            MaxChildrenPerRun = source.MaxChildrenPerRun,
+            DefaultProfile = source.DefaultProfile,
+            TimeoutSeconds = source.TimeoutSeconds,
+            Profiles = profiles,
+        };
     }
 
     private async Task<JsonObject> ReadRootAsync(CancellationToken ct)

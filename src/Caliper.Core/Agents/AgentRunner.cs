@@ -74,6 +74,12 @@ public sealed class AgentRunner(
         string? cachedMemoryRender = null;
         var memoryDirty = memoryEnabled;
         int? lastPromptEstimate = null;
+        // One instance per RunAsync call (a top-level run or a subagent's own child run each get a
+        // fresh one), threaded through every ToolContext this run builds — see SubagentRunState's
+        // doc comment for why this, not a dictionary keyed by session/parent id, is the child-count
+        // guard's home: it scopes MaxChildrenPerRun to exactly "this run" with no extra bookkeeping
+        // to reset or leak across runs.
+        var subagentState = new SubagentRunState();
 
         // load_skill call/result pairs persist in the transcript, so on a resumed session the model
         // believes a skill is loaded — but loadedBodies is per-RunAsync, so its body would be
@@ -220,7 +226,17 @@ public sealed class AgentRunner(
 
             foreach (var call in turn.ToolCalls)
             {
-                if (call.Tool == "load_skill")
+                // Carried-forward item B: the load_skill special-case bypasses the tool registry
+                // entirely (LoadSkillTool.InvokeAsync is never actually called — it only exists so
+                // the registry surfaces its schema), so a ToolFilter can't restrict it the way it
+                // restricts every other tool via effectiveToolRegistry.Find. Gate directly on the
+                // filter instead: a run whose ToolFilter excludes load_skill falls through to the
+                // general dispatch path below, where it resolves as "Unknown tool" like anything
+                // else outside the filter. A null ToolFilter (the common case) keeps today's
+                // behavior unchanged.
+                var loadSkillAllowed = spec.ToolFilter is null ||
+                    spec.ToolFilter.Contains("load_skill", StringComparer.OrdinalIgnoreCase);
+                if (call.Tool == "load_skill" && loadSkillAllowed)
                 {
                     // Persist the tool-call message first so the stored transcript is a valid
                     // call→result pair; a result without its call is rejected on the next model turn.
@@ -286,16 +302,39 @@ public sealed class AgentRunner(
                 await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
                 yield return new ToolInvoked(call.CallId, call.Tool, call.Arguments);
 
+                // File tools may cross WorkingRoot only after the permission gate has approved
+                // the call or the path is under a configured auto-allow root.
+                var allowOutsideWorkingRoot = Caliper.Core.Permissions.FileAccessPolicy.IsFileTool(call.Tool);
+                var toolCtx = new ToolContext(
+                    httpClientFactory,
+                    logger,
+                    opts.SkillsDirectory,
+                    ResolveRoot(opts.WorkingRoot),
+                    allowOutsideWorkingRoot,
+                    ct,
+                    spec.SessionId,
+                    call.CallId,
+                    spec.SubagentDepth,
+                    subagentState,
+                    spec.PermissionsOverlay);
+
                 ToolResult? result = null;
                 var toolCancelled = false;
                 try
                 {
-                    result = await DispatchWithRetry(call, tool, opts, ct).ConfigureAwait(false);
+                    result = await DispatchWithRetry(call, tool, opts, toolCtx, ct).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested)
                 {
                     toolCancelled = true;
                 }
+
+                // Drain any events the tool raised via ToolContext.Emit (e.g. the subagent tool's
+                // SubagentStarted/SubagentCompleted — see ToolContext.Emit's doc comment for why
+                // this is the mechanism instead of a per-tool special case here) regardless of
+                // outcome, so they still surface even if the dispatch was cancelled or failed.
+                foreach (var emitted in toolCtx.DrainEmittedEvents())
+                    yield return emitted;
 
                 if (toolCancelled)
                 {
@@ -406,7 +445,7 @@ public sealed class AgentRunner(
         return await context.FitAsync(frame, budget, ct).ConfigureAwait(false);
     }
 
-    private async Task<ToolResult> DispatchWithRetry(ToolCall call, ITool? tool, CaliperOptions opts, CancellationToken outerCt)
+    private async Task<ToolResult> DispatchWithRetry(ToolCall call, ITool? tool, CaliperOptions opts, ToolContext toolCtx, CancellationToken outerCt)
     {
         if (tool is null)
             return new ToolResult(false, $"Unknown tool: {call.Tool}");
@@ -417,16 +456,10 @@ public sealed class AgentRunner(
         if (validationError is not null)
             return new ToolResult(false, $"Invalid arguments for tool '{call.Tool}': {validationError}");
 
-        // File tools may cross WorkingRoot only after the permission gate has approved
-        // the call or the path is under a configured auto-allow root.
-        var allowOutsideWorkingRoot = Caliper.Core.Permissions.FileAccessPolicy.IsFileTool(call.Tool);
-        var toolCtx = new ToolContext(
-            httpClientFactory,
-            logger,
-            opts.SkillsDirectory,
-            ResolveRoot(opts.WorkingRoot),
-            allowOutsideWorkingRoot,
-            outerCt);
+        // Timeout carve-out (roadmap §3.1): a tool whose own work legitimately runs far longer than
+        // the generic per-tool budget (the subagent tool's whole child run) overrides it here rather
+        // than being killed mid-flight by the generic ToolTimeoutSeconds wrapping every other tool.
+        var timeout = tool.ToolTimeoutOverride ?? TimeSpan.FromSeconds(opts.ToolTimeoutSeconds);
 
         // Only retry side-effect-free tools. Re-running a write/execute tool after a partial
         // failure can duplicate or corrupt work, so those get a single attempt.
@@ -438,7 +471,7 @@ public sealed class AgentRunner(
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(outerCt);
-                cts.CancelAfter(TimeSpan.FromSeconds(opts.ToolTimeoutSeconds));
+                cts.CancelAfter(timeout);
                 return await tool.InvokeAsync(call.Arguments, toolCtx, cts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (outerCt.IsCancellationRequested)
@@ -448,7 +481,7 @@ public sealed class AgentRunner(
             catch (OperationCanceledException) when (!outerCt.IsCancellationRequested)
             {
                 if (attempt == maxAttempts)
-                    return new ToolResult(false, $"Tool '{call.Tool}' timed out after {opts.ToolTimeoutSeconds}s.");
+                    return new ToolResult(false, $"Tool '{call.Tool}' timed out after {timeout.TotalSeconds:0.###}s.");
                 await BackoffAsync(attempt, outerCt).ConfigureAwait(false);
             }
             catch (Exception ex) when (attempt < maxAttempts && IsRetryable(ex))

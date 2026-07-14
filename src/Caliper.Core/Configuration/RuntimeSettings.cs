@@ -276,7 +276,31 @@ internal sealed class RuntimeSettings(
                 GlobalDir = source.Memory.GlobalDir,
                 ProjectFile = source.Memory.ProjectFile,
             },
+            Subagents = CloneSubagents(source.Subagents),
         };
+
+    private static SubagentsOptions CloneSubagents(SubagentsOptions source)
+    {
+        var profiles = new Dictionary<string, SubagentProfileOptions>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, profile) in source.Profiles)
+        {
+            profiles[name] = new SubagentProfileOptions
+            {
+                EnabledTools = [.. profile.EnabledTools],
+                MaxSteps = profile.MaxSteps,
+                Mode = profile.Mode,
+            };
+        }
+
+        return new SubagentsOptions
+        {
+            MaxDepth = source.MaxDepth,
+            MaxChildrenPerRun = source.MaxChildrenPerRun,
+            DefaultProfile = source.DefaultProfile,
+            TimeoutSeconds = source.TimeoutSeconds,
+            Profiles = profiles,
+        };
+    }
 
     private static PermissionsOptions Clone(PermissionsOptions source) =>
         new()

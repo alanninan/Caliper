@@ -6,6 +6,7 @@ using System.Text.Json;
 using Caliper.App.Permissions;
 using Caliper.App.ViewModels;
 using Caliper.Core.Abstractions;
+using Caliper.Core.Agents;
 using Caliper.Core.Context;
 using Caliper.Core.Events;
 using Caliper.Core.Models;
@@ -321,6 +322,19 @@ public sealed class ChatViewModelTests
 
     private sealed class FakeConversationOrchestrator : IConversationOrchestrator
     {
+        public Task<ConversationRunResult> RunToCompletionAsync(
+            string sessionId,
+            string prompt,
+            Func<AgentEvent, CancellationToken, ValueTask>? onEvent,
+            CancellationToken ct) =>
+            Task.FromResult(new ConversationRunResult(null, null, null, []));
+
+        public Task<ConversationRunResult> RunToCompletionAsync(
+            RunSpec spec,
+            Func<AgentEvent, CancellationToken, ValueTask>? onEvent,
+            CancellationToken ct) =>
+            Task.FromResult(new ConversationRunResult(null, null, null, []));
+
         public Task<ContextFit> ForceCompactAsync(string sessionId, CancellationToken ct) =>
             Task.FromResult(new ContextFit([], Compacted: false, BeforeTokens: null, AfterTokens: null, EstimatedPromptTokens: null));
     }

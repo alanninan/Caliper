@@ -26,7 +26,16 @@ internal sealed class SqliteSessionStore(
         return summary.Id;
     }
 
-    public async Task<SessionSummary> CreateWithSummaryAsync(string? title, CancellationToken ct)
+    public async Task<string> CreateAsync(string? title, string? parentSessionId, CancellationToken ct)
+    {
+        var summary = await CreateWithSummaryAsync(title, parentSessionId, ct).ConfigureAwait(false);
+        return summary.Id;
+    }
+
+    public Task<SessionSummary> CreateWithSummaryAsync(string? title, CancellationToken ct) =>
+        CreateWithSummaryAsync(title, parentSessionId: null, ct);
+
+    public async Task<SessionSummary> CreateWithSummaryAsync(string? title, string? parentSessionId, CancellationToken ct)
     {
         await EnsureCreatedAsync(ct).ConfigureAwait(false);
 
@@ -35,8 +44,8 @@ internal sealed class SqliteSessionStore(
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            INSERT INTO sessions (id, title, model, created_at)
-            VALUES ($id, $title, $model, $created_at);
+            INSERT INTO sessions (id, title, model, created_at, parent_session_id)
+            VALUES ($id, $title, $model, $created_at, $parent_session_id);
             """;
         command.Parameters.AddWithValue("$id", id);
         command.Parameters.AddWithValue("$title", (object?)title ?? DBNull.Value);
@@ -46,9 +55,10 @@ internal sealed class SqliteSessionStore(
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind);
         command.Parameters.AddWithValue("$created_at", createdAt.ToString("O", CultureInfo.InvariantCulture));
+        command.Parameters.AddWithValue("$parent_session_id", (object?)parentSessionId ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
-        return new SessionSummary(id, title, createdAt);
+        return new SessionSummary(id, title, createdAt, parentSessionId);
     }
 
     public async Task AppendAsync(string sessionId, ChatMessage message, CancellationToken ct)
@@ -106,7 +116,7 @@ internal sealed class SqliteSessionStore(
 
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT id, title, created_at
+            SELECT id, title, created_at, parent_session_id
             FROM sessions
             ORDER BY created_at DESC;
             """;
@@ -118,7 +128,8 @@ internal sealed class SqliteSessionStore(
             sessions.Add(new SessionSummary(
                 reader.GetString(0),
                 reader.IsDBNull(1) ? null : reader.GetString(1),
-                DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind)));
+                DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+                reader.IsDBNull(3) ? null : reader.GetString(3)));
         }
 
         return sessions;
@@ -195,6 +206,9 @@ internal sealed class SqliteSessionStore(
         // Compaction supersedes messages rather than deleting them, so the original transcript
         // survives for audit/replay. Added via migration so existing databases upgrade in place.
         await EnsureColumnAsync(connection, "messages", "superseded_at", "TEXT", ct).ConfigureAwait(false);
+        // Subagent (roadmap §3.1) child sessions are tagged with their parent's session id so
+        // hosts can filter them out of the main sessions list.
+        await EnsureColumnAsync(connection, "sessions", "parent_session_id", "TEXT", ct).ConfigureAwait(false);
     }
 
     public async Task ReplaceWithCompactionAsync(string sessionId, ContextFit fit, CancellationToken ct)

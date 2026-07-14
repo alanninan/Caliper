@@ -21,6 +21,14 @@ public interface ITool
     /// narrow it so read-only invocations are not gated as writes.
     /// </summary>
     SideEffect EffectiveSideEffect(JsonElement arguments) => SideEffect;
+
+    /// <summary>
+    /// Overrides the generic <c>CaliperOptions.ToolTimeoutSeconds</c> wrapping applied by
+    /// dispatch (<c>AgentRunner.DispatchWithRetry</c>). Null (the default) keeps the generic
+    /// timeout. A tool whose own work is expected to run far longer — e.g. a subagent's whole
+    /// child run — returns its own budget here instead.
+    /// </summary>
+    TimeSpan? ToolTimeoutOverride => null;
 }
 
 public enum SideEffect

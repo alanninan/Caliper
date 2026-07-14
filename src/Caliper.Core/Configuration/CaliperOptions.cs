@@ -20,7 +20,7 @@ public sealed class CaliperOptions
     public IList<string> EnabledTools { get; set; } =
     [
         "search", "fetch_url", "read_file", "list_dir", "glob", "grep",
-        "write_file", "edit_file", "bash", "powershell", "memory", "load_skill",
+        "write_file", "edit_file", "bash", "powershell", "memory", "load_skill", "task",
     ];
     public string WorkingRoot { get; set; } = ".";
     public string SkillsDirectory { get; set; } = "~/.caliper/skills";
@@ -28,6 +28,56 @@ public sealed class CaliperOptions
     public int MaxSurfacedSkills { get; set; } = 12;
     public ContextOptions Context { get; set; } = new();
     public MemoryOptions Memory { get; set; } = new();
+    public SubagentsOptions Subagents { get; set; } = new();
+}
+
+/// <summary>
+/// Roadmap §3.1 subagents config (<c>Caliper:Subagents</c>). Read fresh per <c>task</c> tool
+/// invocation via <c>IRuntimeSettings.Caliper.Subagents</c> — profiles, limits, and the default
+/// profile are all a live seam; see <c>ConfigWriter.SaveSubagentsAsync</c>.
+/// </summary>
+public sealed class SubagentsOptions
+{
+    /// <summary>Parent runs are depth 0; a run at depth == MaxDepth cannot spawn another child.</summary>
+    public int MaxDepth { get; set; } = 2;
+
+    /// <summary>Children a single run may spawn, counted per run (see <c>SubagentRunState</c>).</summary>
+    public int MaxChildrenPerRun { get; set; } = 8;
+
+    /// <summary>Profile name used when the <c>task</c> call omits <c>profile</c>.</summary>
+    public string DefaultProfile { get; set; } = "research";
+
+    /// <summary>Wall-clock budget for one child run; also <c>SubagentTool.ToolTimeoutOverride</c>.</summary>
+    public int TimeoutSeconds { get; set; } = 600;
+
+    public IDictionary<string, SubagentProfileOptions> Profiles { get; set; } =
+        new Dictionary<string, SubagentProfileOptions>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["research"] = new SubagentProfileOptions
+            {
+                EnabledTools = ["read_file", "list_dir", "glob", "grep", "search", "fetch_url", "load_skill"],
+                MaxSteps = 15,
+            },
+            ["worker"] = new SubagentProfileOptions
+            {
+                EnabledTools = ["read_file", "list_dir", "glob", "grep", "edit_file", "write_file", "bash", "powershell", "load_skill"],
+                MaxSteps = 25,
+            },
+        };
+}
+
+/// <summary>
+/// A named, host-defined tool grant a <c>task</c> call may select by name (never compose its own —
+/// roadmap §7 Q1). <see cref="Mode"/> only ever tightens the parent's effective permission mode
+/// (restrict-only overlay); see <c>SubagentTool</c>'s restrictiveness ordering.
+/// </summary>
+public sealed class SubagentProfileOptions
+{
+    public IList<string> EnabledTools { get; set; } = [];
+    public int MaxSteps { get; set; } = 15;
+
+    /// <summary>Null means "don't tighten beyond the parent's own effective mode".</summary>
+    public PermissionMode? Mode { get; set; }
 }
 
 public sealed class ReasoningOptions

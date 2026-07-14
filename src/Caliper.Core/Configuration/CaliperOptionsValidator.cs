@@ -53,8 +53,36 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
         if (options.Context.ReservedOutputTokens <= 0)
             failures.Add($"{nameof(ContextOptions.ReservedOutputTokens)} must be > 0 (was {options.Context.ReservedOutputTokens}).");
 
+        ValidateSubagents(options.Subagents, failures);
+
         return failures.Count > 0
             ? ValidateOptionsResult.Fail(failures)
             : ValidateOptionsResult.Success;
+    }
+
+    private static void ValidateSubagents(SubagentsOptions subagents, List<string> failures)
+    {
+        if (subagents.MaxDepth < 1)
+            failures.Add($"{nameof(SubagentsOptions.MaxDepth)} must be >= 1 (was {subagents.MaxDepth}).");
+
+        if (subagents.MaxChildrenPerRun <= 0)
+            failures.Add($"{nameof(SubagentsOptions.MaxChildrenPerRun)} must be > 0 (was {subagents.MaxChildrenPerRun}).");
+
+        if (subagents.TimeoutSeconds <= 0)
+            failures.Add($"{nameof(SubagentsOptions.TimeoutSeconds)} must be > 0 (was {subagents.TimeoutSeconds}).");
+
+        if (string.IsNullOrWhiteSpace(subagents.DefaultProfile))
+            failures.Add($"{nameof(SubagentsOptions.DefaultProfile)} must not be empty.");
+        else if (!subagents.Profiles.ContainsKey(subagents.DefaultProfile))
+            failures.Add($"{nameof(SubagentsOptions.DefaultProfile)} '{subagents.DefaultProfile}' is not a key in {nameof(SubagentsOptions.Profiles)}.");
+
+        foreach (var (name, profile) in subagents.Profiles)
+        {
+            if (profile.EnabledTools.Count == 0)
+                failures.Add($"Subagent profile '{name}' must list at least one tool in {nameof(SubagentProfileOptions.EnabledTools)}.");
+
+            if (profile.MaxSteps <= 0)
+                failures.Add($"Subagent profile '{name}' {nameof(SubagentProfileOptions.MaxSteps)} must be > 0 (was {profile.MaxSteps}).");
+        }
     }
 }

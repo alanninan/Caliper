@@ -111,6 +111,16 @@ public sealed class EventRenderer(
                 AnsiConsole.MarkupLine($"[red]MCP failed:[/] {Markup.Escape(server)} [dim]{Markup.Escape(error)}[/]");
                 break;
 
+            case SubagentStarted(_, var childSessionId, var title):
+                AnsiConsole.MarkupLine($"[blue]Subagent started:[/] {Markup.Escape(title)} [dim]({childSessionId[..Math.Min(8, childSessionId.Length)]})[/]");
+                break;
+
+            case SubagentCompleted(_, var childSessionId, var reason):
+                var reasonText = reason?.ToString() ?? "Error";
+                var style = reason == CompletionReason.Completed ? "green" : "yellow";
+                AnsiConsole.MarkupLine($"[{style}]Subagent finished:[/] {reasonText} [dim]({childSessionId[..Math.Min(8, childSessionId.Length)]})[/]");
+                break;
+
             case RunCompleted completed:
                 if (completed.Reason != CompletionReason.Completed)
                     AnsiConsole.MarkupLine($"[yellow]Run ended: {completed.Reason}[/]");

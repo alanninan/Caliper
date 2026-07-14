@@ -534,6 +534,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <Grid ColumnSpacing="8">
@@ -564,7 +565,12 @@
                     AutomationProperties.AutomationId="SessionSearchBox"
                     PlaceholderText="Search sessions"
                     Text="{x:Bind Sessions.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <Grid Grid.Row="2">
+                <CheckBox
+                    Grid.Row="2"
+                    AutomationProperties.AutomationId="ShowSubagentRunsToggle"
+                    Content="Show subagent runs"
+                    IsChecked="{x:Bind Sessions.ShowSubagentRuns, Mode=TwoWay}" />
+                <Grid Grid.Row="3">
                     <ListView
                         x:Name="SessionList"
                         AutomationProperties.AutomationId="SessionList"

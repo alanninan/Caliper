@@ -121,6 +121,62 @@ public sealed class AgentRunnerGuardrailTests
     }
 
     [Fact]
+    public async Task Load_skill_excluded_by_ToolFilter_resolves_as_unknown_tool_and_does_not_load()
+    {
+        // Carried-forward item B: the load_skill special-case bypasses the tool registry entirely,
+        // so it needs its own ToolFilter check rather than inheriting FilteredToolRegistry's.
+        var strategy = CapturingTurnStrategy.Returning(
+            LoadSkill("pdf-processing"),
+            Respond("done"));
+
+        var runner = Build(strategy, skillStore: new SingleSkillStore());
+        var spec = new RunSpec("test-session", "load a skill") { ToolFilter = ["some_other_tool"] };
+
+        var events = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.Contains(events, e => e is ToolFailed { Tool: "load_skill" } failed && failed.Error.Contains("Unknown tool", StringComparison.Ordinal));
+        Assert.DoesNotContain(events, e => e is SkillLoaded);
+        Assert.Contains(events, e => e is AssistantMessage { Content: "done" });
+    }
+
+    [Fact]
+    public async Task Load_skill_included_in_ToolFilter_still_fires_the_special_case()
+    {
+        var strategy = CapturingTurnStrategy.Returning(
+            LoadSkill("pdf-processing"),
+            Respond("done"));
+
+        var runner = Build(strategy, skillStore: new SingleSkillStore());
+        var spec = new RunSpec("test-session", "load a skill") { ToolFilter = ["load_skill"] };
+
+        var events = await Collect(runner.RunAsync(spec, CancellationToken.None));
+
+        Assert.Contains(events, e => e is SkillLoaded { Skill: "pdf-processing" });
+    }
+
+    [Fact]
+    public async Task ToolTimeoutOverride_is_honored_instead_of_the_generic_ToolTimeoutSeconds()
+    {
+        var tool = new TimeoutOverrideTool(TimeSpan.FromMilliseconds(50));
+        var args = JsonDocument.Parse("{}").RootElement.Clone();
+        var strategy = FakeTurnStrategy.Returning(CallTool(tool.Name, args));
+
+        var runner = Build(
+            strategy,
+            new CaliperOptions { Model = "test", MaxSteps = 4, DuplicateCallLimit = 10, ToolTimeoutSeconds = 60 },
+            registry: new SingleToolRegistry(tool));
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var events = await RunAll(runner, "test-session", "go");
+        stopwatch.Stop();
+
+        Assert.True(
+            stopwatch.Elapsed < TimeSpan.FromSeconds(10),
+            $"Expected the tool's own override timeout (50ms), not the 60s generic ToolTimeoutSeconds; took {stopwatch.Elapsed}.");
+        Assert.Contains(events, e => e is ToolFailed { Tool: "timeout_override" } failed && failed.Error.Contains("timed out", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Repeated_loaded_skill_is_noop_and_can_complete()
     {
         var strategy = CapturingTurnStrategy.Returning(
@@ -765,6 +821,25 @@ file sealed class CancellingTool(CancellationTokenSource outerCancellation) : IT
         InvocationCount++;
         outerCancellation.Cancel();
         throw new OperationCanceledException(ct);
+    }
+}
+
+file sealed class TimeoutOverrideTool(TimeSpan overrideTimeout) : ITool
+{
+    private static readonly JsonElement s_parameterSchema = JsonDocument.Parse(
+        """{"type":"object","additionalProperties":false,"properties":{}}""")
+        .RootElement.Clone();
+
+    public string Name => "timeout_override";
+    public string Description => "Always outlasts its own ToolTimeoutOverride in tests.";
+    public JsonElement ParameterSchema => s_parameterSchema;
+    public SideEffect SideEffect => SideEffect.Execute;
+    public TimeSpan? ToolTimeoutOverride => overrideTimeout;
+
+    public async Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct)
+    {
+        await Task.Delay(Timeout.Infinite, ct).ConfigureAwait(false);
+        return new ToolResult(true, "unreachable");
     }
 }
 

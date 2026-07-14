@@ -44,6 +44,12 @@ public sealed partial class SessionsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsPaneCollapsed { get; set; } = false;
 
+    // Subagent (roadmap §3.1) child sessions are ordinary sessions tagged with a parent id; they're
+    // filtered out of the main list by default and shown behind this toggle, mirroring the pane's
+    // other collapsed-by-default UI state.
+    [ObservableProperty]
+    public partial bool ShowSubagentRuns { get; set; }
+
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
 
@@ -56,6 +62,12 @@ public sealed partial class SessionsViewModel : ObservableObject, IDisposable
 
     partial void OnIsPaneCollapsedChanged(bool value) =>
         _preferencesStore.Save(_preferencesStore.Load() with { SessionsPaneCollapsed = value });
+
+    partial void OnShowSubagentRunsChanged(bool value)
+    {
+        _preferencesStore.Save(_preferencesStore.Load() with { ShowSubagentRuns = value });
+        RebuildFilteredItems();
+    }
 
     partial void OnSearchTextChanged(string value) => RebuildFilteredItems();
 
@@ -70,7 +82,9 @@ public sealed partial class SessionsViewModel : ObservableObject, IDisposable
             return;
 
         _initialized = true;
-        IsPaneCollapsed = _preferencesStore.Load().SessionsPaneCollapsed;
+        var preferences = _preferencesStore.Load();
+        IsPaneCollapsed = preferences.SessionsPaneCollapsed;
+        ShowSubagentRuns = preferences.ShowSubagentRuns;
         var summaries = await _sessions.ListAsync(ct);
         foreach (var summary in summaries)
             Items.Add(CreateItem(summary));
@@ -176,9 +190,12 @@ public sealed partial class SessionsViewModel : ObservableObject, IDisposable
     private void RebuildFilteredItems()
     {
         var query = SearchText.Trim();
-        var filtered = string.IsNullOrEmpty(query)
+        var visible = ShowSubagentRuns
             ? Items.AsEnumerable()
-            : Items.Where(item => item.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
+            : Items.Where(item => !item.IsSubagentRun);
+        var filtered = string.IsNullOrEmpty(query)
+            ? visible
+            : visible.Where(item => item.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         var today = _timeProvider.GetLocalNow().Date;
         var result = new List<object>();

@@ -3,4 +3,4 @@
 // See the LICENSE file in the project root for full license information.
 namespace Caliper.Core.Models;
 
-public sealed record SessionSummary(string Id, string? Title, DateTimeOffset CreatedAt);
+public sealed record SessionSummary(string Id, string? Title, DateTimeOffset CreatedAt, string? ParentSessionId = null);

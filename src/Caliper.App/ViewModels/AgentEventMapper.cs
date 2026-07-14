@@ -96,6 +96,20 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
             case McpServerFailed failed:
                 items.Add(new RunStatusViewModel("MCP connection failed", $"{failed.Name}: {failed.Error}", isError: true));
                 return true;
+            case SubagentStarted started:
+                // Keep-it-simple status card (roadmap §3.1): the child session is an ordinary
+                // session so it's already inspectable from the sessions pane (behind the "Subagent
+                // runs" toggle); live streaming of the child's own events into this transcript is
+                // explicitly deferred (roadmap §8).
+                items.Add(new RunStatusViewModel("Subagent started", started.Title));
+                return true;
+            case SubagentCompleted completed:
+                var reasonText = completed.Reason?.ToString() ?? "Error";
+                items.Add(new RunStatusViewModel(
+                    "Subagent finished",
+                    reasonText,
+                    isError: completed.Reason is not CompletionReason.Completed));
+                return true;
             case ContextCompacted compacted:
                 items.Add(new CompactionMarkerViewModel(
                     "Conversation compacted",

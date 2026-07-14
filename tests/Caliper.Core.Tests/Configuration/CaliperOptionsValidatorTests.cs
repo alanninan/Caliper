@@ -41,4 +41,84 @@ public sealed class CaliperOptionsValidatorTests
         Assert.False(result.Succeeded);
         Assert.True((result.Failures?.Count() ?? 0) >= 4);
     }
+
+    [Fact]
+    public void Default_subagents_options_pass()
+    {
+        var result = Validate(new CaliperOptions());
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Subagents_MaxDepth_below_one_fails()
+    {
+        var options = new CaliperOptions();
+        options.Subagents.MaxDepth = 0;
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(SubagentsOptions.MaxDepth), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Subagents_MaxChildrenPerRun_non_positive_fails()
+    {
+        var options = new CaliperOptions();
+        options.Subagents.MaxChildrenPerRun = 0;
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(SubagentsOptions.MaxChildrenPerRun), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Subagents_TimeoutSeconds_non_positive_fails()
+    {
+        var options = new CaliperOptions();
+        options.Subagents.TimeoutSeconds = 0;
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(SubagentsOptions.TimeoutSeconds), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Subagents_DefaultProfile_missing_from_Profiles_fails()
+    {
+        var options = new CaliperOptions();
+        options.Subagents.DefaultProfile = "does-not-exist";
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains(nameof(SubagentsOptions.DefaultProfile), StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Subagents_profile_with_no_tools_fails()
+    {
+        var options = new CaliperOptions();
+        options.Subagents.Profiles["research"].EnabledTools = [];
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains("research", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Subagents_profile_with_non_positive_MaxSteps_fails()
+    {
+        var options = new CaliperOptions();
+        options.Subagents.Profiles["worker"].MaxSteps = 0;
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains("worker", StringComparison.Ordinal));
+    }
 }

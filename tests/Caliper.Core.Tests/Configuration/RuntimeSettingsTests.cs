@@ -88,6 +88,26 @@ public sealed class RuntimeSettingsTests
     }
 
     [Fact]
+    public void Caliper_getter_deep_clones_Subagents_profiles()
+    {
+        var settings = Build();
+
+        settings.Caliper.Subagents.Profiles["research"].EnabledTools.Add("mutated-only-locally");
+
+        Assert.DoesNotContain("mutated-only-locally", settings.Caliper.Subagents.Profiles["research"].EnabledTools);
+    }
+
+    [Fact]
+    public void UpdateCaliper_applies_Subagents_mutation_to_live_settings()
+    {
+        var settings = Build();
+
+        settings.UpdateCaliper(c => c.Subagents.MaxDepth = 5);
+
+        Assert.Equal(5, settings.Caliper.Subagents.MaxDepth);
+    }
+
+    [Fact]
     public void SetModel_raises_SettingsChanged()
     {
         var settings = Build();

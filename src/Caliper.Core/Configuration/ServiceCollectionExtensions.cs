@@ -136,6 +136,10 @@ public static class ServiceCollectionExtensions
         // working and avoids a startup warning about the OS's non-default shell name.
         services.AddSingleton<ITool>(sp => new ShellTool(sp.GetRequiredService<IOptions<CaliperOptions>>(), "powershell"));
         services.AddSingleton<ITool>(sp => new ShellTool(sp.GetRequiredService<IOptions<CaliperOptions>>(), "bash"));
+        // SubagentTool resolves IConversationOrchestrator lazily from IServiceProvider inside
+        // InvokeAsync rather than a constructor dependency — see its DI-cycle comment — so it can be
+        // registered here like any other ITool without closing the ToolRegistry -> orchestrator cycle.
+        services.AddSingleton<ITool, SubagentTool>();
         services.AddSingleton<IToolRegistry, ToolRegistry>();
 
         // Skills

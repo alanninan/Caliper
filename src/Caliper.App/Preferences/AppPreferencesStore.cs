@@ -12,6 +12,7 @@ public sealed record AppPreferences
 {
     public AppThemePreference Theme { get; init; } = AppThemePreference.System;
     public bool SessionsPaneCollapsed { get; init; }
+    public bool ShowSubagentRuns { get; init; }
     public int? WindowX { get; init; }
     public int? WindowY { get; init; }
     public int? WindowWidth { get; init; }

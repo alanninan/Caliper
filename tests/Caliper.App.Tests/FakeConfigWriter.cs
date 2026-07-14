@@ -19,6 +19,7 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public McpOptions Mcp { get; set; } = new();
     public SearchOptions Search { get; set; } = new();
     public PersistenceOptions Persistence { get; set; } = new();
+    public SubagentsOptions Subagents { get; set; } = new();
 
     public bool NextSuccess { get; set; } = true;
     public string? NextError { get; set; }
@@ -30,6 +31,7 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public McpOptions? SavedMcp { get; private set; }
     public SearchOptions? SavedSearch { get; private set; }
     public PersistenceOptions? SavedPersistence { get; private set; }
+    public SubagentsOptions? SavedSubagents { get; private set; }
 
     public Task<CaliperOptions> LoadCaliperAsync(CancellationToken ct) => Task.FromResult(Caliper);
     public Task<PermissionsOptions> LoadPermissionsAsync(CancellationToken ct) => Task.FromResult(Permissions);
@@ -37,6 +39,7 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public Task<McpOptions> LoadMcpAsync(CancellationToken ct) => Task.FromResult(Mcp);
     public Task<SearchOptions> LoadSearchAsync(CancellationToken ct) => Task.FromResult(Search);
     public Task<PersistenceOptions> LoadPersistenceAsync(CancellationToken ct) => Task.FromResult(Persistence);
+    public Task<SubagentsOptions> LoadSubagentsAsync(CancellationToken ct) => Task.FromResult(Subagents);
 
     public Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct)
     {
@@ -71,6 +74,12 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public Task<ConfigWriteResult> SavePersistenceAsync(PersistenceOptions value, CancellationToken ct)
     {
         SavedPersistence = value;
+        return Task.FromResult(Result());
+    }
+
+    public Task<ConfigWriteResult> SaveSubagentsAsync(SubagentsOptions value, CancellationToken ct)
+    {
+        SavedSubagents = value;
         return Task.FromResult(Result());
     }
 

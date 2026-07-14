@@ -14,6 +14,8 @@ public sealed partial class SessionItemViewModel(
     Func<SessionItemViewModel, string, Task> commitRename) : ObservableObject
 {
     public string Id { get; } = summary.Id;
+    public string? ParentSessionId { get; } = summary.ParentSessionId;
+    public bool IsSubagentRun => ParentSessionId is not null;
     public DateTimeOffset CreatedAt { get; } = summary.CreatedAt;
     public string CreatedText { get; } = summary.CreatedAt.ToLocalTime().ToString("g");
     public string ShortId { get; } = summary.Id[..Math.Min(8, summary.Id.Length)];

@@ -56,6 +56,35 @@ public sealed class SqliteSessionStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateWithSummaryAsync_with_parent_session_id_persists_and_reloads_it()
+    {
+        var path = NewDbPath();
+        var store = Build(path);
+        var parentId = await store.CreateAsync("parent", CancellationToken.None);
+
+        var childSummary = await store.CreateWithSummaryAsync("Subagent: child", parentId, CancellationToken.None);
+
+        Assert.Equal(parentId, childSummary.ParentSessionId);
+        var reloaded = await store.ListAsync(CancellationToken.None);
+        var child = Assert.Single(reloaded, item => item.Id == childSummary.Id);
+        Assert.Equal(parentId, child.ParentSessionId);
+        var parent = Assert.Single(reloaded, item => item.Id == parentId);
+        Assert.Null(parent.ParentSessionId);
+    }
+
+    [Fact]
+    public async Task CreateAsync_without_parent_leaves_ParentSessionId_null()
+    {
+        var path = NewDbPath();
+        var store = Build(path);
+
+        var sessionId = await store.CreateAsync("top-level", CancellationToken.None);
+
+        var sessions = await store.ListAsync(CancellationToken.None);
+        Assert.Null(Assert.Single(sessions, item => item.Id == sessionId).ParentSessionId);
+    }
+
+    [Fact]
     public async Task Persists_across_store_instances()
     {
         var path = NewDbPath();
