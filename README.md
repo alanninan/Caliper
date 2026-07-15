@@ -204,8 +204,10 @@ live, so edits apply without restarting `--serve`):
 ```
 
 Notes: job names are unique (case-insensitive); `TimeZone` is `"local"` or a system time zone id;
-the per-job `Permissions` overlay should set `"Mode": "Auto"` so its allowlists apply (the global
-shell denylist is always merged in and can never be lifted by a job); overlapping occurrences are
+the per-job `Permissions` overlay must set `"Mode": "Auto"` for its allowlists to apply — validation
+rejects a saved overlay that sets `ShellAutoAllowlist`/`AutoAllowFileRoots` under any other `Mode`,
+since those lists are silently inert under an unattended run (the global shell denylist is always
+merged in and can never be lifted by a job); overlapping occurrences are
 skipped, and occurrences missed while the process was down are not replayed. Each run is stored as
 a normal session titled `[job] {name}`. From the interactive REPL, `/schedule run <name>` triggers
 the identical unattended path — useful for testing a job's allowlist before trusting the cron.

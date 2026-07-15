@@ -143,13 +143,30 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
             if (schedule.MaxSteps is { } maxSteps && maxSteps <= 0)
                 failures.Add($"Schedule '{name}' MaxSteps must be > 0 (was {maxSteps}).");
 
-            // Roadmap §3.3 payoff: a job overlay's own ShellAutoAllowlist is subject to the same
-            // wildcard-requires-container rule as the global Permissions section (see
-            // ConfigWriter.SavePermissionsAsync) — a schedule always runs unattended.
-            if (schedule.Permissions is { } overlay &&
-                UnattendedAllowlistGuard.Validate(overlay.ShellAutoAllowlist, execution.Backend, $"Schedule '{name}'") is { } wildcardError)
+            if (schedule.Permissions is { } overlay)
             {
-                failures.Add(wildcardError);
+                // Roadmap §3.3 payoff: a job overlay's own ShellAutoAllowlist is subject to the
+                // same wildcard-requires-container rule as the global Permissions section (see
+                // ConfigWriter.SavePermissionsAsync) — a schedule always runs unattended.
+                if (UnattendedAllowlistGuard.Validate(overlay.ShellAutoAllowlist, execution.Backend, $"Schedule '{name}'") is { } wildcardError)
+                    failures.Add(wildcardError);
+
+                // A9: a schedule always runs unattended (RunSpec.Unattended = true), and
+                // PermissionGate only ever consults ShellAutoAllowlist/AutoAllowFileRoots when the
+                // effective Mode is Auto (see PermissionGate.EvaluateAsync — Plan denies outright,
+                // AskAlways always falls through to PromptAsync, and UnattendedPermissionPrompt
+                // never grants). So an overlay that sets either list but leaves Mode at anything
+                // other than Auto is always a misconfiguration: the lists silently do nothing and
+                // the job denies+reports every side effect it was meant to allow. Reject it here
+                // (this also runs at save time — ConfigWriter.SaveSchedulesAsync funnels through
+                // SaveCaliperAsync) rather than let it deploy silently.
+                if (overlay.Mode != PermissionMode.Auto &&
+                    (overlay.ShellAutoAllowlist.Count > 0 || overlay.AutoAllowFileRoots.Count > 0))
+                {
+                    failures.Add(
+                        $"Schedule '{name}': Permissions overlay sets ShellAutoAllowlist/AutoAllowFileRoots but Mode is " +
+                        $"{overlay.Mode} — unattended runs never prompt, so these lists have no effect. Set \"Mode\": \"Auto\" for them to apply.");
+                }
             }
         }
     }

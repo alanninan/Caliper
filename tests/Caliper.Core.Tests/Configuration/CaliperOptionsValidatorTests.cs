@@ -344,4 +344,77 @@ public sealed class CaliperOptionsValidatorTests
 
         Assert.True(result.Succeeded);
     }
+
+    // A9: an overlay's ShellAutoAllowlist/AutoAllowFileRoots are only ever consulted by
+    // PermissionGate when the effective Mode is Auto — under a schedule (always unattended) any
+    // other Mode makes the lists silently inert, which is always a misconfiguration.
+
+    [Fact]
+    public void Schedule_overlay_with_AskAlways_mode_and_non_empty_allowlist_fails()
+    {
+        var schedule = Schedule();
+        // AskAlways is PermissionsOptions' own class default, so this also covers the "overlay
+        // present but Mode omitted entirely" case the old behavior treated as lenient.
+        schedule.Permissions = new PermissionsOptions { ShellAutoAllowlist = ["git status"] };
+        var options = new CaliperOptions { Schedules = [schedule] };
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(
+            result.Failures ?? [],
+            failure => failure.Contains("Mode", StringComparison.Ordinal) &&
+                failure.Contains("ShellAutoAllowlist", StringComparison.Ordinal) &&
+                failure.Contains(schedule.Name, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_AskAlways_mode_and_non_empty_AutoAllowFileRoots_fails()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { ShellAutoAllowlist = [], AutoAllowFileRoots = ["/tmp/allowed"] };
+        var options = new CaliperOptions { Schedules = [schedule] };
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains("AutoAllowFileRoots", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_Plan_mode_and_non_empty_allowlist_fails()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { Mode = PermissionMode.Plan, ShellAutoAllowlist = ["git status"] };
+        var options = new CaliperOptions { Schedules = [schedule] };
+
+        var result = Validate(options);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains(result.Failures ?? [], failure => failure.Contains("Mode", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_Auto_mode_and_non_empty_allowlist_passes()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { Mode = PermissionMode.Auto, ShellAutoAllowlist = ["git status"] };
+        var options = new CaliperOptions { Schedules = [schedule] };
+
+        var result = Validate(options);
+
+        Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void Schedule_overlay_with_AskAlways_mode_and_empty_lists_passes()
+    {
+        var schedule = Schedule();
+        schedule.Permissions = new PermissionsOptions { ShellAutoAllowlist = [], AutoAllowFileRoots = [] };
+        var options = new CaliperOptions { Schedules = [schedule] };
+
+        var result = Validate(options);
+
+        Assert.True(result.Succeeded);
+    }
 }

@@ -71,8 +71,9 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   with `RunSpec { Unattended = true }` — prompts deny + report (`UnattendedPermissionPrompt`;
   in the REPL a `RoutingPermissionPrompt` routes by `PermissionRequest.Unattended`). Overlap:
   skip; misfire: no catch-up. `/schedule list|run <name>` manages jobs interactively. A job's
-  `Permissions` overlay should set `Mode: Auto` for its allowlists to matter; the global shell
-  denylist is always merged in.
+  `Permissions` overlay must set `Mode: Auto` for its allowlists to matter — enforced by
+  `CaliperOptionsValidator`, which rejects a saved overlay setting `ShellAutoAllowlist`/
+  `AutoAllowFileRoots` under any other `Mode`; the global shell denylist is always merged in.
 - **Durable runs:** every orchestrator-driven run (one-shot, `--unattended`, jobs, subagent
   children — not interactive REPL/App streaming) gets a `runs`-table row (`IRunStore` /
   `SqliteRunStore`): `running → completed | failed | cancelled | interrupted`, with the step

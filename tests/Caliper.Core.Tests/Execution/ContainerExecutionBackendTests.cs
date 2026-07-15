@@ -139,21 +139,32 @@ public sealed class ContainerExecutionBackendTests
     public async Task ExecuteAsync_kills_the_container_on_cancellation()
     {
         var runner = new FakeProcessRunner();
-        runner.Enqueue(new ProcessRunResult(0, "")); // probe succeeds
-        runner.Enqueue(new OperationCanceledException()); // docker run is cancelled
+        runner.Enqueue(new ProcessRunResult(0, "")); // probe succeeds (warm-up call, uncancelled)
+        runner.Enqueue(new ProcessRunResult(0, "")); // warm-up docker run succeeds
+        runner.Enqueue(new OperationCanceledException()); // the real docker run under test is cancelled
         var backend = Build(runner, new ExecutionOptions());
+
+        // A7: DockerAvailabilityProbe.ProbeAsync's single-flight gate is a real SemaphoreSlim that
+        // genuinely honors CancellationToken — unlike FakeProcessRunner, which never observes
+        // cancellation at all. Calling ExecuteAsync directly with an already-cancelled token would
+        // now throw TaskCanceledException from that gate before ever reaching the scripted "docker
+        // run" exception this test wants to exercise. Warm the docker-availability cache with one
+        // uncancelled call first so the second (cancelled) call hits the cache and never touches the
+        // semaphore, preserving the original "cancellation happens during docker run" scenario.
+        await backend.ExecuteAsync(Request("true", s_workingRoot, s_workingRoot), CancellationToken.None);
+
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             backend.ExecuteAsync(Request("sleep 100", s_workingRoot, s_workingRoot), cts.Token));
 
-        Assert.Equal(3, runner.Calls.Count);
-        var killCall = runner.Calls[2];
+        Assert.Equal(4, runner.Calls.Count);
+        var killCall = runner.Calls[3];
         Assert.Equal("docker", killCall.FileName);
         var killArgs = killCall.Arguments.ToList();
         Assert.Equal("kill", killArgs[0]);
-        var runContainerName = runner.Calls[1].Arguments.ToList()[runner.Calls[1].Arguments.ToList().IndexOf("--name") + 1];
+        var runContainerName = runner.Calls[2].Arguments.ToList()[runner.Calls[2].Arguments.ToList().IndexOf("--name") + 1];
         Assert.Equal(runContainerName, killArgs[1]);
     }
 

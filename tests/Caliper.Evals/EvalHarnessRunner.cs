@@ -211,7 +211,11 @@ internal sealed class EvalScriptedPermissionPrompt(IReadOnlyList<PermissionDecis
     }
 }
 
-file sealed class EvalContextManager(ITokenCounter tokens) : IContextManager
+// Internal (not file-scoped): reused by SubagentSuite to assemble the small recursive DI graph a
+// hermetic "task"-tool scenario needs (its own child AgentRunner/ConversationOrchestrator) — see
+// SubagentSuite.cs's doc comment for why that scenario needs these building blocks directly rather
+// than going through BuildHermeticRegistry/BuildRunner's normal single-runner path.
+internal sealed class EvalContextManager(ITokenCounter tokens) : IContextManager
 {
     private readonly DropOldestContextManager _dropOldest = new(tokens);
 
@@ -229,19 +233,19 @@ file sealed class EvalContextManager(ITokenCounter tokens) : IContextManager
     }
 }
 
-file sealed class EvalCapabilityProvider(ModelCapabilities? capabilities = null) : IModelCapabilityProvider
+internal sealed class EvalCapabilityProvider(ModelCapabilities? capabilities = null) : IModelCapabilityProvider
 {
     public Task<ModelCapabilities> GetAsync(string modelSlug, CancellationToken ct) =>
         Task.FromResult(capabilities ?? new ModelCapabilities(true, true, true, 32768));
 }
 
-file sealed class EvalPermissionGate : IPermissionGate
+internal sealed class EvalPermissionGate : IPermissionGate
 {
     public Task<PermissionDecision> EvaluateAsync(PermissionRequest request, CancellationToken ct) =>
         Task.FromResult(PermissionDecision.Allow);
 }
 
-file sealed class EvalMemoryStore : IMemoryStore
+internal sealed class EvalMemoryStore : IMemoryStore
 {
     public Task<string> RenderForPromptAsync(string scope, CancellationToken ct) =>
         Task.FromResult(string.Empty);
@@ -256,13 +260,13 @@ file sealed class EvalMemoryStore : IMemoryStore
         Task.CompletedTask;
 }
 
-file sealed class EvalCaliperMdProvider : ICaliperMdProvider
+internal sealed class EvalCaliperMdProvider : ICaliperMdProvider
 {
     public Task<ProjectMemoryDocument> ReadAsync(string workingRoot, CancellationToken ct) =>
         Task.FromResult(new ProjectMemoryDocument(string.Empty, string.Empty, Truncated: false));
 }
 
-file sealed class EnvelopeScriptTurnStrategy(IEnumerable<string> scriptedTurns) : ITurnStrategy
+internal sealed class EnvelopeScriptTurnStrategy(IEnumerable<string> scriptedTurns) : ITurnStrategy
 {
     private readonly Queue<string> _turns = new(scriptedTurns);
 
@@ -330,7 +334,7 @@ file sealed class EnvelopeScriptTurnStrategy(IEnumerable<string> scriptedTurns) 
     }
 }
 
-file sealed class EvalTokenCounter : ITokenCounter
+internal sealed class EvalTokenCounter : ITokenCounter
 {
     public int Count(string text) => Math.Max(1, (int)Math.Ceiling(text.Length / 4.0));
 
@@ -342,7 +346,7 @@ file sealed class EvalTokenCounter : ITokenCounter
     }
 }
 
-file sealed class EvalSkillStore : ISkillStore
+internal sealed class EvalSkillStore : ISkillStore
 {
     private readonly Dictionary<string, string> _bodies = new(StringComparer.Ordinal)
     {

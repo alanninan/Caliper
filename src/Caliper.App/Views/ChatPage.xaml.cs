@@ -159,6 +159,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            // A11: top-level UI-resilience boundary — WinUI invokes OnNavigatedTo directly, so an
+            // escaping exception crashes the app, and the load path's failure surface (session
+            // store I/O, context accounting) isn't safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(OnNavigatedTo));
         }
     }
@@ -217,6 +220,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            // A11: top-level UI-resilience boundary — a WinUI-dispatched SelectionChanged handler;
+            // an escaping exception here crashes the app, and session load's failure surface
+            // (transcript store I/O, context rebuild) isn't safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(SessionList_SelectionChanged));
         }
     }
@@ -284,6 +290,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            // A11: top-level UI-resilience boundary — combines ContentDialog's own WinRT interop
+            // surface with session-store deletion I/O; an escaping exception here crashes the app,
+            // and neither side is safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(Sessions_DeleteRequested));
         }
     }
@@ -417,6 +426,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            // A11: WinRT/COM interop (AppNotificationManager.Show is documented to throw
+            // COMException in some unregistered/unpackaged states, but not exhaustively so) — a
+            // best-effort toast must never break the approval countdown UI it's attached to.
             _logger.LogError(ex, "Failed to show approval notification toast.");
         }
     }
@@ -521,6 +533,10 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            // A11: WinRT ContentDialog interop (most commonly InvalidOperationException if another
+            // dialog is already open, but the WinRT surface isn't exhaustively documented) — reached
+            // from a fire-and-forget accelerator path too, so an uncaught exception here has no
+            // other backstop.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(ShowShortcutsAsync));
         }
     }

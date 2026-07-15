@@ -140,6 +140,10 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            // A11: top-level startup-resilience boundary — MCP servers are arbitrary user-configured
+            // external processes/HTTP endpoints, so the realistic failure set (process launch,
+            // network, protocol/JSON errors from third-party server implementations) isn't
+            // enumerable; a connection failure must never abort app startup.
             Services.GetRequiredService<ILogger<App>>()
                 .LogError(ex, "MCP connection failed during application startup.");
         }
@@ -162,6 +166,8 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
+            // A11: top-level shutdown-resilience boundary — the same unenumerable MCP surface as
+            // ConnectMcpAsync above; a shutdown failure must never prevent host disposal/process exit.
             _host.Services.GetRequiredService<ILogger<App>>()
                 .LogError(ex, "MCP shutdown failed.");
         }

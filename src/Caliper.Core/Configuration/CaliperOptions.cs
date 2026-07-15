@@ -1,6 +1,8 @@
 // Copyright 2026 Alan Ninan Thomas
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for full license information.
+using System.Text.Json.Serialization;
+
 namespace Caliper.Core.Configuration;
 
 public sealed class CaliperOptions
@@ -79,11 +81,14 @@ public sealed class ScheduleOptions
 
     /// <summary>
     /// Per-job permission overlay (<c>RunSpec.PermissionsOverlay</c>). Null falls back to the
-    /// global <c>Permissions</c> section. Remember to set <c>Mode</c> explicitly (usually
-    /// <c>Auto</c>): a job overlay left at the class default (<c>AskAlways</c>) prompts for every
-    /// side effect, and under the unattended prompt every prompt is a deny — so the job's own
-    /// allowlists only take effect with <c>"Mode": "Auto"</c>. The global shell denylist is always
-    /// merged in by <c>PermissionGate</c> regardless.
+    /// global <c>Permissions</c> section. <c>Mode</c> must be set explicitly to <c>Auto</c> for
+    /// <c>ShellAutoAllowlist</c>/<c>AutoAllowFileRoots</c> to take effect — a job overlay left at
+    /// the class default (<c>AskAlways</c>) prompts for every side effect, and under the
+    /// unattended prompt every prompt is a deny, so the lists would silently do nothing.
+    /// <c>CaliperOptionsValidator.ValidateSchedules</c> (A9) enforces this: a saved overlay that
+    /// sets either list under a non-<c>Auto</c> <c>Mode</c> fails validation rather than
+    /// deploying an inert configuration. The global shell denylist is always merged in by
+    /// <c>PermissionGate</c> regardless.
     /// </summary>
     public PermissionsOptions? Permissions { get; set; }
 }
@@ -187,12 +192,18 @@ public sealed class ExecutionOptions
     public string User { get; set; } = "1000";
 }
 
+// A8: string enum in config.json for hand-editability. JsonStringEnumConverter<T> is AOT-safe and,
+// by default, still accepts an integer value on read — so a pre-existing config.json written with
+// the old int-valued form keeps loading (see CaliperOptionsEnumSerializationTests).
+[JsonConverter(typeof(JsonStringEnumConverter<ExecutionBackendKind>))]
 public enum ExecutionBackendKind
 {
     Host,
     Container,
 }
 
+// A8: see ExecutionBackendKind's remark — same string-enum rationale.
+[JsonConverter(typeof(JsonStringEnumConverter<ExecutionNetworkKind>))]
 public enum ExecutionNetworkKind
 {
     None,
@@ -253,6 +264,11 @@ public sealed class PermissionsOptions
     public IList<string> AutoAllowFileRoots { get; set; } = [];
 }
 
+// A8: see ExecutionBackendKind's remark — same string-enum rationale. PermissionMode is used only
+// in config DTOs (PermissionsOptions.Mode, SubagentProfileOptions.Mode) — never in a persisted
+// session/transcript payload or the model-facing wire protocol — so re-shaping its JSON form here
+// is safe.
+[JsonConverter(typeof(JsonStringEnumConverter<PermissionMode>))]
 public enum PermissionMode
 {
     AskAlways,

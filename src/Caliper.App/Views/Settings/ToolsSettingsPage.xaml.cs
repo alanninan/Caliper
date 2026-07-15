@@ -25,6 +25,9 @@ public sealed partial class ToolsSettingsPage : Page
         }
         catch (Exception ex)
         {
+            // A11: top-level UI-resilience boundary — WinUI invokes OnNavigatedTo directly, so an
+            // escaping exception crashes the app, and the load command's failure surface isn't
+            // safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(OnNavigatedTo));
         }
     }

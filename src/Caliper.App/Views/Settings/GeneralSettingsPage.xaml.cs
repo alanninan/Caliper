@@ -28,6 +28,9 @@ public sealed partial class GeneralSettingsPage : Page
         }
         catch (Exception ex)
         {
+            // A11: top-level UI-resilience boundary — WinUI invokes OnNavigatedTo directly, so an
+            // escaping exception crashes the app, and the load command's failure surface isn't
+            // safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(OnNavigatedTo));
         }
     }
@@ -55,6 +58,9 @@ public sealed partial class GeneralSettingsPage : Page
         }
         catch (Exception ex)
         {
+            // A11: WinRT/COM folder-picker interop (FolderPicker.PickSingleFolderAsync plus window
+            // handle initialization) — the failure surface isn't clearly enumerable, and this is a
+            // WinUI-dispatched Click handler where an escaping exception would crash the app.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(BrowseWorkingRoot_Click));
         }
     }

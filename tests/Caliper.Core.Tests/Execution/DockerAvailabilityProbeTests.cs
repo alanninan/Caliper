@@ -96,4 +96,64 @@ public sealed class DockerAvailabilityProbeTests
         Assert.False(first.Available);
         Assert.True(second.Available);
     }
+
+    /// <summary>
+    /// A7: concurrent cold callers must single-flight onto exactly one <c>docker info</c> shell-out.
+    /// Uses a <see cref="TaskCompletionSource{TResult}"/>-gated fake (not <c>Task.Delay</c>) so the
+    /// "first caller is mid-probe, everyone else is queued behind it" state is reached
+    /// deterministically: the gated fake's <c>RunAsync</c> records the call and then returns an
+    /// uncompleted task, so the first <see cref="DockerAvailabilityProbe.ProbeAsync"/> call is
+    /// guaranteed to have recorded its call — and suspended — before this method's synchronous
+    /// continuation resumes, and every subsequent concurrent call is guaranteed to be parked on the
+    /// probe's internal semaphore (never reaching the runner) until the gate is released.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_single_flights_concurrent_cold_calls()
+    {
+        var runner = new GatedProcessRunner();
+        var probe = new DockerAvailabilityProbe(runner, new FakeTimeProvider());
+
+        var first = probe.ProbeAsync(CancellationToken.None);
+        await runner.Started;
+
+        var others = new Task<(bool Available, string? Error)>[5];
+        for (var i = 0; i < others.Length; i++)
+            others[i] = probe.ProbeAsync(CancellationToken.None);
+
+        // Every concurrent caller is either the in-flight first probe or parked behind the
+        // single-flight semaphore — none of them may have reached the runner yet.
+        Assert.Single(runner.Calls);
+
+        runner.Complete(new ProcessRunResult(0, ""));
+        var firstResult = await first;
+        var otherResults = await Task.WhenAll(others);
+
+        // Still exactly one shell-out total: the queued callers reused the now-cached result
+        // instead of re-probing.
+        Assert.Single(runner.Calls);
+        Assert.True(firstResult.Available);
+        Assert.All(otherResults, r => Assert.True(r.Available));
+    }
+
+    /// <summary>Records its call, signals <see cref="Started"/>, then blocks until <see cref="Complete"/>.</summary>
+    private sealed class GatedProcessRunner : IProcessRunner
+    {
+        private readonly TaskCompletionSource<ProcessRunResult> _resultSource =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _startedSource =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public List<ProcessRunSpec> Calls { get; } = [];
+
+        public Task Started => _startedSource.Task;
+
+        public void Complete(ProcessRunResult result) => _resultSource.TrySetResult(result);
+
+        public Task<ProcessRunResult> RunAsync(ProcessRunSpec spec, CancellationToken ct)
+        {
+            Calls.Add(spec);
+            _startedSource.TrySetResult();
+            return _resultSource.Task;
+        }
+    }
 }

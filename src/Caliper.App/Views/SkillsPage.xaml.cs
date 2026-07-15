@@ -28,6 +28,9 @@ public sealed partial class SkillsPage : Page
         }
         catch (Exception ex)
         {
+            // A11: top-level UI-resilience boundary — a WinUI-dispatched SelectionChanged handler;
+            // an escaping exception here crashes the app, and skill-file loading's failure surface
+            // isn't safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(SkillList_SelectionChanged));
         }
     }

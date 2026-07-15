@@ -423,6 +423,82 @@ public sealed class ConfigWriterTests
     }
 
     [Fact]
+    public async Task SavePermissionsAsync_writes_Mode_as_a_string_not_an_int()
+    {
+        // A8: config.json hand-editability — ConfigWriter must persist enum config values as their
+        // string names, not the underlying int, so a hand-edited config.json keeps its shape after
+        // a save through the App/console settings UI round-trips it.
+        var (writer, files, _) = Build();
+
+        await writer.SavePermissionsAsync(new PermissionsOptions { Mode = PermissionMode.Auto }, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(files.Content);
+        var mode = document.RootElement.GetProperty("Permissions").GetProperty("Mode");
+        Assert.Equal(JsonValueKind.String, mode.ValueKind);
+        Assert.Equal("Auto", mode.GetString());
+    }
+
+    [Fact]
+    public async Task SaveCaliperAsync_writes_TurnStrategy_and_SkillSelector_as_strings_not_ints()
+    {
+        var (writer, files, _) = Build();
+
+        await writer.SaveCaliperAsync(
+            new CaliperOptions { TurnStrategy = TurnStrategyKind.Native, SkillSelector = SkillSelectorKind.Keyword },
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(files.Content);
+        var caliper = document.RootElement.GetProperty("Caliper");
+        Assert.Equal(JsonValueKind.String, caliper.GetProperty("TurnStrategy").ValueKind);
+        Assert.Equal("Native", caliper.GetProperty("TurnStrategy").GetString());
+        Assert.Equal(JsonValueKind.String, caliper.GetProperty("SkillSelector").ValueKind);
+        Assert.Equal("Keyword", caliper.GetProperty("SkillSelector").GetString());
+    }
+
+    [Fact]
+    public async Task SaveExecutionAsync_writes_Backend_and_Network_as_strings_not_ints()
+    {
+        var (writer, files, _) = Build();
+
+        await writer.SaveExecutionAsync(
+            new ExecutionOptions { Backend = ExecutionBackendKind.Container, Network = ExecutionNetworkKind.Bridge },
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(files.Content);
+        var execution = document.RootElement.GetProperty("Caliper").GetProperty("Execution");
+        Assert.Equal(JsonValueKind.String, execution.GetProperty("Backend").ValueKind);
+        Assert.Equal("Container", execution.GetProperty("Backend").GetString());
+        Assert.Equal(JsonValueKind.String, execution.GetProperty("Network").ValueKind);
+        Assert.Equal("Bridge", execution.GetProperty("Network").GetString());
+    }
+
+    [Fact]
+    public async Task SaveCaliperAsync_loads_a_legacy_int_valued_config_file_and_re_saves_it_as_strings()
+    {
+        // A8 migration guarantee: an existing config.json written before this change (enum values
+        // as ints) must still load cleanly, and the very next save must upgrade it to the
+        // string-valued form — no explicit migration step required.
+        var files = new FakeConfigFileStore();
+        files.Content = """
+            {"Caliper":{"TurnStrategy":1,"SkillSelector":1},"Permissions":{"Mode":1},"Providers":{},"Mcp":{"Servers":{}},"Search":{},"Persistence":{}}
+            """;
+        var runtime = new RuntimeSettings(Options.Create(new CaliperOptions()), Options.Create(new PermissionsOptions()));
+        var writer = new ConfigWriter(files, runtime, new CaliperOptionsValidator(), new SearchOptionsValidator());
+
+        var loaded = await writer.LoadCaliperAsync(CancellationToken.None);
+        Assert.Equal(TurnStrategyKind.Native, loaded.TurnStrategy);
+        Assert.Equal(SkillSelectorKind.Keyword, loaded.SkillSelector);
+
+        var result = await writer.SaveCaliperAsync(loaded, CancellationToken.None);
+        Assert.True(result.Success);
+
+        using var document = JsonDocument.Parse(files.Content);
+        var caliper = document.RootElement.GetProperty("Caliper");
+        Assert.Equal(JsonValueKind.String, caliper.GetProperty("TurnStrategy").ValueKind);
+        Assert.Equal(JsonValueKind.String, caliper.GetProperty("SkillSelector").ValueKind);
+    }
+
+    [Fact]
     public async Task SaveExecutionAsync_valid_options_round_trips_and_is_live()
     {
         var (writer, files, runtime) = Build();
@@ -507,7 +583,10 @@ public sealed class ConfigWriterTests
 
     private sealed class FakeConfigFileStore : IConfigFileStore
     {
-        public string Content { get; private set; } = """{"Caliper":{},"Permissions":{},"Providers":{},"Mcp":{"Servers":{}},"Search":{},"Persistence":{}}""";
+        // Not `private set`: SaveCaliperAsync_loads_a_legacy_int_valued_config_file_and_re_saves_it_as_strings
+        // seeds this directly to simulate a pre-existing config.json (private set is only visible
+        // within FakeConfigFileStore itself, not the enclosing ConfigWriterTests class).
+        public string Content { get; set; } = """{"Caliper":{},"Permissions":{},"Providers":{},"Mcp":{"Servers":{}},"Search":{},"Persistence":{}}""";
 
         public Task<string> ReadAsync(CancellationToken ct) => Task.FromResult(Content);
 

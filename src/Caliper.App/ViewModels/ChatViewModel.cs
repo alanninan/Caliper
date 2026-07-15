@@ -320,6 +320,10 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         }
         catch (Exception ex)
         {
+            // A11: top-level resilience boundary by design — this spans the entire orchestrator run
+            // (model client, every enabled tool, permission gate, persistence), so the realistic
+            // failure set is intentionally not enumerable; any exception here must fold into a
+            // graceful RunFailed transcript entry rather than crash the chat UI.
             _ = mapper.Map(new RunFailed($"Unexpected error: {ex.Message}"));
             NotifyTranscriptChanged(runMessages);
             RunStatus = ChatRunStatus.Failed;

@@ -19,7 +19,7 @@ namespace Caliper.Core.Execution;
 /// (Image/Network/Cpus/MemoryMb/User are a live seam, same as <c>Backend</c> itself), so a config
 /// change applies to the very next invocation.
 /// </summary>
-public sealed class ContainerExecutionBackend : IExecutionBackend
+public sealed class ContainerExecutionBackend : IExecutionBackend, IDisposable
 {
     private const string ContainerWorkspace = "/workspace";
 
@@ -151,4 +151,9 @@ public sealed class ContainerExecutionBackend : IExecutionBackend
             "bash", "-lc", command,
         ];
     }
+
+    // A7 follow-on: DockerAvailabilityProbe now owns a SemaphoreSlim (single-flight), so this
+    // backend — the probe's only owner — must dispose it too. Registered as a DI singleton
+    // (ServiceCollectionExtensions), so the host container calls this automatically at shutdown.
+    public void Dispose() => _probe.Dispose();
 }

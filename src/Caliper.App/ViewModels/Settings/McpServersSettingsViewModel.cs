@@ -86,6 +86,8 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
         }
         catch (Exception ex)
         {
+            // A11: same unenumerable MCP connection surface as App.xaml.cs's ConnectMcpAsync
+            // (arbitrary user-configured external processes/HTTP endpoints).
             StatusIsError = true;
             StatusMessage = ex.Message;
         }

@@ -115,6 +115,10 @@ public sealed partial class ModelsProvidersSettingsViewModel(
         }
         catch (Exception ex)
         {
+            // A11: modelCatalog.ListAsync hits a live, provider-selected network endpoint
+            // (OpenRouter/Gemini) — the realistic failure set (HTTP, TLS, DNS, malformed JSON
+            // response, provider-specific errors) spans multiple implementations and isn't safely
+            // enumerable from here.
             StatusIsError = true;
             StatusMessage = ex.Message;
         }

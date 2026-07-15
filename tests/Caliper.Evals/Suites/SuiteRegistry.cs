@@ -15,6 +15,7 @@ internal static class SuiteRegistry
             ["mcp"] = McpSuite.Cases,
             ["edit-file"] = EditFileSuite.Cases,
             ["compaction"] = CompactionSuite.Cases,
+            ["subagents"] = SubagentSuite.Cases,
         };
 
     internal static IReadOnlyDictionary<string, Func<IReadOnlyList<EvalCase>>> All => s_suites;

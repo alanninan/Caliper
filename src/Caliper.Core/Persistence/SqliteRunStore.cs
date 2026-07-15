@@ -130,10 +130,19 @@ internal sealed class SqliteRunStore(
 
     protected override async Task CreateSchemaAsync(SqliteConnection connection, CancellationToken ct)
     {
+        // A5: deliberately no REFERENCES sessions(id) here. SQLite FK enforcement is off by
+        // default (no PRAGMA foreign_keys=ON anywhere in this codebase) and the runs/sessions
+        // tables are created by two independent SqliteStoreBase-derived stores with no guaranteed
+        // creation order — a REFERENCES clause would be inert today and a landmine if FK
+        // enforcement were ever turned on globally (inserts could start failing depending on
+        // which store initializes first). Existing databases created with the old
+        // "REFERENCES sessions(id)" clause keep it harmlessly (SQLite doesn't retroactively
+        // enforce it without the PRAGMA); no migration is needed since CREATE TABLE IF NOT EXISTS
+        // never touches an existing table's schema.
         await ExecuteNonQueryAsync(connection, """
                 CREATE TABLE IF NOT EXISTS runs (
                   run_id      TEXT PRIMARY KEY,
-                  session_id  TEXT NOT NULL REFERENCES sessions(id),
+                  session_id  TEXT NOT NULL,
                   job_name    TEXT,
                   status      TEXT NOT NULL,
                   reason      TEXT,

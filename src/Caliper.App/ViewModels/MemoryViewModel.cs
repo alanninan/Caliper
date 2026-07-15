@@ -6,6 +6,7 @@ using Caliper.Core.Abstractions;
 using Caliper.Core.Memory;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Data.Sqlite;
 
 namespace Caliper.App.ViewModels;
 
@@ -57,8 +58,10 @@ public sealed partial class MemoryViewModel(
             OnPropertyChanged(nameof(HasMemories));
             OnPropertyChanged(nameof(MemoryCountText));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException)
         {
+            // A11: bounded by the real failure surface of the two calls above — SqliteMemoryStore
+            // (SQLite reads) and CaliperMdProvider (a plain File.ReadAllTextAsync).
             StatusMessage = ex.Message;
         }
         finally
