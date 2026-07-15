@@ -163,6 +163,10 @@ dotnet run --project src/Caliper.Console -- --prompt "Run the test suite" --perm
 `Auto`, and anything the gate would normally ask about is **denied and reported** (never silently
 allowed, never silently dropped). Denials are logged at Warning and summarized on stderr.
 
+Exit codes (also for `--resume`): `0` clean, `1` the run reported an error, `2` the run completed
+but one or more actions were denied — so cron/CI can alert on denials without parsing stderr.
+(An attended `--prompt` run keeps exit `0` on denials a human made interactively.)
+
 ```powershell
 dotnet run --project src/Caliper.Console -- --prompt "Check for outdated packages" --unattended
 ```

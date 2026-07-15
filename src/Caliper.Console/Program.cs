@@ -954,6 +954,9 @@ static async Task RunOneShotAsync(
             Console.Error.WriteLine($"  {denial.Tool}{reasonSuffix}");
         }
     }
+
+    // ExitCode (not Environment.Exit) so the caller's cleanup (MCP disposal) still runs.
+    Environment.ExitCode = OneShotExitCode.From(result.Error, result.Denials.Count, reportDenialsInExitCode: unattended);
 }
 
 static async Task RunResumeAsync(
@@ -999,6 +1002,10 @@ static async Task RunResumeAsync(
             Console.Error.WriteLine($"  {denial.Tool}{reasonSuffix}");
         }
     }
+
+    // A resume is always non-interactive-style (one-shot entry point), so denials count toward
+    // the exit code regardless of the original run's Unattended flag — nobody watched them happen.
+    Environment.ExitCode = OneShotExitCode.From(result.Error, result.Denials.Count, reportDenialsInExitCode: true);
 }
 
 sealed class ConsolePermissionPrompt : IPermissionPrompt
