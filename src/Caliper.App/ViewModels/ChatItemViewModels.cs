@@ -72,7 +72,7 @@ public sealed partial class ToolCallViewModel(
     public bool HasArguments => !string.IsNullOrWhiteSpace(Arguments);
 
     [ObservableProperty]
-    public partial string Status { get; set; } = "Running";
+    public partial string Status { get; set; } = ToolCallStatus.Running;
 
     [ObservableProperty]
     public partial string Output { get; set; } = string.Empty;
@@ -189,8 +189,11 @@ public sealed partial class ToolActivityViewModel : ChatItemViewModel
     private void Refresh()
     {
         var total = Calls.Count;
-        var running = Calls.Count(c => c.Status == "Running");
-        var failed = Calls.Count(c => c.Status == "Failed");
+        var running = Calls.Count(c => c.Status == ToolCallStatus.Running);
+        // A denial counts as a failure for summary purposes — the call did not run. The reload path
+        // has always produced "Denied" statuses, so counting it here keeps the live and reloaded
+        // summaries (and the failure icon/auto-expand) consistent.
+        var failed = Calls.Count(c => c.Status is ToolCallStatus.Failed or ToolCallStatus.Denied);
         IsRunning = running > 0;
         HasFailure = failed > 0;
         if (HasFailure)

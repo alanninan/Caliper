@@ -4,6 +4,7 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using Caliper.App.ViewModels;
+using Caliper.Core.Agents;
 using Caliper.Core.Events;
 using Caliper.Core.Models;
 
@@ -91,6 +92,60 @@ public sealed class AgentEventMapperTests
         Assert.True(tool.IsExpanded);
         Assert.True(activity.HasFailure);
         Assert.True(activity.IsExpanded);
+    }
+
+    [Fact]
+    public void Map_denied_tool_shows_denied_status_matching_reload_path()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var mapper = new AgentEventMapper(items);
+        var arguments = JsonSerializer.SerializeToElement(new { command = "rm -rf /" });
+        var call = new ToolCall("call-1", "bash", arguments);
+
+        // Live: the engine reports a denial as ToolFailed carrying ToolResult.Denied's output.
+        mapper.Map(new ToolInvoked("call-1", "bash", arguments));
+        mapper.Map(new ToolFailed("call-1", "bash", ToolResult.Denied.Output));
+        var liveActivity = Assert.IsType<ToolActivityViewModel>(Assert.Single(items));
+        var liveTool = Assert.Single(liveActivity.Calls);
+
+        // Reload: the same call rebuilt from the persisted transcript.
+        var reloaded = PersistedTranscriptFactory.Create(
+            [ChatMessage.FromToolCall(call), ChatMessage.FromToolResult(call, ToolResult.Denied)]);
+        var reloadedTool = Assert.Single(Assert.IsType<ToolActivityViewModel>(Assert.Single(reloaded)).Calls);
+
+        Assert.Equal("Denied", liveTool.Status);
+        Assert.Equal(reloadedTool.Status, liveTool.Status);
+    }
+
+    [Fact]
+    public void Map_denied_tool_counts_as_failure_in_activity_summary()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var mapper = new AgentEventMapper(items);
+        var arguments = JsonSerializer.SerializeToElement(new { command = "ls" });
+
+        mapper.Map(new ToolInvoked("call-1", "bash", arguments));
+        mapper.Map(new ToolFailed("call-1", "bash", ToolResult.Denied.Output));
+
+        var activity = Assert.IsType<ToolActivityViewModel>(Assert.Single(items));
+        Assert.True(activity.HasFailure);
+        Assert.True(activity.IsExpanded);
+        Assert.Contains("1 failed", activity.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Map_ordinary_failure_with_different_output_stays_failed()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var mapper = new AgentEventMapper(items);
+        var arguments = JsonSerializer.SerializeToElement(new { command = "ls" });
+
+        mapper.Map(new ToolInvoked("call-1", "bash", arguments));
+        mapper.Map(new ToolFailed("call-1", "bash", "exit code 1"));
+
+        var activity = Assert.IsType<ToolActivityViewModel>(Assert.Single(items));
+        var tool = Assert.Single(activity.Calls);
+        Assert.Equal("Failed", tool.Status);
     }
 
     [Fact]

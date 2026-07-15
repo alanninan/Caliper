@@ -790,6 +790,15 @@
                 ContentTemplate="{StaticResource ApprovalTemplate}"
                 Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasPendingApproval), Mode=OneWay}" />
             <TextBlock
+                Grid.Row="3"
+                Margin="24,0,24,8"
+                AutomationProperties.AutomationId="ApprovalQueueCountText"
+                HorizontalAlignment="Left"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.PendingApprovalCountText, Mode=OneWay}"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasQueuedApprovals), Mode=OneWay}" />
+            <TextBlock
                 x:Name="ApprovalCountdownText"
                 Grid.Row="3"
                 Margin="24,0,24,8"

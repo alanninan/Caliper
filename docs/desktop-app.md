@@ -21,9 +21,14 @@ stopped being sent to the model.
 `ApprovalService` implements `IPermissionPrompt` as docked approval cards with keyboard
 accelerators, a **5-minute auto-deny timeout**, and per-request correlation
 (`PermissionRequested`/`PermissionResolved` by request id). Approval countdowns run on the
-injected `TimeProvider`. Subagent children's requests render under the child session's title
-so it's clear who is asking. The App never runs unattended specs, so it needs no routing
-prompt.
+injected `TimeProvider`. Concurrent requests (e.g. from subagent runs) **queue FIFO**: the
+docked card always shows the oldest pending approval, an "Approval 1 of N" indicator appears
+when more are waiting, and resolving the current one (approve, deny, or timeout) promotes
+the next. A queued approval that resolves externally — timeout auto-deny, run cancellation,
+or a `PermissionResolved` event — is dropped from the queue without disturbing the current
+card. The queue survives session switches, like the single docked card always has. Subagent
+children's requests render under the child session's title so it's clear who is asking. The
+App never runs unattended specs, so it needs no routing prompt.
 
 ## Secrets and preferences
 

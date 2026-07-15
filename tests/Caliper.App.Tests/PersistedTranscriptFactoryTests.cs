@@ -87,6 +87,25 @@ public sealed class PersistedTranscriptFactoryTests
     }
 
     [Fact]
+    public void Create_marks_denied_tool_result_denied_and_counts_it_as_failure()
+    {
+        var call = new ToolCall(
+            "call-7",
+            "bash",
+            JsonSerializer.SerializeToElement(new { command = "rm -rf /" }));
+
+        var transcript = PersistedTranscriptFactory.Create(
+            [ChatMessage.FromToolCall(call), ChatMessage.FromToolResult(call, ToolResult.Denied)]);
+
+        var activity = Assert.IsType<ToolActivityViewModel>(Assert.Single(transcript));
+        var tool = Assert.Single(activity.Calls);
+        Assert.Equal("Denied", tool.Status);
+        Assert.True(tool.IsExpanded);
+        Assert.True(activity.HasFailure);
+        Assert.Contains("1 failed", activity.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Create_marks_payloadless_tool_result_completed_without_guessing_success()
     {
         var message = new ChatMessage(

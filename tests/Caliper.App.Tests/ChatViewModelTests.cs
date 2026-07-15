@@ -19,12 +19,19 @@ public sealed class ChatViewModelTests
     private static ChatViewModel Create(
         FakeAgentRunner runner,
         out FakeSessionStore sessions,
-        out TrackingPermissionGate permissionGate)
+        out TrackingPermissionGate permissionGate) =>
+        Create(runner, out sessions, out permissionGate, out _);
+
+    private static ChatViewModel Create(
+        FakeAgentRunner runner,
+        out FakeSessionStore sessions,
+        out TrackingPermissionGate permissionGate,
+        out ApprovalService approvals)
     {
         sessions = new FakeSessionStore();
         permissionGate = new TrackingPermissionGate();
         var runtimeSettings = new TestRuntimeSettings();
-        var approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
+        approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
         return new ChatViewModel(
             runner,
             sessions,
@@ -35,6 +42,14 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher());
     }
+
+    private static PermissionRequest Request(string tool, string requestId) =>
+        new(
+            tool,
+            SideEffect.Execute,
+            JsonSerializer.SerializeToElement(new { command = "ls" }),
+            Reason: null,
+            RequestId: requestId);
 
     [Fact]
     public async Task SendAsync_happy_path_builds_transcript_in_order()
@@ -260,6 +275,126 @@ public sealed class ChatViewModelTests
 
         Assert.Null(viewModel.PendingApproval);
         Assert.False(viewModel.HasPendingApproval);
+    }
+
+    [Fact]
+    public async Task Approval_requests_queue_fifo_and_promote_on_resolution()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+
+        var firstTask = approvals.AskAsync(Request("bash", "r1"), CancellationToken.None);
+        var secondTask = approvals.AskAsync(Request("powershell", "r2"), CancellationToken.None);
+
+        // The first request stays current; the second queues behind it instead of overwriting.
+        Assert.Equal("bash", viewModel.PendingApproval?.ToolName);
+        Assert.True(viewModel.HasQueuedApprovals);
+        Assert.Equal("Approval 1 of 2", viewModel.PendingApprovalCountText);
+
+        viewModel.PendingApproval!.AllowCommand.Execute(null);
+        Assert.Equal(PermissionDecision.Allow, await firstTask);
+
+        Assert.Equal("powershell", viewModel.PendingApproval?.ToolName);
+        Assert.False(viewModel.HasQueuedApprovals);
+        Assert.Equal(string.Empty, viewModel.PendingApprovalCountText);
+
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        Assert.Equal(PermissionDecision.Deny, await secondTask);
+
+        Assert.Null(viewModel.PendingApproval);
+        Assert.False(viewModel.HasPendingApproval);
+    }
+
+    [Fact]
+    public async Task Queued_approval_resolved_externally_is_dropped_without_disturbing_current()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+        using var secondCancellation = new CancellationTokenSource();
+
+        var firstTask = approvals.AskAsync(Request("bash", "r1"), CancellationToken.None);
+        var secondTask = approvals.AskAsync(Request("powershell", "r2"), secondCancellation.Token);
+        Assert.Equal("Approval 1 of 2", viewModel.PendingApprovalCountText);
+
+        // The queued (not current) approval resolves externally — the same
+        // TryCompleteAutomatically path the 5-minute timeout auto-deny uses.
+        secondCancellation.Cancel();
+        Assert.Equal(PermissionDecision.Deny, await secondTask);
+
+        Assert.Equal("bash", viewModel.PendingApproval?.ToolName);
+        Assert.False(viewModel.HasQueuedApprovals);
+        Assert.Equal(string.Empty, viewModel.PendingApprovalCountText);
+
+        viewModel.PendingApproval!.AllowCommand.Execute(null);
+        Assert.Equal(PermissionDecision.Allow, await firstTask);
+        Assert.Null(viewModel.PendingApproval);
+    }
+
+    [Fact]
+    public async Task Current_approval_resolved_externally_promotes_next_queued()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+        using var firstCancellation = new CancellationTokenSource();
+
+        var firstTask = approvals.AskAsync(Request("bash", "r1"), firstCancellation.Token);
+        var secondTask = approvals.AskAsync(Request("powershell", "r2"), CancellationToken.None);
+        Assert.Equal("bash", viewModel.PendingApproval?.ToolName);
+
+        firstCancellation.Cancel();
+        Assert.Equal(PermissionDecision.Deny, await firstTask);
+
+        Assert.Equal("powershell", viewModel.PendingApproval?.ToolName);
+        Assert.False(viewModel.HasQueuedApprovals);
+
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        Assert.Equal(PermissionDecision.Deny, await secondTask);
+        Assert.Null(viewModel.PendingApproval);
+    }
+
+    [Fact]
+    public async Task PendingApprovalCountText_reflects_queue_depth()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+
+        var tasks = new[]
+        {
+            approvals.AskAsync(Request("bash", "r1"), CancellationToken.None),
+            approvals.AskAsync(Request("powershell", "r2"), CancellationToken.None),
+            approvals.AskAsync(Request("write_file", "r3"), CancellationToken.None),
+        };
+
+        Assert.Equal("Approval 1 of 3", viewModel.PendingApprovalCountText);
+
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        Assert.Equal("Approval 1 of 2", viewModel.PendingApprovalCountText);
+
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        Assert.Equal(string.Empty, viewModel.PendingApprovalCountText);
+        Assert.False(viewModel.HasQueuedApprovals);
+
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        Assert.All(await Task.WhenAll(tasks), decision => Assert.Equal(PermissionDecision.Deny, decision));
+    }
+
+    [Fact]
+    public async Task SelectSessionAsync_preserves_pending_approval_queue()
+    {
+        // Approvals survive session switches today (the docked card stays actionable while viewing
+        // another session); the queue must not regress that.
+        var viewModel = Create(new FakeAgentRunner(), out var sessions, out var permissionGate, out var approvals);
+        sessions.Seed("other");
+
+        var firstTask = approvals.AskAsync(Request("bash", "r1"), CancellationToken.None);
+        var secondTask = approvals.AskAsync(Request("powershell", "r2"), CancellationToken.None);
+
+        await viewModel.SelectSessionAsync("other", CancellationToken.None);
+
+        Assert.Equal(0, permissionGate.ResetCount);
+        Assert.Equal("bash", viewModel.PendingApproval?.ToolName);
+        Assert.Equal("Approval 1 of 2", viewModel.PendingApprovalCountText);
+
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        viewModel.PendingApproval!.DenyCommand.Execute(null);
+        Assert.Equal(PermissionDecision.Deny, await firstTask);
+        Assert.Equal(PermissionDecision.Deny, await secondTask);
     }
 
     private sealed class FakeAgentRunner : IAgentRunner

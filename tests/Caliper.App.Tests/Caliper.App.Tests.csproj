@@ -30,6 +30,7 @@
     <Compile Include="..\..\src\Caliper.App\ViewModels\SessionItemViewModel.cs" Link="ViewModels\SessionItemViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SessionsViewModel.cs" Link="ViewModels\SessionsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SkillsViewModel.cs" Link="ViewModels\SkillsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\ToolCallStatus.cs" Link="ViewModels\ToolCallStatus.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\GeneralSettingsViewModel.cs" Link="ViewModels\Settings\GeneralSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ModelsProvidersSettingsViewModel.cs" Link="ViewModels\Settings\ModelsProvidersSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\AgentBehaviorSettingsViewModel.cs" Link="ViewModels\Settings\AgentBehaviorSettingsViewModel.cs" />

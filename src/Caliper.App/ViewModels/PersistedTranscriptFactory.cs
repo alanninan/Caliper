@@ -118,14 +118,13 @@ public static class PersistedTranscriptFactory
 
         // Distinguish a permission denial from an ordinary failure so a reloaded session shows *why*
         // the tool didn't run, not just that it failed.
-        var denied = success == false &&
-            string.Equals(output, ToolResult.Denied.Output, StringComparison.Ordinal);
+        var denied = success == false && ToolCallStatus.IsDenial(output);
         tool.Status = (success, denied) switch
         {
-            (_, true) => "Denied",
-            (true, _) => "Succeeded",
-            (false, _) => "Failed",
-            (null, _) => "Completed",
+            (_, true) => ToolCallStatus.Denied,
+            (true, _) => ToolCallStatus.Succeeded,
+            (false, _) => ToolCallStatus.Failed,
+            (null, _) => ToolCallStatus.Completed,
         };
         tool.Output = output;
         tool.IsExpanded = success == false;

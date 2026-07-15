@@ -31,6 +31,10 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     // not show A's cumulative counts.
     private readonly Dictionary<string, string> _usageBySession = new(StringComparer.Ordinal);
     private readonly LinkedList<string> _recentTranscripts = [];
+    // FIFO queue of unresolved approvals; the head is surfaced as PendingApproval on the docked
+    // card, the rest wait behind it. ApprovalService supports multiple in-flight approvals
+    // (subagent runs make that real), so later requests must never overwrite an earlier one.
+    private readonly List<ApprovalViewModel> _pendingApprovals = [];
     private CancellationTokenSource? _runCancellation;
     private ObservableCollection<ChatItemViewModel>? _runningMessages;
     private string? _currentSessionId;
@@ -122,6 +126,12 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
 
     public bool HasPendingApproval => PendingApproval is not null;
 
+    public bool HasQueuedApprovals => _pendingApprovals.Count > 1;
+
+    // The head of the queue is always position 1; the indicator only appears when something waits.
+    public string PendingApprovalCountText =>
+        _pendingApprovals.Count > 1 ? $"Approval 1 of {_pendingApprovals.Count}" : string.Empty;
+
     [ObservableProperty]
     public partial ChatRunStatus RunStatus { get; set; } = ChatRunStatus.Ready;
 
@@ -163,7 +173,11 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         OnPropertyChanged(nameof(QueuedMessagePreview));
     }
 
-    partial void OnPendingApprovalChanged(ApprovalViewModel? value) => OnPropertyChanged(nameof(HasPendingApproval));
+    partial void OnPendingApprovalChanged(ApprovalViewModel? value)
+    {
+        OnPropertyChanged(nameof(HasPendingApproval));
+        NotifyApprovalQueueChanged();
+    }
 
     partial void OnRunStatusChanged(ChatRunStatus value) => OnPropertyChanged(nameof(StatusText));
 
@@ -491,8 +505,19 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         var target = _runningMessages ?? Messages;
         target.Add(e.Approval);
         NotifyTranscriptChanged(target);
-        PendingApproval = e.Approval;
+
+        // Resolved before it reached the UI (e.g. the run was cancelled between the service raising
+        // the event and this handler running): the IsPending change already fired, so subscribing
+        // now would leave it stranded in the queue. The transcript copy above still renders it.
+        if (!e.Approval.IsPending)
+            return;
+
         e.Approval.PropertyChanged += Approval_PropertyChanged;
+        _pendingApprovals.Add(e.Approval);
+        if (PendingApproval is null)
+            PendingApproval = e.Approval;
+        else
+            NotifyApprovalQueueChanged();
     }
 
     private void Approval_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -504,8 +529,21 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         }
 
         approval.PropertyChanged -= Approval_PropertyChanged;
-        if (ReferenceEquals(PendingApproval, approval))
-            PendingApproval = null;
+        // Remove by reference: a queued approval resolved externally (timeout auto-deny, run
+        // cancellation, or a PermissionResolved event) is dropped without disturbing the current
+        // one; the current one promotes the next queued approval when it resolves.
+        var wasCurrent = ReferenceEquals(PendingApproval, approval);
+        _pendingApprovals.Remove(approval);
+        if (wasCurrent)
+            PendingApproval = _pendingApprovals.Count > 0 ? _pendingApprovals[0] : null;
+        else
+            NotifyApprovalQueueChanged();
+    }
+
+    private void NotifyApprovalQueueChanged()
+    {
+        OnPropertyChanged(nameof(HasQueuedApprovals));
+        OnPropertyChanged(nameof(PendingApprovalCountText));
     }
 
     private void NotifyTranscriptChanged(ObservableCollection<ChatItemViewModel> transcript)

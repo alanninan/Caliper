@@ -237,7 +237,14 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
             EnsureActivity().Add(tool);
         }
 
-        tool.Status = succeeded ? "Succeeded" : "Failed";
+        // Same denial detection as PersistedTranscriptFactory: a denied call must read "Denied"
+        // live, exactly matching what the reload path produces from the stored transcript.
+        var denied = !succeeded && ToolCallStatus.IsDenial(output);
+        tool.Status = succeeded
+            ? ToolCallStatus.Succeeded
+            : denied
+                ? ToolCallStatus.Denied
+                : ToolCallStatus.Failed;
         tool.Output = output;
         tool.IsExpanded = !succeeded;
         tool.SetFileChange(fileChange);
