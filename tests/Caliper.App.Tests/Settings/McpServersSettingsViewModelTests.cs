@@ -92,18 +92,132 @@ public sealed class McpServersSettingsViewModelTests
         Assert.Equal("stored-token", Assert.Single(viewModel.Servers).BearerToken);
     }
 
+    // B1: RemoveSelectedServer must not delete the credential immediately — the server list
+    // itself isn't persisted until SaveAsync, so deleting eagerly loses the secret if the user
+    // closes the page without saving. Deletion is deferred to SaveAsync (see the tests below).
     [Fact]
-    public void RemoveSelectedServer_deletes_its_stored_credential()
+    public async Task RemoveSelectedServer_withoutSaving_keepsStoredCredential()
     {
+        var configWriter = new FakeConfigWriter();
+        configWriter.Mcp.Servers["local"] = new McpServerOptions { Type = "stdio", Command = "npx" };
         var credentials = new FakeCredentialStore();
         credentials.Save("Caliper/Mcp/local/BearerToken", "stored-token");
-        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), new FakeConfigWriter(), new InlineDispatcher(), credentials);
-        viewModel.AddServerCommand.Execute(null);
-        viewModel.SelectedServer!.Name = "local";
+        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), configWriter, new InlineDispatcher(), credentials);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        viewModel.SelectedServer = viewModel.Servers.Single(static s => s.Name == "local");
 
         viewModel.RemoveSelectedServerCommand.Execute(null);
 
+        Assert.True(credentials.TryRead("Caliper/Mcp/local/BearerToken", out var token));
+        Assert.Equal("stored-token", token);
+    }
+
+    [Fact]
+    public async Task SaveAsync_afterRemove_deletesStoredCredential()
+    {
+        var configWriter = new FakeConfigWriter();
+        configWriter.Mcp.Servers["local"] = new McpServerOptions { Type = "stdio", Command = "npx" };
+        var credentials = new FakeCredentialStore();
+        credentials.Save("Caliper/Mcp/local/BearerToken", "stored-token");
+        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), configWriter, new InlineDispatcher(), credentials);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        viewModel.SelectedServer = viewModel.Servers.Single(static s => s.Name == "local");
+        viewModel.RemoveSelectedServerCommand.Execute(null);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
         Assert.False(credentials.TryRead("Caliper/Mcp/local/BearerToken", out _));
+    }
+
+    // B1 related leak: renaming saved the token under the new target but never deleted the old
+    // one. The loaded-vs-saved name diff in SaveAsync covers this regardless of whether the user
+    // re-enters the token under the new name or leaves the field blank.
+    [Fact]
+    public async Task SaveAsync_afterRenameWithTokenReentered_deletesOldTargetAndKeepsNewTarget()
+    {
+        var configWriter = new FakeConfigWriter();
+        configWriter.Mcp.Servers["old-name"] = new McpServerOptions { Type = "stdio", Command = "npx" };
+        var credentials = new FakeCredentialStore();
+        credentials.Save("Caliper/Mcp/old-name/BearerToken", "stored-token");
+        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), configWriter, new InlineDispatcher(), credentials);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        var server = Assert.Single(viewModel.Servers);
+        server.Name = "new-name";
+        server.BearerToken = "stored-token";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(credentials.TryRead("Caliper/Mcp/old-name/BearerToken", out _));
+        Assert.True(credentials.TryRead("Caliper/Mcp/new-name/BearerToken", out var newToken));
+        Assert.Equal("stored-token", newToken);
+    }
+
+    [Fact]
+    public async Task SaveAsync_afterRenameWithTokenCleared_deletesOldTargetAndLeavesNewTargetEmpty()
+    {
+        var configWriter = new FakeConfigWriter();
+        configWriter.Mcp.Servers["old-name"] = new McpServerOptions { Type = "stdio", Command = "npx" };
+        var credentials = new FakeCredentialStore();
+        credentials.Save("Caliper/Mcp/old-name/BearerToken", "stored-token");
+        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), configWriter, new InlineDispatcher(), credentials);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        var server = Assert.Single(viewModel.Servers);
+        server.Name = "new-name";
+        server.BearerToken = string.Empty;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(credentials.TryRead("Caliper/Mcp/old-name/BearerToken", out _));
+        Assert.False(credentials.TryRead("Caliper/Mcp/new-name/BearerToken", out _));
+    }
+
+    // B1: removing a server and adding a new one under the same name before saving must not
+    // wrongly wipe the credential — the name is still present in the saved set, so the
+    // loaded-vs-saved diff must leave it alone (only the per-server Save/Delete in the main loop
+    // decides the final value).
+    [Fact]
+    public async Task SaveAsync_afterRemoveThenReAddSameName_keepsCredentialForThatName()
+    {
+        var configWriter = new FakeConfigWriter();
+        configWriter.Mcp.Servers["local"] = new McpServerOptions { Type = "stdio", Command = "npx" };
+        var credentials = new FakeCredentialStore();
+        credentials.Save("Caliper/Mcp/local/BearerToken", "stored-token");
+        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), configWriter, new InlineDispatcher(), credentials);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        viewModel.SelectedServer = viewModel.Servers.Single(static s => s.Name == "local");
+        viewModel.RemoveSelectedServerCommand.Execute(null);
+
+        viewModel.AddServerCommand.Execute(null);
+        viewModel.SelectedServer!.Name = "local";
+        viewModel.SelectedServer!.BearerToken = "re-entered-token";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(credentials.TryRead("Caliper/Mcp/local/BearerToken", out var token));
+        Assert.Equal("re-entered-token", token);
+    }
+
+    // B1: the removal-diff deletion is gated on a successful config save — if the write fails,
+    // config.json still lists the server, so deleting its token would be the same data loss.
+    [Fact]
+    public async Task SaveAsync_whenConfigSaveFails_keepsCredentialOfRemovedServer()
+    {
+        var configWriter = new FakeConfigWriter();
+        configWriter.Mcp.Servers["local"] = new McpServerOptions { Type = "stdio", Command = "npx" };
+        var credentials = new FakeCredentialStore();
+        credentials.Save("Caliper/Mcp/local/BearerToken", "stored-token");
+        var viewModel = new McpServersSettingsViewModel(new FakeMcpHub(), configWriter, new InlineDispatcher(), credentials);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        viewModel.SelectedServer = viewModel.Servers.Single(static s => s.Name == "local");
+        viewModel.RemoveSelectedServerCommand.Execute(null);
+        configWriter.NextSuccess = false;
+        configWriter.NextError = "disk full";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.StatusIsError);
+        Assert.True(credentials.TryRead("Caliper/Mcp/local/BearerToken", out var token));
+        Assert.Equal("stored-token", token);
     }
 
     private sealed class FakeMcpHub : IMcpHub

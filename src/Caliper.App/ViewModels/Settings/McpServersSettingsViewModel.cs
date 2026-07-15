@@ -18,6 +18,12 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
     private readonly IUiDispatcher _dispatcher;
     private readonly ICredentialStore _credentials;
 
+    // B1: names as they existed at the last Load, so SaveAsync can tell which servers were
+    // actually removed (as opposed to renamed, or removed-then-re-added under the same name)
+    // and only then delete their stored bearer token. Mirrors the loaded-vs-saved diff
+    // ModelsProvidersSettingsViewModel.SaveAsync uses for provider API keys.
+    private HashSet<string> _loadedServerNames = new(StringComparer.OrdinalIgnoreCase);
+
     public McpServersSettingsViewModel(
         IMcpHub mcpHub,
         IConfigWriter configWriter,
@@ -68,6 +74,7 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
             Servers.Add(item);
         }
 
+        _loadedServerNames = new HashSet<string>(options.Servers.Keys, StringComparer.OrdinalIgnoreCase);
         SelectedServer = Servers.FirstOrDefault();
         OnPropertyChanged(nameof(ServerCountText));
     }
@@ -113,7 +120,10 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
         if (SelectedServer is null)
             return;
 
-        _credentials.Delete(CredentialTargets.McpBearerToken(SelectedServer.Name.Trim()));
+        // B1: don't delete the credential here — the server list itself isn't persisted until
+        // SaveAsync, so an immediate delete loses the secret if the user closes without saving.
+        // SaveAsync diffs _loadedServerNames against the saved set and deletes only names that
+        // are still gone at that point (also covers a remove followed by an add of the same name).
         Servers.Remove(SelectedServer);
         SelectedServer = Servers.FirstOrDefault();
         OnPropertyChanged(nameof(ServerCountText));
@@ -144,6 +154,24 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
         }
 
         var result = await _configWriter.SaveMcpAsync(options, CancellationToken.None);
+
+        // B1: clean up credentials for servers that were loaded but are no longer present under
+        // that name — covers both an outright removal and a rename (old target name is dropped).
+        // A name that was removed and then re-added (same or different object) survives here
+        // because it's still a key in options.Servers, so its credential is left untouched.
+        // Only after a successful save: if the config write failed, the server is still listed
+        // in config.json and deleting its token would recreate the exact data loss this fixes.
+        if (result.Success)
+        {
+            var savedNames = new HashSet<string>(options.Servers.Keys, StringComparer.OrdinalIgnoreCase);
+            foreach (var removedName in _loadedServerNames)
+            {
+                if (!savedNames.Contains(removedName))
+                    _credentials.Delete(CredentialTargets.McpBearerToken(removedName));
+            }
+            _loadedServerNames = savedNames;
+        }
+
         StatusIsError = !result.Success;
         StatusMessage = result.Success
             ? "Saved. Restart Caliper for server changes to take effect."
