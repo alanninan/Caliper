@@ -4,6 +4,8 @@ Caliper is a .NET agent runtime with two front-ends — an interactive console a
 
 The project is designed around deterministic host-side control: model output proposes work, while Caliper owns tool dispatch, permissions, retries, context management, persistence, and safety checks.
 
+**Documentation:** the [`docs/`](docs/README.md) folder covers architecture, configuration, permissions, tools, subagents, scheduling, sandboxed execution, durable runs, the desktop app, and testing in depth. Contributions: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## Features
 
 - Console-first agent loop with streaming responses, plus a WinUI 3 desktop app (`Caliper.App`)

@@ -130,7 +130,10 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   Use `CaliperOptions`.
 - Don't commit secrets; keys come from `CALIPER_OPENROUTER_KEY` / `CALIPER_SEARCH_KEY`.
 
-## Roadmap
+## Documentation
 
-Future capability plans live in `docs/agent-capability-roadmap.md` (the `docs/` folder is
-gitignored / local-only).
+Comprehensive, tracked documentation lives in `docs/` (start at `docs/README.md`):
+architecture, CLI, configuration, permissions, tools, subagents, scheduling, sandboxed
+execution, durable runs, the desktop app, and testing/evals. Update the relevant page —
+plus `README.md` and these mirrors — when behavior or commands change. Contribution rules:
+`CONTRIBUTING.md`; ownership: `CODEOWNERS` (repo root).
