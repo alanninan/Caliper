@@ -27,4 +27,23 @@ public interface IConversationOrchestrator
         CancellationToken ct);
 
     Task<ContextFit> ForceCompactAsync(string sessionId, CancellationToken ct);
+
+    /// <summary>
+    /// Roadmap §3.4 durable execution: resumes a run left <c>interrupted</c> (by the startup sweep)
+    /// by id — loads the run row, appends a resume note to its transcript, and continues the loop
+    /// with the remaining step budget. The default implementation here (kept so a pre-existing
+    /// <see cref="IConversationOrchestrator"/> test double compiles unchanged — matching the pattern
+    /// on <see cref="IAgentRunner.RunAsync(RunSpec, CancellationToken)"/>) always reports "not
+    /// supported": resuming fundamentally needs an <c>IRunStore</c>, which the interface itself
+    /// doesn't carry. <c>ConversationOrchestrator</c> overrides this with the real implementation.
+    /// </summary>
+    Task<ConversationRunResult> ResumeAsync(
+        string runId,
+        Func<AgentEvent, CancellationToken, ValueTask>? onEvent,
+        CancellationToken ct) =>
+        Task.FromResult(new ConversationRunResult(
+            null,
+            $"Resume is not supported by this orchestrator (run '{runId}').",
+            null,
+            []));
 }

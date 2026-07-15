@@ -183,6 +183,11 @@ public static class ServiceCollectionExtensions
 
         // Session store
         services.AddSingleton<ISessionStore, SqliteSessionStore>();
+        // Durable execution (roadmap §3.4): tracks orchestrator-driven runs so a crash/kill can be
+        // resumed. Shares the same SqlitePath as the session store but its own schema-gated store
+        // instance; see SqliteRunStore's startup-sweep doc comment for when stale rows flip to
+        // Interrupted.
+        services.AddSingleton<IRunStore, SqliteRunStore>();
 
         // Agent runner
         services.AddSingleton<AgentRunner>();

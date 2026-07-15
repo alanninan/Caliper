@@ -228,7 +228,9 @@ file sealed class Harness
                 new EmptyCaliperMdProvider(),
                 new PassthroughContextManager(),
                 new StaticCapabilityProvider(),
-                runtime);
+                runtime,
+                new InMemoryRunStore(),
+                NullLogger<ConversationOrchestrator>.Instance);
             var runner = new ScheduleJobRunner(
                 orchestrator,
                 sessions,
@@ -466,4 +468,43 @@ file sealed class StaticCapabilityProvider : IModelCapabilityProvider
 {
     public Task<ModelCapabilities> GetAsync(string modelSlug, CancellationToken ct) =>
         Task.FromResult(new ModelCapabilities(true, true, true, 32768));
+}
+
+file sealed class InMemoryRunStore : IRunStore
+{
+    private readonly Dictionary<string, RunRecord> _runs = [];
+
+    public Task<string> StartAsync(string sessionId, string? jobName, int maxSteps, bool unattended, CancellationToken ct)
+    {
+        var runId = Guid.NewGuid().ToString("N");
+        _runs[runId] = new RunRecord(runId, sessionId, jobName, RunStatus.Running, null, 0, maxSteps, unattended, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        return Task.FromResult(runId);
+    }
+
+    public Task UpdateStepAsync(string runId, int stepNumber, CancellationToken ct)
+    {
+        if (_runs.TryGetValue(runId, out var run))
+            _runs[runId] = run with { Step = stepNumber };
+        return Task.CompletedTask;
+    }
+
+    public Task CompleteAsync(string runId, RunStatus status, string? reason, CancellationToken ct)
+    {
+        if (_runs.TryGetValue(runId, out var run))
+            _runs[runId] = run with { Status = status, Reason = reason };
+        return Task.CompletedTask;
+    }
+
+    public Task MarkResumedAsync(string runId, int maxSteps, CancellationToken ct)
+    {
+        if (_runs.TryGetValue(runId, out var run))
+            _runs[runId] = run with { Status = RunStatus.Running, Reason = null, MaxSteps = maxSteps };
+        return Task.CompletedTask;
+    }
+
+    public Task<RunRecord?> GetAsync(string runId, CancellationToken ct) =>
+        Task.FromResult(_runs.TryGetValue(runId, out var run) ? run : null);
+
+    public Task<IReadOnlyList<RunRecord>> ListRecentAsync(int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<RunRecord>>([.. _runs.Values.Take(limit)]);
 }

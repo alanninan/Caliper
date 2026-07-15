@@ -23,6 +23,9 @@ dotnet run --project src/Caliper.Console -- --prompt "Check outdated packages" -
 # headless cron scheduler (runs Caliper:Schedules until Ctrl+C; rejects --prompt/--unattended)
 dotnet run --project src/Caliper.Console -- --serve
 
+# resume an interrupted run (one-shot style; composes with --print; rejects --prompt/--serve)
+dotnet run --project src/Caliper.Console -- --resume <run-id> --print
+
 # evals — hermetic (no model) / model-in-the-loop
 dotnet run --project tests/Caliper.Evals -- --suite all --out eval-report.json
 dotnet run --project tests/Caliper.Evals -- --suite tool-calling --model "<openrouter-slug>"
@@ -70,6 +73,14 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   skip; misfire: no catch-up. `/schedule list|run <name>` manages jobs interactively. A job's
   `Permissions` overlay should set `Mode: Auto` for its allowlists to matter; the global shell
   denylist is always merged in.
+- **Durable runs:** every orchestrator-driven run (one-shot, `--unattended`, jobs, subagent
+  children — not interactive REPL/App streaming) gets a `runs`-table row (`IRunStore` /
+  `SqliteRunStore`): `running → completed | failed | cancelled | interrupted`, with the step
+  counter bumped per turn. A startup sweep flips stale `running` rows to `interrupted`.
+  `--resume <run-id>` / `/runs` resume and inspect; resume relies on the dangling-call healing
+  in `NativeToolStrategy`, appends a system-kind "verify before repeating side effects" note,
+  and continues with the remaining step budget. Side-effecting calls are never auto-redispatched;
+  the scheduler never auto-resumes (next tick starts fresh).
 - **Config precedence:** `~/.caliper/config.json` → `CALIPER_` env vars → CLI overrides.
   The live options class is **`CaliperOptions`** (the `Caliper:` section).
 - **Sandboxed shell execution:** `ShellTool` (bash/powershell) delegates process launch to an

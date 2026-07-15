@@ -25,12 +25,21 @@ var permissionMode = GetOption(args, "--permissions");
 var oneShotPrint = HasOption(args, "--print");
 var unattended = HasOption(args, "--unattended");
 var serve = HasOption(args, "--serve");
+var resumeRunId = GetOption(args, "--resume");
 
 // --serve is the headless scheduler host: no REPL, no one-shot. Reject the contradictory
 // combinations up front instead of silently ignoring a flag.
 if (serve && (!string.IsNullOrWhiteSpace(oneShotPrompt) || unattended))
 {
     AnsiConsole.MarkupLine("[red]--serve cannot be combined with --prompt or --unattended.[/]");
+    Environment.Exit(1);
+}
+
+// --resume is one-shot style itself (roadmap §3.4): rejects --prompt/--serve, composes with --print.
+var resumeError = ResumeFlagValidator.Validate(!string.IsNullOrWhiteSpace(resumeRunId), !string.IsNullOrWhiteSpace(oneShotPrompt), serve);
+if (resumeError is not null)
+{
+    AnsiConsole.MarkupLine($"[red]{Markup.Escape(resumeError)}[/]");
     Environment.Exit(1);
 }
 
@@ -134,6 +143,7 @@ var permissionGate = host.Services.GetRequiredService<IPermissionGate>();
 var configWriter = host.Services.GetRequiredService<IConfigWriter>();
 var scheduleRunner = host.Services.GetRequiredService<ScheduleJobRunner>();
 var timeProvider = host.Services.GetRequiredService<TimeProvider>();
+var runStore = host.Services.GetRequiredService<IRunStore>();
 var footer = new StatusFooter(runtimeSettings, mcpHub);
 
 if (serve)
@@ -186,6 +196,14 @@ catch (OperationCanceledException) when (appCts.IsCancellationRequested)
 
 RenderMcpStatus(mcpHub, showEmpty: false);
 
+if (!string.IsNullOrWhiteSpace(resumeRunId))
+{
+    var resumeLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Caliper.Console.Resume");
+    await RunResumeAsync(conversations, resumeRunId, oneShotPrint, footer, resumeLogger, appCts.Token);
+    await mcpHub.DisposeAllAsync();
+    return;
+}
+
 if (!string.IsNullOrWhiteSpace(oneShotPrompt))
 {
     var oneShotSessionId = await sessions.CreateAsync(SessionTitle(oneShotPrompt), appCts.Token);
@@ -219,7 +237,7 @@ while (!appCts.Token.IsCancellationRequested)
 
     if (input.StartsWith('/'))
     {
-        sessionId = await HandleSlashCommandAsync(input, sessionId, sessions, skillStore, tools, mcpHub, memoryStore, caliperMdProvider, contextManager, capabilityProvider, modelCatalog, runtimeSettings, permissionGate, configWriter, conversations, scheduleRunner, timeProvider, footer, appCts.Token);
+        sessionId = await HandleSlashCommandAsync(input, sessionId, sessions, skillStore, tools, mcpHub, memoryStore, caliperMdProvider, contextManager, capabilityProvider, modelCatalog, runtimeSettings, permissionGate, configWriter, conversations, scheduleRunner, timeProvider, runStore, footer, appCts.Token);
         continue;
     }
 
@@ -273,6 +291,7 @@ static async Task<string> HandleSlashCommandAsync(
     ConversationOrchestrator conversations,
     ScheduleJobRunner scheduleRunner,
     TimeProvider timeProvider,
+    IRunStore runStore,
     StatusFooter footer,
     CancellationToken ct)
 {
@@ -552,6 +571,12 @@ static async Task<string> HandleSlashCommandAsync(
             return currentSessionId ?? "";
         }
 
+        case SlashCommandKind.Runs:
+        {
+            await RenderRunsListAsync(runStore, ct);
+            return currentSessionId ?? "";
+        }
+
         case SlashCommandKind.Help:
         {
             RenderHelp();
@@ -816,6 +841,38 @@ static async Task RunScheduleAsync(
         AnsiConsole.MarkupLine($"[dim]Job finished: {outcome.Reason?.ToString() ?? "?"}[/]");
 }
 
+static async Task RenderRunsListAsync(IRunStore runStore, CancellationToken ct)
+{
+    var runs = await runStore.ListRecentAsync(20, ct);
+    if (runs.Count == 0)
+    {
+        AnsiConsole.MarkupLine("[dim]No tracked runs yet. One-shot, --unattended, scheduled, and subagent runs are tracked; interactive REPL turns are not.[/]");
+        return;
+    }
+
+    var table = new Table()
+        .RoundedBorder()
+        .AddColumn("Run")
+        .AddColumn("Session")
+        .AddColumn("Job")
+        .AddColumn("Status")
+        .AddColumn("Step")
+        .AddColumn("Updated");
+
+    foreach (var run in runs)
+    {
+        table.AddRow(
+            Markup.Escape(run.RunId[..Math.Min(8, run.RunId.Length)]),
+            Markup.Escape(run.SessionId[..Math.Min(8, run.SessionId.Length)]),
+            Markup.Escape(run.JobName ?? "—"),
+            Markup.Escape(run.Status.ToString()),
+            $"{run.Step}/{run.MaxSteps}",
+            Markup.Escape(run.UpdatedAt.ToLocalTime().ToString("g")));
+    }
+
+    AnsiConsole.Write(table);
+}
+
 static void RenderHelp()
 {
     var table = new Table()
@@ -891,6 +948,51 @@ static async Task RunOneShotAsync(
         oneShotLogger.LogWarning("Unattended run denied {Count} action(s).", result.Denials.Count);
 
         Console.Error.WriteLine($"{result.Denials.Count} action(s) denied (unattended):");
+        foreach (var denial in result.Denials)
+        {
+            var reasonSuffix = string.IsNullOrWhiteSpace(denial.Reason) ? "" : $" — {denial.Reason}";
+            Console.Error.WriteLine($"  {denial.Tool}{reasonSuffix}");
+        }
+    }
+}
+
+static async Task RunResumeAsync(
+    ConversationOrchestrator conversations,
+    string runId,
+    bool printOnly,
+    StatusFooter footer,
+    ILogger resumeLogger,
+    CancellationToken ct)
+{
+    var renderer = new EventRenderer(footer, printOnly: true);
+    var result = await conversations.ResumeAsync(
+        runId,
+        (evt, _) =>
+        {
+            if (printOnly)
+                renderer.Render(evt);
+            return ValueTask.CompletedTask;
+        },
+        ct);
+
+    if (result.Error is not null)
+    {
+        AnsiConsole.MarkupLine($"[red]Error: {Markup.Escape(result.Error)}[/]");
+        resumeLogger.LogWarning("Resume failed for run '{RunId}': {Error}", runId, result.Error);
+    }
+    else if (!printOnly && result.AssistantMessage is not null)
+    {
+        Console.WriteLine(result.AssistantMessage);
+    }
+
+    // Same deny + report contract as a fresh unattended run: a resumed job/unattended run keeps
+    // its original Unattended flag (RunSpec.Unattended, carried on the runs row), so its denials
+    // are reported here exactly like RunOneShotAsync's.
+    if (result.Denials.Count > 0)
+    {
+        resumeLogger.LogWarning("Resumed run denied {Count} action(s).", result.Denials.Count);
+
+        Console.Error.WriteLine($"{result.Denials.Count} action(s) denied:");
         foreach (var denial in result.Denials)
         {
             var reasonSuffix = string.IsNullOrWhiteSpace(denial.Reason) ? "" : $" — {denial.Reason}";

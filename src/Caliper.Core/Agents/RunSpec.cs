@@ -57,4 +57,18 @@ public sealed record RunSpec(string SessionId, string Prompt)
     /// itself is unchanged by this flag.
     /// </summary>
     public bool Unattended { get; init; }
+
+    /// <summary>
+    /// Roadmap §3.4 durable execution resume seam. When true, <c>AgentRunner.RunAsync</c> skips its
+    /// normal prologue append of <see cref="Prompt"/> as a new user message — a resumed run's
+    /// transcript is already valid (healed by <c>NativeToolStrategy.BuildMessages</c>'s dangling-call
+    /// healing) and must not gain a second "new turn" on top of where it left off.
+    /// <see cref="Prompt"/> is still used every turn to render the "## Current task" section of the
+    /// system prompt (see <c>PromptBuilder.Build</c>), so <c>ConversationOrchestrator.ResumeAsync</c>
+    /// still populates it — with the job's current prompt if <see cref="JobName"/> resolves, or the
+    /// session's original first user message otherwise — it just isn't re-appended to history.
+    /// Default <see langword="false"/>, so every existing call site (which never sets this) keeps
+    /// today's append-then-run behavior unchanged.
+    /// </summary>
+    public bool ResumeExisting { get; init; }
 }

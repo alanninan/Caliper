@@ -44,6 +44,12 @@ internal abstract class SqliteStoreBase(
             // every connection open.
             await ExecuteNonQueryAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
             await CreateSchemaAsync(connection, ct).ConfigureAwait(false);
+            // Runs once per store instance, under the same schema gate as CreateSchemaAsync — the
+            // seam SqliteRunStore uses for its startup sweep (roadmap §3.4): any row still `running`
+            // when the store first initializes belongs to a process that is not this one (single
+            // local writer), so it gets flipped to `interrupted` before any other IRunStore method
+            // can run. A no-op for every other store.
+            await AfterSchemaCreatedAsync(connection, ct).ConfigureAwait(false);
 
             if (logger.IsEnabled(LogLevel.Debug))
                 logger.LogDebug("SQLite {StoreName} schema is ready at '{SqlitePath}'.", StoreName, SqlitePath);
@@ -56,6 +62,15 @@ internal abstract class SqliteStoreBase(
     }
 
     protected abstract Task CreateSchemaAsync(SqliteConnection connection, CancellationToken ct);
+
+    /// <summary>
+    /// Hook run exactly once, immediately after <see cref="CreateSchemaAsync"/>, while still under
+    /// the schema-creation gate. Default no-op; override for one-time-per-process initialization
+    /// that must happen before any other method on the store runs (see <c>SqliteRunStore</c>'s
+    /// startup sweep).
+    /// </summary>
+    protected virtual Task AfterSchemaCreatedAsync(SqliteConnection connection, CancellationToken ct) =>
+        Task.CompletedTask;
 
     protected SqliteConnection CreateConnection() =>
         new($"Data Source={SqlitePath};Default Timeout=5");

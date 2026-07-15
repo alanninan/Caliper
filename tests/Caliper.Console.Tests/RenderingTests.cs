@@ -66,6 +66,13 @@ public sealed class RenderingTests
         Assert.Equal(SlashCommandKind.Help, SlashCommandParser.Parse("/help").Kind);
         Assert.Equal(SlashCommandKind.Unknown, SlashCommandParser.Parse("/missing").Kind);
     }
+
+    [Fact]
+    public void Slash_parser_recognizes_runs_command_and_lists_it_in_help()
+    {
+        Assert.Equal(SlashCommandKind.Runs, SlashCommandParser.Parse("/runs").Kind);
+        Assert.Contains(SlashCommandParser.Help, item => item.Command == "/runs");
+    }
 }
 
 file sealed class FakeRuntimeSettings : IRuntimeSettings

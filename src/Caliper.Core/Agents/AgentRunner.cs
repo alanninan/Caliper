@@ -49,8 +49,16 @@ public sealed class AgentRunner(
         var effectiveToolRegistry = spec.ToolFilter is null
             ? toolRegistry
             : new FilteredToolRegistry(toolRegistry, spec.ToolFilter);
-        await sessions.AppendAsync(spec.SessionId, ChatMessage.Text(ChatRole.User, spec.Prompt), ct)
-            .ConfigureAwait(false);
+        // Roadmap §3.4 resume seam: a resumed run's transcript is already valid (its own resume note
+        // was appended by ConversationOrchestrator.ResumeAsync before this run started, and dangling
+        // tool calls are healed by NativeToolStrategy.BuildMessages), so it must not gain a second new
+        // user turn on top of where it left off. spec.Prompt is still used below to render "## Current
+        // task" every turn — see RunSpec.ResumeExisting's doc comment.
+        if (!spec.ResumeExisting)
+        {
+            await sessions.AppendAsync(spec.SessionId, ChatMessage.Text(ChatRole.User, spec.Prompt), ct)
+                .ConfigureAwait(false);
+        }
 
         var allSkills = skillStore.List();
         var selectedSkillNames = skillSelector is not null

@@ -21,6 +21,7 @@ public enum SlashCommandKind
     Permissions,
     Config,
     Schedule,
+    Runs,
     Help,
     Quit,
 }
@@ -48,6 +49,7 @@ public static class SlashCommandParser
         new("/config save", "Persist the session's runtime/permission settings to config.json."),
         new("/schedule list", "List configured schedules with next occurrence and last result."),
         new("/schedule run <name>", "Trigger a schedule now through the unattended path (prompts deny + report)."),
+        new("/runs", "List recent tracked runs (one-shot, unattended, scheduled, subagent) with status."),
         new("/help", "Show this command list."),
         new("/quit", "Exit Caliper."),
     ];
@@ -77,6 +79,7 @@ public static class SlashCommandParser
             "/permissions" => SlashCommandKind.Permissions,
             "/config" => SlashCommandKind.Config,
             "/schedule" => SlashCommandKind.Schedule,
+            "/runs" => SlashCommandKind.Runs,
             "/help" => SlashCommandKind.Help,
             "/quit" => SlashCommandKind.Quit,
             _ => SlashCommandKind.Unknown,

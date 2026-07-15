@@ -141,6 +141,7 @@ Interactive mode starts a persisted session and accepts natural-language prompts
 /clear                        Clear active context while keeping transcript
 /schedule list                List configured schedules, next occurrence, last result
 /schedule run <name>          Trigger a schedule now via the unattended path
+/runs                         List recent runs and their status
 /quit                         Exit
 ```
 
@@ -208,6 +209,19 @@ shell denylist is always merged in and can never be lifted by a job); overlappin
 skipped, and occurrences missed while the process was down are not replayed. Each run is stored as
 a normal session titled `[job] {name}`. From the interactive REPL, `/schedule run <name>` triggers
 the identical unattended path — useful for testing a job's allowlist before trusting the cron.
+
+### Durable runs and resume
+
+Every orchestrator-driven run (one-shot, `--unattended`, scheduled jobs, subagent children) is
+tracked in a SQLite `runs` table with a live status (`running`, then `completed`, `failed`,
+`cancelled`, or `interrupted`) and a per-turn step counter. If the process dies mid-run, a startup
+sweep marks the stale row `interrupted`. `/runs` lists recent runs;
+`caliper --resume <run-id>` continues an interrupted run: the stored transcript is healed
+(any dangling tool call gets a synthetic "interrupted" result), a system note tells the model a
+tool call may have partially applied and to verify before repeating side effects, and the loop
+continues with the remaining step budget. Side-effecting tool calls are never re-dispatched
+automatically, and the scheduler never auto-resumes an interrupted job — its next cron tick simply
+starts fresh.
 
 ### Sandboxed shell execution
 
