@@ -171,6 +171,49 @@ public sealed class ScheduleJobRunnerTests
         Assert.False(firstOutcome.Skipped);
     }
 
+    // ── A1: eviction of removed/renamed jobs ────────────────────────────────
+
+    [Fact]
+    public async Task PruneTo_evicts_state_for_jobs_no_longer_configured_and_keeps_current_ones()
+    {
+        var harness = Harness.Build(
+            new ShellStub(),
+            new ScriptedTurnStrategy(
+                new TurnCompleted(new ModelTurn("done", [], null, new UsageInfo(1, 1, 2))),
+                new TurnCompleted(new ModelTurn("done", [], null, new UsageInfo(1, 1, 2)))));
+        var removed = new ScheduleOptions { Name = "removed-job", Cron = "0 6 * * *", Prompt = "run" };
+        var kept = new ScheduleOptions { Name = "kept-job", Cron = "0 7 * * *", Prompt = "run" };
+        await harness.Runner.RunJobAsync(removed, concurrencyGate: null, onEvent: null, CancellationToken.None);
+        await harness.Runner.RunJobAsync(kept, concurrencyGate: null, onEvent: null, CancellationToken.None);
+
+        harness.Runner.PruneTo(["kept-job"]);
+
+        Assert.Null(harness.Runner.GetLastResult("removed-job"));
+        Assert.NotNull(harness.Runner.GetLastResult("kept-job"));
+    }
+
+    [Fact]
+    public async Task PruneTo_skips_a_running_removed_job_then_evicts_it_once_idle()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var harness = Harness.Build(new ShellStub(), new BlockingTurnStrategy(release.Task));
+        var job = new ScheduleOptions { Name = "slow", Cron = "0 6 * * *", Prompt = "long haul" };
+        var first = harness.Runner.RunJobAsync(job, concurrencyGate: null, onEvent: null, CancellationToken.None);
+
+        // The job was removed from config while an occurrence is still running: prune must leave
+        // its held lock alone — the overlap guard still applies to that in-flight occurrence.
+        harness.Runner.PruneTo([]);
+        var overlapped = await harness.Runner.RunJobAsync(job, concurrencyGate: null, onEvent: null, CancellationToken.None);
+        Assert.True(overlapped.Skipped);
+
+        release.SetResult();
+        Assert.False((await first).Skipped);
+        Assert.NotNull(harness.Runner.GetLastResult("slow"));
+
+        // Once the occurrence has finished, the next tick's prune evicts lock and last result.
+        harness.Runner.PruneTo([]);
+        Assert.Null(harness.Runner.GetLastResult("slow"));
+    }
 }
 
 // ── Test harness ────────────────────────────────────────────────────────────

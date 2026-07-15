@@ -78,6 +78,10 @@ public sealed class SchedulerHostedService(
                 // without a restart.
                 var schedules = runtimeSettings.Caliper.Schedules;
 
+                // A1: drop lock/last-result entries for jobs deleted or renamed since last tick
+                // (running occurrences are skipped inside PruneTo and caught on a later tick).
+                jobRunner.PruneTo(schedules.Select(static job => job.Name));
+
                 // 1) Run whatever came due while we slept.
                 foreach (var job in schedules)
                 {
@@ -141,13 +145,19 @@ public sealed class SchedulerHostedService(
                 }
 
                 runtimeSettings.SettingsChanged += OnSettingsChanged;
-                // Signal the test seam only once the SettingsChanged wake is wired, so "armed"
-                // reliably means both the timer and the live-config wake path are active.
+                // Create the tick delay BEFORE signaling the test seam, so "armed" reliably means
+                // both the timer and the live-config wake path actually exist. Signaling first was
+                // a TOCTOU: a FakeTimeProvider.Advance racing into the gap between the signal and
+                // Task.Delay's timer creation would start the delay from the already-advanced
+                // clock and never fire, hanging the awaiting test (observed as a rare
+                // pass-in-isolation / timeout-under-load flake in SchedulerHostedServiceTests).
+                var tickDelay = delay == TimeSpan.Zero
+                    ? Task.CompletedTask
+                    : Task.Delay(delay, timeProvider, wake.Token);
                 DelayArmed?.Invoke(earliest);
                 try
                 {
-                    if (delay != TimeSpan.Zero)
-                        await Task.Delay(delay, timeProvider, wake.Token).ConfigureAwait(false);
+                    await tickDelay.ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
                 {

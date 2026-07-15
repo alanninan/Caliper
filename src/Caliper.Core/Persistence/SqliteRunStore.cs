@@ -82,7 +82,7 @@ internal sealed class SqliteRunStore(
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            UPDATE runs SET status = $status, reason = NULL, max_steps = $max_steps, updated_at = $now
+            UPDATE runs SET status = $status, reason = NULL, max_steps = $max_steps, resumed = 1, updated_at = $now
             WHERE run_id = $run_id;
             """;
         command.Parameters.AddWithValue("$status", ToStorage(RunStatus.Running));
@@ -99,7 +99,7 @@ internal sealed class SqliteRunStore(
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at
+            SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at, resumed
             FROM runs WHERE run_id = $run_id LIMIT 1;
             """;
         command.Parameters.AddWithValue("$run_id", runId);
@@ -115,7 +115,7 @@ internal sealed class SqliteRunStore(
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at
+            SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at, resumed
             FROM runs ORDER BY updated_at DESC LIMIT $limit;
             """;
         command.Parameters.AddWithValue("$limit", Math.Max(0, limit));
@@ -140,10 +140,14 @@ internal sealed class SqliteRunStore(
                   step        INTEGER NOT NULL DEFAULT 0,
                   max_steps   INTEGER NOT NULL,
                   unattended  INTEGER NOT NULL DEFAULT 0,
+                  resumed     INTEGER NOT NULL DEFAULT 0,
                   started_at  TEXT NOT NULL,
                   updated_at  TEXT NOT NULL
                 );
                 """, ct).ConfigureAwait(false);
+        // A6 migration: the column is in CREATE TABLE for fresh databases, but the runs table
+        // shipped this release without it — heal any database created before the column existed.
+        await EnsureColumnAsync(connection, "runs", "resumed", "INTEGER NOT NULL DEFAULT 0", ct).ConfigureAwait(false);
         await ExecuteNonQueryAsync(connection, """
                 CREATE INDEX IF NOT EXISTS ix_runs_status ON runs(status);
                 """, ct).ConfigureAwait(false);
@@ -184,7 +188,8 @@ internal sealed class SqliteRunStore(
             reader.GetInt32(6),
             reader.GetInt32(7) != 0,
             DateTimeOffset.Parse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
-            DateTimeOffset.Parse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+            DateTimeOffset.Parse(reader.GetString(9), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            reader.GetInt32(10) != 0);
 
     private static string ToStorage(RunStatus status) =>
         status switch

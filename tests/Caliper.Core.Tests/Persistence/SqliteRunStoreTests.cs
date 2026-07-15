@@ -32,6 +32,7 @@ public sealed class SqliteRunStoreTests : IDisposable
         Assert.Equal(0, run.Step);
         Assert.Equal(10, run.MaxSteps);
         Assert.False(run.Unattended);
+        Assert.False(run.Resumed);
     }
 
     [Fact]
@@ -81,6 +82,42 @@ public sealed class SqliteRunStoreTests : IDisposable
         // Step itself is left as recorded; AgentRunner's first TurnStarted of the resumed leg
         // overwrites it via UpdateStepAsync once the loop actually starts.
         Assert.Equal(4, run.Step);
+        // A6: the resumed marker sticks so /runs can flag the rebased step/budget display.
+        Assert.True(run.Resumed);
+    }
+
+    [Fact]
+    public async Task MarkResumedAsync_marker_survives_a_later_terminal_write()
+    {
+        var path = NewDbPath();
+        var store = Build(path);
+        var runId = await store.StartAsync("session-1", null, 10, false, CancellationToken.None);
+        await store.CompleteAsync(runId, RunStatus.Interrupted, "sweep", CancellationToken.None);
+        await store.MarkResumedAsync(runId, maxSteps: 6, CancellationToken.None);
+
+        await store.CompleteAsync(runId, RunStatus.Completed, "Completed", CancellationToken.None);
+
+        var run = await store.GetAsync(runId, CancellationToken.None);
+        Assert.Equal(RunStatus.Completed, run!.Status);
+        Assert.True(run.Resumed);
+    }
+
+    // A6 migration: a database whose runs table was created before the `resumed` column shipped
+    // must be healed by EnsureColumnAsync rather than failing on SELECT/UPDATE.
+    [Fact]
+    public async Task Store_heals_a_pre_resumed_column_runs_table()
+    {
+        var path = NewDbPath();
+        var runId = await CreateLegacyRunsTableWithRowAsync(path);
+
+        var store = Build(path);
+        var run = await store.GetAsync(runId, CancellationToken.None);
+
+        Assert.NotNull(run);
+        Assert.False(run!.Resumed);
+
+        await store.MarkResumedAsync(runId, maxSteps: 3, CancellationToken.None);
+        Assert.True((await store.GetAsync(runId, CancellationToken.None))!.Resumed);
     }
 
     [Fact]
@@ -217,6 +254,47 @@ public sealed class SqliteRunStoreTests : IDisposable
         command.Parameters.AddWithValue("$max_steps", maxSteps);
         command.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
         await command.ExecuteNonQueryAsync();
+        return runId;
+    }
+
+    /// <summary>
+    /// Creates the `runs` table exactly as it existed before the A6 `resumed` column (plus the one
+    /// index), and inserts a single interrupted row — simulating a database created by the previous
+    /// build so the EnsureColumnAsync migration path is what a new store instance exercises.
+    /// </summary>
+    private static async Task<string> CreateLegacyRunsTableWithRowAsync(string path)
+    {
+        var runId = Guid.NewGuid().ToString("N");
+        await using var connection = new SqliteConnection($"Data Source={path}");
+        await connection.OpenAsync();
+        await using (var create = connection.CreateCommand())
+        {
+            create.CommandText = """
+                CREATE TABLE runs (
+                  run_id      TEXT PRIMARY KEY,
+                  session_id  TEXT NOT NULL REFERENCES sessions(id),
+                  job_name    TEXT,
+                  status      TEXT NOT NULL,
+                  reason      TEXT,
+                  step        INTEGER NOT NULL DEFAULT 0,
+                  max_steps   INTEGER NOT NULL,
+                  unattended  INTEGER NOT NULL DEFAULT 0,
+                  started_at  TEXT NOT NULL,
+                  updated_at  TEXT NOT NULL
+                );
+                CREATE INDEX ix_runs_status ON runs(status);
+                """;
+            await create.ExecuteNonQueryAsync();
+        }
+
+        await using var insert = connection.CreateCommand();
+        insert.CommandText = """
+            INSERT INTO runs (run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at)
+            VALUES ($run_id, 'session-legacy', NULL, 'interrupted', 'sweep', 2, 10, 0, $now, $now);
+            """;
+        insert.Parameters.AddWithValue("$run_id", runId);
+        insert.Parameters.AddWithValue("$now", DateTimeOffset.UtcNow.ToString("O"));
+        await insert.ExecuteNonQueryAsync();
         return runId;
     }
 

@@ -103,4 +103,16 @@ public sealed class SubagentRunState
 
     /// <summary>Increments and returns the new count; the caller compares it against the configured limit.</summary>
     public int IncrementAndGetChildCount() => Interlocked.Increment(ref _childCount);
+
+    /// <summary>
+    /// Hands back a slot reserved by <see cref="IncrementAndGetChildCount"/> when a spawn attempt
+    /// fails <b>before the child run actually starts</b> — the over-limit rejection itself, or the
+    /// child session-creation throwing (A2). The increment deliberately happens before any
+    /// expensive work so concurrent attempts can only transiently overshoot the limit; releasing
+    /// the slot on those early failures keeps the count meaning "children that actually started",
+    /// so a failed attempt doesn't permanently consume one of the run's <c>MaxChildrenPerRun</c>
+    /// slots. A child run that starts and then fails/times out must <b>not</b> be decremented —
+    /// it really ran (and may have done work) as one of this run's children.
+    /// </summary>
+    public void DecrementChildCount() => Interlocked.Decrement(ref _childCount);
 }

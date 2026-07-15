@@ -10,6 +10,7 @@ using Caliper.Core.Permissions;
 using Caliper.Core.Persistence;
 using Caliper.Core.Tools;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using AIChatRole = Microsoft.Extensions.AI.ChatRole;
@@ -157,6 +158,44 @@ public sealed class ConversationOrchestratorDurableExecutionTests : IDisposable
         Assert.Equal(6, run.Step);
     }
 
+    // Audit coverage gap §5.2: a job run interrupted, then the job removed/renamed in
+    // Caliper:Schedules before the resume — ResumeAsync must warn and fall back to defaults
+    // (original prompt from the transcript, default model/overlay/working root), not fail.
+    [Fact]
+    public async Task ResumeAsync_when_the_runs_job_was_removed_from_config_warns_and_still_completes()
+    {
+        var path = NewDbPath();
+        var logger = new RecordingLogger<ConversationOrchestrator>();
+        var (sessions, runStore, orchestrator, _) = Build(
+            path,
+            [[new ChatResponseUpdate(AIChatRole.Assistant, "resumed with defaults")]],
+            schedules: [new ScheduleOptions { Name = "nightly-report-v2", Cron = "0 6 * * *", Prompt = "renamed job" }],
+            orchestratorLogger: logger);
+
+        var sessionId = await sessions.CreateAsync(null, CancellationToken.None);
+        await sessions.AppendAsync(sessionId, CaliperChatMessage.Text(CaliperChatRole.User, "original job task"), CancellationToken.None);
+
+        // The run was started under job "nightly-report", which no longer exists by resume time.
+        var runId = await runStore.StartAsync(sessionId, jobName: "nightly-report", maxSteps: 10, unattended: true, CancellationToken.None);
+        await runStore.UpdateStepAsync(runId, 3, CancellationToken.None);
+        await runStore.CompleteAsync(runId, RunStatus.Interrupted, "Interrupted by startup sweep.", CancellationToken.None);
+
+        var result = await orchestrator.ResumeAsync(runId, onEvent: null, CancellationToken.None);
+
+        Assert.Null(result.Error);
+        Assert.Equal("resumed with defaults", result.AssistantMessage);
+        Assert.Equal(CompletionReason.Completed, result.Reason);
+
+        var run = await runStore.GetAsync(runId, CancellationToken.None);
+        Assert.Equal(RunStatus.Completed, run!.Status);
+        Assert.True(run.Resumed);
+
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.Warning &&
+            entry.Message.Contains("nightly-report", StringComparison.Ordinal) &&
+            entry.Message.Contains("no longer exists", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task ResumeAsync_on_a_nonexistent_run_returns_a_clear_error_and_creates_no_run()
     {
@@ -196,7 +235,9 @@ public sealed class ConversationOrchestratorDurableExecutionTests : IDisposable
     private static (SqliteSessionStore Sessions, SqliteRunStore Runs, ConversationOrchestrator Orchestrator, ScriptedChatClient Client) Build(
         string path,
         IReadOnlyList<IReadOnlyList<ChatResponseUpdate>> responses,
-        int maxSteps = 25)
+        int maxSteps = 25,
+        IList<ScheduleOptions>? schedules = null,
+        ILogger<ConversationOrchestrator>? orchestratorLogger = null)
     {
         var options = new CaliperOptions
         {
@@ -204,6 +245,7 @@ public sealed class ConversationOrchestratorDurableExecutionTests : IDisposable
             MaxSteps = maxSteps,
             DuplicateCallLimit = 20,
             EnabledTools = ["echo"],
+            Schedules = schedules ?? [],
         };
         var runtime = new RuntimeSettings(Options.Create(options), Options.Create(new PermissionsOptions()));
         var capabilities = new StaticCapabilityProvider(new ModelCapabilities(true, true, true, 32768));
@@ -251,7 +293,7 @@ public sealed class ConversationOrchestratorDurableExecutionTests : IDisposable
             capabilities,
             runtime,
             runStore,
-            NullLogger<ConversationOrchestrator>.Instance);
+            orchestratorLogger ?? NullLogger<ConversationOrchestrator>.Instance);
 
         return (sessions, runStore, orchestrator, client);
     }
@@ -276,5 +318,26 @@ public sealed class ConversationOrchestratorDurableExecutionTests : IDisposable
             {
             }
         }
+    }
+}
+
+/// <summary>Captures log entries so a test can assert a warning path executed.</summary>
+file sealed class RecordingLogger<T> : ILogger<T>
+{
+    public List<(LogLevel Level, string Message)> Entries { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        lock (Entries)
+            Entries.Add((logLevel, formatter(state, exception)));
     }
 }

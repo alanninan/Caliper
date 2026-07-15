@@ -37,12 +37,13 @@ public sealed class SubagentToolTests
         CaliperOptions? opts = null,
         PermissionsOptions? permissions = null,
         IReadOnlyList<ITool>? extraTools = null,
-        Func<IRuntimeSettings, IPermissionGate>? buildGate = null)
+        Func<IRuntimeSettings, IPermissionGate>? buildGate = null,
+        ISessionStore? sessions = null)
     {
         opts ??= new CaliperOptions { Model = "test", MaxSteps = 8, DuplicateCallLimit = 10 };
         permissions ??= new PermissionsOptions();
         var runtime = new RuntimeSettings(Options.Create(opts), Options.Create(permissions));
-        var sessions = new InMemorySessionStore();
+        sessions ??= new InMemorySessionStore();
         buildGate ??= _ => new AllowAllGate();
 
         var services = new ServiceCollection();
@@ -220,6 +221,30 @@ public sealed class SubagentToolTests
         Assert.False(result.Success);
         Assert.Contains("MaxChildrenPerRun", result.Output, StringComparison.Ordinal);
         Assert.Empty(await sessions.ListAsync(CancellationToken.None));
+    }
+
+    // A2: a spawn attempt that fails before the child run starts (session creation throws) must
+    // hand its reserved slot back — otherwise store hiccups permanently shrink the run's budget.
+    [Fact]
+    public async Task Failed_session_creation_does_not_consume_a_child_slot()
+    {
+        var opts = new CaliperOptions { Model = "test", MaxSteps = 8, DuplicateCallLimit = 10 };
+        opts.Subagents.MaxChildrenPerRun = 1;
+        var store = new ThrowOnceSessionStore();
+        var (_, tool, _, _) = Build(new ScriptedTurnStrategy(Respond("child done")), opts, sessions: store);
+
+        var state = new SubagentRunState();
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => tool.InvokeAsync(Args("first attempt"), BuildToolContext(subagentState: state), CancellationToken.None));
+
+        // The failed attempt released its slot, so the retry still fits within MaxChildrenPerRun = 1.
+        var retry = await tool.InvokeAsync(Args("second attempt"), BuildToolContext(subagentState: state), CancellationToken.None);
+        Assert.True(retry.Success);
+
+        // ...and the limit still holds once a child has genuinely run.
+        var third = await tool.InvokeAsync(Args("third attempt"), BuildToolContext(subagentState: state), CancellationToken.None);
+        Assert.False(third.Success);
+        Assert.Contains("MaxChildrenPerRun", third.Output, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -526,6 +551,45 @@ file sealed class InMemorySessionStore : ISessionStore
         _data[sessionId] = prefix;
         return Task.CompletedTask;
     }
+}
+
+/// <summary>Throws on the first session create only (A2: simulate a transient store error), then delegates.</summary>
+file sealed class ThrowOnceSessionStore : ISessionStore
+{
+    private readonly InMemorySessionStore _inner = new();
+    private bool _shouldThrow = true;
+
+    public Task<string> CreateAsync(string? title, CancellationToken ct) =>
+        CreateAsync(title, parentSessionId: null, ct);
+
+    public Task<string> CreateAsync(string? title, string? parentSessionId, CancellationToken ct)
+    {
+        if (_shouldThrow)
+        {
+            _shouldThrow = false;
+            throw new InvalidOperationException("store down");
+        }
+
+        return _inner.CreateAsync(title, parentSessionId, ct);
+    }
+
+    public Task AppendAsync(string sessionId, ChatMessage message, CancellationToken ct) =>
+        _inner.AppendAsync(sessionId, message, ct);
+
+    public Task<IReadOnlyList<ChatMessage>> LoadAsync(string sessionId, CancellationToken ct) =>
+        _inner.LoadAsync(sessionId, ct);
+
+    public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) =>
+        _inner.ListAsync(ct);
+
+    public Task DeleteAsync(string sessionId, CancellationToken ct) =>
+        _inner.DeleteAsync(sessionId, ct);
+
+    public Task RenameAsync(string sessionId, string title, CancellationToken ct) =>
+        _inner.RenameAsync(sessionId, title, ct);
+
+    public Task ReplaceWithCompactionAsync(string sessionId, ContextFit fit, CancellationToken ct) =>
+        _inner.ReplaceWithCompactionAsync(sessionId, fit, ct);
 }
 
 file sealed class EmptySkillStore : ISkillStore

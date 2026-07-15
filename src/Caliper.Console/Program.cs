@@ -865,7 +865,7 @@ static async Task RenderRunsListAsync(IRunStore runStore, CancellationToken ct)
             Markup.Escape(run.RunId[..Math.Min(8, run.RunId.Length)]),
             Markup.Escape(run.SessionId[..Math.Min(8, run.SessionId.Length)]),
             Markup.Escape(run.JobName ?? "—"),
-            Markup.Escape(run.Status.ToString()),
+            Markup.Escape(run.Resumed ? $"{run.Status} (resumed)" : run.Status.ToString()),
             $"{run.Step}/{run.MaxSteps}",
             Markup.Escape(run.UpdatedAt.ToLocalTime().ToString("g")));
     }

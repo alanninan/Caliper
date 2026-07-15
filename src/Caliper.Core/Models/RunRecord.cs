@@ -23,6 +23,11 @@ namespace Caliper.Core.Models;
 /// the next resume's remaining budget (<c>MaxSteps - Step</c>, floored at 1).
 /// </param>
 /// <param name="Unattended"><c>RunSpec.Unattended</c> at the time this run (or its current leg) started.</param>
+/// <param name="Resumed">
+/// True once the run has been resumed at least once (<c>IRunStore.MarkResumedAsync</c>) — a hint
+/// that <see cref="Step"/>/<see cref="MaxSteps"/> reflect the current leg's rebased budget, not
+/// cumulative progress since <see cref="StartedAt"/>.
+/// </param>
 /// <param name="StartedAt">When this run row was first created (not reset by a resume).</param>
 /// <param name="UpdatedAt">When this row last changed (step bump, resume, or terminal write).</param>
 public sealed record RunRecord(
@@ -35,4 +40,5 @@ public sealed record RunRecord(
     int MaxSteps,
     bool Unattended,
     DateTimeOffset StartedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    bool Resumed = false);

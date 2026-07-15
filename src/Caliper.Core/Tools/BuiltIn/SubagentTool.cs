@@ -84,6 +84,9 @@ public sealed class SubagentTool(
         var spawned = ctx.SubagentState.IncrementAndGetChildCount();
         if (spawned > subagentOpts.MaxChildrenPerRun)
         {
+            // A2: the attempt was rejected, so hand the reserved slot back — the count keeps
+            // meaning "children actually started" (see SubagentRunState.DecrementChildCount).
+            ctx.SubagentState.DecrementChildCount();
             return new ToolResult(
                 false,
                 $"Cannot spawn a subagent: this run already spawned the maximum of {subagentOpts.MaxChildrenPerRun} (MaxChildrenPerRun) child agent(s).");
@@ -92,7 +95,20 @@ public sealed class SubagentTool(
         var title = FileToolHelpers.GetString(arguments, "title");
         var childTitle = $"Subagent: {Truncate(string.IsNullOrWhiteSpace(title) ? prompt : title, TitleMaxLength)}";
 
-        var childSummary = await sessions.CreateWithSummaryAsync(childTitle, ctx.SessionId, ct).ConfigureAwait(false);
+        SessionSummary childSummary;
+        try
+        {
+            childSummary = await sessions.CreateWithSummaryAsync(childTitle, ctx.SessionId, ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // A2: the child never came into existence (e.g. a store error), so this attempt must
+            // not consume one of the run's MaxChildrenPerRun slots. Failures *after* the child run
+            // starts (below) deliberately still count — that child really ran.
+            ctx.SubagentState.DecrementChildCount();
+            throw;
+        }
+
         ctx.Emit(new SubagentStarted(ctx.CallId, childSummary.Id, childTitle));
 
         var childOverlay = BuildChildOverlay(ctx.PermissionsOverlay, runtimeSettings.Permissions, profile.Mode);

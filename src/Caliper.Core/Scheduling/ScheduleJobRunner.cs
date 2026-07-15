@@ -43,6 +43,39 @@ public sealed class ScheduleJobRunner(
         _lastResults.TryGetValue(jobName, out var outcome) ? outcome : null;
 
     /// <summary>
+    /// Evicts lock/last-result entries for jobs no longer configured (A1: without this, the two
+    /// dictionaries grow monotonically as jobs are deleted or renamed over a long-lived
+    /// <c>--serve</c> process). Called by <see cref="SchedulerHostedService"/> once per tick with
+    /// the just-read schedule list. A job whose lock is currently held (<c>CurrentCount == 0</c>)
+    /// is skipped this tick — a running occurrence of a removed job must keep both its lock
+    /// (its <c>Release()</c> targets this instance) and its last-result slot; a later prune
+    /// catches it once it goes idle.
+    /// </summary>
+    public void PruneTo(IEnumerable<string> currentJobNames)
+    {
+        var keep = new HashSet<string>(currentJobNames, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var entry in _jobLocks)
+        {
+            if (keep.Contains(entry.Key) || entry.Value.CurrentCount == 0)
+                continue;
+
+            // Pair-wise TryRemove: only removes if the value is still this exact semaphore, so a
+            // racing GetOrAdd of a fresh instance can never be evicted by mistake.
+            if (_jobLocks.TryRemove(entry))
+                entry.Value.Dispose();
+        }
+
+        // Last results are only dropped once the job's lock entry is gone, so a still-running
+        // removed job keeps its slot until the tick after it finishes.
+        foreach (var name in _lastResults.Keys)
+        {
+            if (!keep.Contains(name) && !_jobLocks.ContainsKey(name))
+                _lastResults.TryRemove(name, out _);
+        }
+    }
+
+    /// <summary>
     /// Runs one occurrence of <paramref name="job"/>. <paramref name="concurrencyGate"/> is the
     /// scheduler's cross-job <c>MaxConcurrentJobs</c> semaphore (null for manual triggers, which
     /// aren't subject to it — the scheduler isn't running in REPL mode). The per-job overlap check

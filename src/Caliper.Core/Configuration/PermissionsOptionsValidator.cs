@@ -21,7 +21,20 @@ internal sealed class PermissionsOptionsValidator(IOptions<CaliperOptions> calip
 {
     public ValidateOptionsResult Validate(string? name, PermissionsOptions options)
     {
-        var backend = caliperOptions.Value.Execution.Backend;
+        ExecutionBackendKind backend;
+        try
+        {
+            backend = caliperOptions.Value.Execution.Backend;
+        }
+        catch (OptionsValidationException)
+        {
+            // The Caliper section is itself invalid. Skip (rather than Fail) this validator: it
+            // cannot do its cross-section job without a valid CaliperOptions.Execution.Backend, and
+            // CaliperOptionsValidator already reports the real error for that section — failing here
+            // too would just duplicate/obscure the actual problem behind an unrelated message.
+            return ValidateOptionsResult.Skip;
+        }
+
         var error = UnattendedAllowlistGuard.Validate(options.ShellAutoAllowlist, backend, "The global Permissions section's");
         return error is null ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(error);
     }
