@@ -41,6 +41,51 @@ public sealed class ToolsSettingsViewModelTests
         Assert.Equal(["bash"], configWriter.SavedCaliper!.EnabledTools);
     }
 
+    [Fact]
+    public async Task SaveAsync_sets_restart_required_from_config_writer_result()
+    {
+        var registry = new FakeToolRegistry(new StubTool("search"));
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true };
+        var viewModel = new ToolsSettingsViewModel(registry, configWriter);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.RestartRequired);
+        Assert.Equal("Saved. Restart Caliper for the enabled tool set to take effect.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task SaveAsync_unchanged_tool_set_does_not_claim_restart_required()
+    {
+        // U5: the enabled-tool set didn't actually change, so ConfigWriter reports
+        // RestartRequired: false — the status wording must follow that, not assume a restart is
+        // always needed just because this page can, in general, require one.
+        var registry = new FakeToolRegistry(new StubTool("search"));
+        var configWriter = new FakeConfigWriter { NextRestartRequired = false };
+        var viewModel = new ToolsSettingsViewModel(registry, configWriter);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.Equal("Saved.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task SaveAsync_failed_save_does_not_set_restart_required()
+    {
+        var registry = new FakeToolRegistry(new StubTool("search"));
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true, NextSuccess = false, NextError = "boom" };
+        var viewModel = new ToolsSettingsViewModel(registry, configWriter);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.True(viewModel.StatusIsError);
+    }
+
     private sealed class StubTool(string name) : ITool
     {
         public string Name => name;

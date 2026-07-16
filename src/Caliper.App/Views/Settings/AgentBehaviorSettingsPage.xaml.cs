@@ -4,6 +4,7 @@
 using Caliper.App.ViewModels.Settings;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 
@@ -33,4 +34,9 @@ public sealed partial class AgentBehaviorSettingsPage : Page
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(OnNavigatedTo));
         }
     }
+
+    // Must stay an instance method for WinUI's generated event wiring.
+#pragma warning disable CA1822
+    private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
+#pragma warning restore CA1822
 }

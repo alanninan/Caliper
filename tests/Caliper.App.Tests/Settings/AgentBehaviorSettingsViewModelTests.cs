@@ -50,6 +50,29 @@ public sealed class AgentBehaviorSettingsViewModelTests
     }
 
     [Fact]
+    public async Task SaveAsync_sets_restart_required_from_config_writer_result()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true };
+        var viewModel = new AgentBehaviorSettingsViewModel(configWriter) { MaxSteps = 10 };
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.RestartRequired);
+    }
+
+    [Fact]
+    public async Task SaveAsync_failed_save_does_not_set_restart_required()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true, NextSuccess = false, NextError = "boom" };
+        var viewModel = new AgentBehaviorSettingsViewModel(configWriter) { MaxSteps = 10 };
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.True(viewModel.StatusIsError);
+    }
+
+    [Fact]
     public async Task SaveAsync_blank_seed_clears_it()
     {
         var configWriter = new FakeConfigWriter { Caliper = new CaliperOptions { Seed = 7 } };

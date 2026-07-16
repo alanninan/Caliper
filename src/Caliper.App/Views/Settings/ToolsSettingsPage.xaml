@@ -28,7 +28,15 @@
             IsClosable="False"
             IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
             Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-            Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+            Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+            <InfoBar.ActionButton>
+                <Button
+                    AutomationProperties.AutomationId="ToolsRestartAppButton"
+                    Click="RestartApp_Click"
+                    Content="Restart Caliper"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+            </InfoBar.ActionButton>
+        </InfoBar>
         <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
             <ListView AutomationProperties.AutomationId="ToolsList" ItemsSource="{x:Bind ViewModel.Tools, Mode=OneWay}">
                 <ListView.ItemTemplate>

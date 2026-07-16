@@ -23,7 +23,15 @@
                 IsClosable="False"
                 IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="AgentBehaviorRestartAppButton"
+                        Click="RestartApp_Click"
+                        Content="Restart Caliper"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
 
             <settings:SettingsExpander Header="Turn strategy" Description="How the model decides between native tool calls and structured envelopes.">
                 <ComboBox AutomationProperties.AutomationId="TurnStrategyPicker" MinWidth="200" ItemsSource="{x:Bind ViewModel.TurnStrategyOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SelectedTurnStrategy, Mode=TwoWay}" />

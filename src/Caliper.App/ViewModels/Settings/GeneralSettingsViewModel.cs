@@ -27,6 +27,13 @@ public sealed partial class GeneralSettingsViewModel(
     [ObservableProperty]
     public partial bool StatusIsError { get; set; }
 
+    // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired. WorkingRoot is a live seam
+    // (AgentRunner reads runtimeSettings.Caliper.WorkingRoot fresh per run), so ConfigWriter never
+    // reports RestartRequired: true for this save — kept for uniformity with every other settings
+    // page rather than special-cased away.
+    [ObservableProperty]
+    public partial bool RestartRequired { get; set; }
+
     partial void OnSelectedThemeChanged(AppThemePreference value) =>
         preferencesStore.Save(preferencesStore.Load() with { Theme = value });
 
@@ -40,11 +47,13 @@ public sealed partial class GeneralSettingsViewModel(
     [RelayCommand]
     private async Task SaveAsync()
     {
+        RestartRequired = false;
         var current = await configWriter.LoadCaliperAsync(CancellationToken.None);
         current.WorkingRoot = WorkingRoot;
 
         var result = await configWriter.SaveCaliperAsync(current, CancellationToken.None);
         StatusIsError = !result.Success;
+        RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success
             ? "Saved."
             : result.Error ?? "Save failed.";

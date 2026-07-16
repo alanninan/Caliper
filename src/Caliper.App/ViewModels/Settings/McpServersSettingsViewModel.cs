@@ -54,6 +54,10 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired.
+    [ObservableProperty]
+    public partial bool RestartRequired { get; set; }
+
     public bool HasMcpServers => McpServers.Count > 0;
     public string ServerCountText => $"{Servers.Count:N0}";
     public string ToolCountText => $"{McpServers.Sum(static s => s.ToolCount):N0} tools";
@@ -132,6 +136,7 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
     [RelayCommand]
     private async Task SaveAsync()
     {
+        RestartRequired = false;
         var options = new McpOptions();
         foreach (var server in Servers)
         {
@@ -173,8 +178,11 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
         }
 
         StatusIsError = !result.Success;
+        RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success
-            ? "Saved. Restart Caliper for server changes to take effect."
+            ? RestartRequired
+                ? "Saved. Restart Caliper for server changes to take effect."
+                : "Saved."
             : result.Error ?? "Save failed.";
     }
 

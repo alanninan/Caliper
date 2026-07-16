@@ -42,4 +42,30 @@ public sealed class PermissionsSettingsViewModelTests
         Assert.Equal(PermissionMode.Plan, configWriter.SavedPermissions!.Mode);
         Assert.Equal(["rm -rf"], configWriter.SavedPermissions.ShellDenylist);
     }
+
+    [Fact]
+    public async Task SaveAsync_sets_restart_required_from_config_writer_result()
+    {
+        // SavePermissionsAsync's whole section is a live seam, so ConfigWriter always reports
+        // RestartRequired: false in production — this exercises the VM's wiring in isolation via
+        // the fake, matching the uniform pattern on every other settings page (U5).
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true };
+        var viewModel = new PermissionsSettingsViewModel(configWriter);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.RestartRequired);
+    }
+
+    [Fact]
+    public async Task SaveAsync_failed_save_does_not_set_restart_required()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true, NextSuccess = false, NextError = "boom" };
+        var viewModel = new PermissionsSettingsViewModel(configWriter);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.True(viewModel.StatusIsError);
+    }
 }

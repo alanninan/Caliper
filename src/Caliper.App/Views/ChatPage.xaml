@@ -20,6 +20,19 @@
             <Setter Property="CornerRadius" Value="4" />
         </Style>
 
+        <!--
+            U4: header quick-switchers (model, permission mode) — a DropDownButton lightly styled
+            to keep the workspace header's existing caption look rather than reading as a full
+            accent-styled control.
+        -->
+        <Style x:Key="HeaderQuickSwitcherButtonStyle" TargetType="DropDownButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        </Style>
+
         <DataTemplate x:Key="UserMessageTemplate" x:DataType="vm:UserMessageViewModel">
             <Grid
                 Margin="64,8,8,8"
@@ -652,20 +665,67 @@
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Spacing="4">
                     <TextBlock Text="Workspace" Style="{StaticResource TitleTextBlockStyle}" />
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock
-                            AutomationProperties.AutomationId="RuntimeSummaryText"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}"
-                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <!--
+                            U4: session-scoped quick-switchers. Both write only the live
+                            IRuntimeSettings clone (never config.json) — Settings → Models &amp;
+                            providers / Permissions remain the persistent path.
+                        -->
+                        <DropDownButton
+                            AutomationProperties.AutomationId="ModelQuickSwitcher"
+                            Content="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}"
+                            Style="{StaticResource HeaderQuickSwitcherButtonStyle}">
+                            <DropDownButton.Flyout>
+                                <Flyout x:Name="ModelQuickSwitcherFlyout" Opened="ModelQuickSwitcherFlyout_Opened">
+                                    <StackPanel MinWidth="280" Spacing="8">
+                                        <AutoSuggestBox
+                                            x:Name="QuickModelPicker"
+                                            AutomationProperties.AutomationId="QuickModelPicker"
+                                            ItemsSource="{x:Bind ViewModel.FilteredQuickModels, Mode=OneWay}"
+                                            PlaceholderText="Search or enter a model id"
+                                            QueryIcon="Find"
+                                            QuerySubmitted="QuickModelPicker_QuerySubmitted"
+                                            Text="{x:Bind ViewModel.ModelSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <TextBlock
+                                            Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                            Text="{x:Bind ViewModel.QuickModelHintText, Mode=OneWay}"
+                                            TextWrapping="Wrap"
+                                            Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </StackPanel>
+                                </Flyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                             Text="·"
                             Style="{StaticResource CaptionTextBlockStyle}" />
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{x:Bind ViewModel.PermissionModeText, Mode=OneWay}"
-                            Style="{StaticResource CaptionTextBlockStyle}" />
+                        <DropDownButton
+                            AutomationProperties.AutomationId="PermissionModePicker"
+                            Content="{x:Bind ViewModel.PermissionModeText, Mode=OneWay}"
+                            Style="{StaticResource HeaderQuickSwitcherButtonStyle}">
+                            <DropDownButton.Flyout>
+                                <MenuFlyout>
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="PermissionModeAskAlwaysItem"
+                                        Command="{x:Bind ViewModel.SetPermissionModeCommand}"
+                                        CommandParameter="AskAlways"
+                                        IsChecked="{x:Bind ViewModel.IsAskAlwaysMode, Mode=OneWay}"
+                                        Text="Ask always" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="PermissionModeAutoItem"
+                                        Command="{x:Bind ViewModel.SetPermissionModeCommand}"
+                                        CommandParameter="Auto"
+                                        IsChecked="{x:Bind ViewModel.IsAutoMode, Mode=OneWay}"
+                                        Text="Auto" />
+                                    <RadioMenuFlyoutItem
+                                        AutomationProperties.AutomationId="PermissionModePlanItem"
+                                        Command="{x:Bind ViewModel.SetPermissionModeCommand}"
+                                        CommandParameter="Plan"
+                                        IsChecked="{x:Bind ViewModel.IsPlanMode, Mode=OneWay}"
+                                        Text="Plan" />
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
                     </StackPanel>
                 </StackPanel>
                 <CommandBar

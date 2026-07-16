@@ -51,6 +51,74 @@ public sealed class AdvancedSettingsViewModelTests
         Assert.False(viewModel.StatusIsError);
     }
 
+    [Fact]
+    public async Task SavePersistenceAsync_sets_restart_required_from_config_writer_result()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true };
+        var viewModel = new AdvancedSettingsViewModel(new FakeConfigFileStore("{}"), configWriter)
+        {
+            PersistencePath = "/new.sqlite",
+        };
+
+        await viewModel.SavePersistenceCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.RestartRequired);
+    }
+
+    [Fact]
+    public async Task SavePersistenceAsync_failed_save_does_not_set_restart_required()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true, NextSuccess = false, NextError = "boom" };
+        var viewModel = new AdvancedSettingsViewModel(new FakeConfigFileStore("{}"), configWriter)
+        {
+            PersistencePath = "/new.sqlite",
+        };
+
+        await viewModel.SavePersistenceCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.True(viewModel.StatusIsError);
+    }
+
+    [Fact]
+    public async Task SaveRawAsync_always_sets_restart_required_on_success()
+    {
+        // A raw write bypasses ConfigWriter entirely — any section could have changed — so this is
+        // unconditionally restart-required rather than diffing an untyped JSON blob.
+        var files = new FakeConfigFileStore("{}");
+        var viewModel = new AdvancedSettingsViewModel(files, new FakeConfigWriter())
+        {
+            RawJson = """{"Caliper":{"Model":"x"}}""",
+        };
+
+        await viewModel.SaveRawCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.RestartRequired);
+    }
+
+    [Fact]
+    public async Task SaveRawAsync_invalid_json_does_not_set_restart_required()
+    {
+        var files = new FakeConfigFileStore("{}");
+        var viewModel = new AdvancedSettingsViewModel(new ThrowingConfigFileStore(), new FakeConfigWriter())
+        {
+            RawJson = "not json",
+        };
+
+        await viewModel.SaveRawCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.True(viewModel.StatusIsError);
+    }
+
+    private sealed class ThrowingConfigFileStore : IConfigFileStore
+    {
+        public Task<string> ReadAsync(CancellationToken ct) => Task.FromResult("{}");
+
+        public Task WriteAsync(string json, CancellationToken ct) =>
+            throw new System.Text.Json.JsonException("invalid JSON");
+    }
+
     private sealed class FakeConfigFileStore(string content) : IConfigFileStore
     {
         public string Content { get; private set; } = content;

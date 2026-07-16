@@ -33,6 +33,14 @@ stopped being sent to the model.
   transcript (reasoning omitted, tool activity and status/compaction markers collapsed to one
   line each); the inspector's Output tab has its own copy button for just the selected tool's
   output.
+- The workspace header's model and permission-mode captions are quick-switchers: each is a
+  `DropDownButton` styled to keep the caption look. The model switcher's flyout hosts a search
+  box over the model catalog (fetched lazily on first open; a failed fetch degrades to an empty
+  list with the error as the hint text, never a crash); the permission-mode switcher's flyout is
+  three `RadioMenuFlyoutItem`s (Ask always / Auto / Plan). Both write only the live
+  `IRuntimeSettings` clone via `SetModel`/`SetPermissionMode` — **session-scoped, not
+  persisted** — so Settings → Models & providers / Permissions remain the place to make a change
+  stick across restarts.
 - Both the sessions pane (`Ctrl+B`) and the inspector pane (`Ctrl+Shift+B`) can be collapsed
   from the workspace header toolbar; each state persists (`SessionsPaneCollapsed` /
   `InspectorPaneCollapsed`) and restores on next launch. Widths dragged with either
@@ -56,6 +64,14 @@ or a `PermissionResolved` event — is dropped from the queue without disturbing
 card. The queue survives session switches, like the single docked card always has. Subagent
 children's requests render under the child session's title so it's clear who is asking. The
 App never runs unattended specs, so it needs no routing prompt.
+
+If the window is inactive (not the foreground/active window), the App also raises a Windows
+notification (toast) for: a new pending approval, and a run finishing — "Run finished" for a
+clean completion or "Run failed" for any other terminal outcome (cancelled, step limit, loop
+detected, or failed), with the session title as the second line where available. The
+run-finished toast fires only for a genuine transition out of an in-flight run (never a session
+switch or reload); no taskbar flash or badge is implemented. Both are best-effort — a WinRT/COM
+notification failure is logged, never surfaced or thrown.
 
 ## Secrets and preferences
 
@@ -92,6 +108,18 @@ Context & memory, MCP servers, Search, Advanced) edit typed config sections thro
 `IConfigWriter`, which reports which changes are live vs restart-required. The settings
 `NavigationView` uses top (`PaneDisplayMode="Top"`) navigation, not a second left rail nested
 inside the app's root nav — items that don't fit collapse into a "More" overflow menu.
+
+Every page follows the same restart-affordance pattern: a `RestartRequired` view-model flag, set
+from the save result (`result.Success && result.RestartRequired`, cleared at the start of the
+next save — never claimed for a save that didn't happen), backs an `InfoBar.ActionButton`
+("Restart Caliper") next to the status message, shown only while the flag is true. In practice
+the flag only ever goes true on Models & providers (endpoint/key changes), Tools (the enabled-tool
+set actually changed), MCP servers and Search (every save), and Advanced (both the persistence
+path and the raw-JSON escape hatch, the latter unconditionally since it bypasses `IConfigWriter`'s
+typed restart computation entirely) — General, Agent behavior, Context & memory, and Permissions
+save fields that are live seams, so `IConfigWriter` never reports true for them; the flag and
+action button are still wired identically there for uniformity. All eight non-Models pages reuse
+the same restart call via the internal `AppRestart.Restart()` helper.
 
 ## Conventions
 

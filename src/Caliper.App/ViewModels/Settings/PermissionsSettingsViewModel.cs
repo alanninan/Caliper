@@ -22,6 +22,14 @@ public sealed partial class PermissionsSettingsViewModel(IConfigWriter configWri
     [ObservableProperty] public partial string StatusMessage { get; set; } = string.Empty;
     [ObservableProperty] public partial bool StatusIsError { get; set; }
 
+    // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired for uniformity across settings
+    // pages. SavePermissionsAsync's whole section is a live seam (PermissionGate reads
+    // runtimeSettings.Permissions fresh on every call), so ConfigWriter always reports
+    // RestartRequired: false here and this never actually shows the restart action — kept anyway
+    // so the pattern is identical on every settings page rather than special-cased away on this
+    // one.
+    [ObservableProperty] public partial bool RestartRequired { get; set; }
+
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct)
     {
@@ -36,6 +44,7 @@ public sealed partial class PermissionsSettingsViewModel(IConfigWriter configWri
     [RelayCommand]
     private async Task SaveAsync()
     {
+        RestartRequired = false;
         var permissions = new PermissionsOptions
         {
             Mode = SelectedPermissionMode,
@@ -47,6 +56,7 @@ public sealed partial class PermissionsSettingsViewModel(IConfigWriter configWri
 
         var result = await configWriter.SavePermissionsAsync(permissions, CancellationToken.None);
         StatusIsError = !result.Success;
+        RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success ? "Saved." : result.Error ?? "Save failed.";
     }
 

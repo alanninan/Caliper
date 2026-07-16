@@ -7,6 +7,7 @@ using System.Text;
 using Caliper.App.Permissions;
 using Caliper.App.Preferences;
 using Caliper.Core.Abstractions;
+using Caliper.Core.Configuration;
 using Caliper.Core.Events;
 using Caliper.Core.Models;
 using Caliper.Core.Permissions;
@@ -29,6 +30,12 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     private readonly IUiDispatcher _dispatcher;
     private readonly ISessionUsageStore _usageStore;
     private readonly IAppPreferencesStore _preferencesStore;
+    private readonly IModelCatalog _modelCatalog;
+    // U4: the quick-switcher's model catalog is fetched lazily on first flyout open, not at
+    // construction — the same "don't hit the network until the UI actually needs it" reasoning
+    // as ModelsProvidersSettingsViewModel's separate LoadModelsCommand.
+    private bool _modelCatalogLoaded;
+    private List<string> _quickModelIds = [];
     private readonly Dictionary<string, ObservableCollection<ChatItemViewModel>> _transcripts =
         new(StringComparer.Ordinal);
     // Token usage is per session: while a run streams in A and the user views B, B's footer must
@@ -55,7 +62,8 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         IRuntimeSettings runtimeSettings,
         IUiDispatcher dispatcher,
         ISessionUsageStore usageStore,
-        IAppPreferencesStore preferencesStore)
+        IAppPreferencesStore preferencesStore,
+        IModelCatalog modelCatalog)
     {
         _runner = runner;
         _sessions = sessions;
@@ -67,6 +75,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         _dispatcher = dispatcher;
         _usageStore = usageStore;
         _preferencesStore = preferencesStore;
+        _modelCatalog = modelCatalog;
         _approvals.ApprovalRequested += Approvals_ApprovalRequested;
         _runtimeSettings.SettingsChanged += RuntimeSettings_SettingsChanged;
 
@@ -87,6 +96,9 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         {
             OnPropertyChanged(nameof(RuntimeSummary));
             OnPropertyChanged(nameof(PermissionModeText));
+            OnPropertyChanged(nameof(IsAskAlwaysMode));
+            OnPropertyChanged(nameof(IsAutoMode));
+            OnPropertyChanged(nameof(IsPlanMode));
         }
 
         if (_dispatcher.HasThreadAccess)
@@ -184,6 +196,75 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
 
     public string RuntimeSummary => $"{_runtimeSettings.Caliper.Provider} · {_runtimeSettings.Caliper.Model}";
     public string PermissionModeText => _runtimeSettings.Permissions.Mode.ToString();
+
+    // U4: header quick-switcher checked-state — refreshed alongside PermissionModeText in
+    // RuntimeSettings_SettingsChanged, including for a change made outside the switcher itself
+    // (e.g. the Permissions settings page).
+    public bool IsAskAlwaysMode => _runtimeSettings.Permissions.Mode == PermissionMode.AskAlways;
+    public bool IsAutoMode => _runtimeSettings.Permissions.Mode == PermissionMode.Auto;
+    public bool IsPlanMode => _runtimeSettings.Permissions.Mode == PermissionMode.Plan;
+
+    // U4: header model quick-switcher. Session-scoped by design (SetModel writes only the live
+    // runtimeSettings clone) — the Models & providers settings page remains the persistent path.
+    [ObservableProperty]
+    public partial string ModelSearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string QuickModelHintText { get; set; } = "Session only — persist in Settings.";
+
+    public ObservableCollection<string> FilteredQuickModels { get; } = [];
+
+    partial void OnModelSearchTextChanged(string value) => FilterQuickModels(value);
+
+    private void FilterQuickModels(string? query)
+    {
+        FilteredQuickModels.Clear();
+        foreach (var id in _quickModelIds
+                     .Where(id => string.IsNullOrWhiteSpace(query) || id.Contains(query, StringComparison.OrdinalIgnoreCase))
+                     .Take(20))
+        {
+            FilteredQuickModels.Add(id);
+        }
+    }
+
+    // Lazy, once-per-session-of-the-page fetch: called from the quick-switcher flyout's Opened
+    // event, not eagerly at construction. The catalog call hits a live, provider-selected network
+    // endpoint (OpenRouter/Gemini) — same unenumerable failure surface as
+    // ModelsProvidersSettingsViewModel.LoadModelsAsync (A11) — so a failure must degrade to an
+    // empty list and surface the error as the hint text rather than throw out of a flyout-open
+    // handler.
+    public async Task LoadModelCatalogAsync()
+    {
+        if (_modelCatalogLoaded)
+            return;
+
+        _modelCatalogLoaded = true;
+        try
+        {
+            var entries = await _modelCatalog.ListAsync(CancellationToken.None);
+            _quickModelIds = [.. entries.Select(static entry => entry.Id).OrderBy(static id => id, StringComparer.OrdinalIgnoreCase)];
+            FilterQuickModels(ModelSearchText);
+        }
+        catch (Exception ex)
+        {
+            QuickModelHintText = ex.Message;
+        }
+    }
+
+    [RelayCommand]
+    private void SetPermissionMode(string mode)
+    {
+        if (Enum.TryParse<PermissionMode>(mode, ignoreCase: true, out var parsed))
+            _runtimeSettings.SetPermissionMode(parsed);
+    }
+
+    [RelayCommand]
+    private void ApplyModel(string modelId)
+    {
+        var trimmed = modelId?.Trim();
+        if (!string.IsNullOrEmpty(trimmed))
+            _runtimeSettings.SetModel(trimmed);
+    }
 
     partial void OnMessagesChanged(ObservableCollection<ChatItemViewModel> value)
     {

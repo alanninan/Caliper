@@ -16,7 +16,15 @@
                 IsClosable="False"
                 IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="GeneralRestartAppButton"
+                        Click="RestartApp_Click"
+                        Content="Restart Caliper"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
             <settings:SettingsCard Header="Theme" Description="High Contrast follows Windows automatically.">
                 <ComboBox
                     x:Name="ThemePicker"

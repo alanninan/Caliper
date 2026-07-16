@@ -39,6 +39,11 @@ public sealed partial class AdvancedSettingsPage : Page
     private void OpenConfig_Click(object sender, RoutedEventArgs e) =>
         Process.Start(new ProcessStartInfo(CaliperHome.ConfigPath) { UseShellExecute = true });
 
+    // Must stay an instance method for WinUI's generated event wiring.
+#pragma warning disable CA1822
+    private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
+#pragma warning restore CA1822
+
     private async void BrowsePersistencePath_Click(object sender, RoutedEventArgs e)
     {
         try

@@ -23,6 +23,9 @@ public sealed partial class SearchSettingsViewModel(IConfigWriter configWriter, 
     [ObservableProperty] public partial string StatusMessage { get; set; } = string.Empty;
     [ObservableProperty] public partial bool StatusIsError { get; set; }
 
+    // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired.
+    [ObservableProperty] public partial bool RestartRequired { get; set; }
+
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct)
     {
@@ -39,6 +42,7 @@ public sealed partial class SearchSettingsViewModel(IConfigWriter configWriter, 
     [RelayCommand]
     private async Task SaveAsync()
     {
+        RestartRequired = false;
         if (string.IsNullOrWhiteSpace(ApiKey))
             credentials.Delete(CredentialTargets.SearchApiKey);
         else
@@ -55,8 +59,11 @@ public sealed partial class SearchSettingsViewModel(IConfigWriter configWriter, 
 
         var result = await configWriter.SaveSearchAsync(search, CancellationToken.None);
         StatusIsError = !result.Success;
+        RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success
-            ? "Saved. Restart Caliper for search changes to take effect."
+            ? RestartRequired
+                ? "Saved. Restart Caliper for search changes to take effect."
+                : "Saved."
             : result.Error ?? "Save failed.";
     }
 }

@@ -27,6 +27,13 @@ public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configW
     [ObservableProperty] public partial string StatusMessage { get; set; } = string.Empty;
     [ObservableProperty] public partial bool StatusIsError { get; set; }
 
+    // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired. Every field this page saves
+    // (TurnStrategy, step/retry/timeout limits, temperature, seed, reasoning) is read live from
+    // runtimeSettings.Caliper by AgentRunner/TurnStrategySelector on every turn, so ConfigWriter
+    // never reports RestartRequired: true here — kept for uniformity with every other settings
+    // page rather than special-cased away.
+    [ObservableProperty] public partial bool RestartRequired { get; set; }
+
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct)
     {
@@ -46,6 +53,7 @@ public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configW
     [RelayCommand]
     private async Task SaveAsync()
     {
+        RestartRequired = false;
         int? seed = null;
         if (!string.IsNullOrWhiteSpace(SeedText))
         {
@@ -72,6 +80,7 @@ public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configW
 
         var result = await configWriter.SaveCaliperAsync(caliper, CancellationToken.None);
         StatusIsError = !result.Success;
+        RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success ? "Saved. Changes apply to the next message you send." : result.Error ?? "Save failed.";
     }
 }

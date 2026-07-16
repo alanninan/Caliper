@@ -57,7 +57,8 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher(),
             usageStore,
-            preferences);
+            preferences,
+            new FakeModelCatalog());
     }
 
     private static PermissionRequest Request(string tool, string requestId) =>
@@ -172,7 +173,8 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher(),
             usageStore,
-            new FakePreferencesStore());
+            new FakePreferencesStore(),
+            new FakeModelCatalog());
         sessions.Seed("session-1");
 
         await viewModel.SelectSessionAsync("session-1", CancellationToken.None);
@@ -313,7 +315,8 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher(),
             new FakeSessionUsageStore(),
-            new FakePreferencesStore());
+            new FakePreferencesStore(),
+            new FakeModelCatalog());
         var changed = new List<string?>();
         viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
@@ -322,6 +325,114 @@ public sealed class ChatViewModelTests
         Assert.Contains(nameof(ChatViewModel.RuntimeSummary), changed);
         Assert.Contains(nameof(ChatViewModel.PermissionModeText), changed);
         Assert.Contains("new/model", viewModel.RuntimeSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetPermissionModeCommand_updates_runtime_settings_and_checked_state()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        Assert.True(viewModel.IsAskAlwaysMode);
+        Assert.False(viewModel.IsAutoMode);
+        Assert.False(viewModel.IsPlanMode);
+
+        viewModel.SetPermissionModeCommand.Execute("Auto");
+
+        Assert.Equal("Auto", viewModel.PermissionModeText);
+        Assert.False(viewModel.IsAskAlwaysMode);
+        Assert.True(viewModel.IsAutoMode);
+        Assert.False(viewModel.IsPlanMode);
+    }
+
+    [Fact]
+    public void SetPermissionModeCommand_ignores_an_unparsable_mode()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+
+        viewModel.SetPermissionModeCommand.Execute("not-a-real-mode");
+
+        Assert.True(viewModel.IsAskAlwaysMode);
+    }
+
+    [Fact]
+    public void ApplyModelCommand_sets_the_live_model_and_ignores_blank()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        var before = viewModel.RuntimeSummary;
+
+        viewModel.ApplyModelCommand.Execute("   ");
+        Assert.Equal(before, viewModel.RuntimeSummary);
+
+        viewModel.ApplyModelCommand.Execute("openrouter/new-model");
+
+        Assert.Contains("openrouter/new-model", viewModel.RuntimeSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task LoadModelCatalogAsync_populates_filtered_quick_models_sorted()
+    {
+        var catalog = new FakeModelCatalog(
+            new ModelCatalogEntry("beta/model", new ModelCapabilities(true, false, false, 1000)),
+            new ModelCatalogEntry("alpha/model", new ModelCapabilities(true, false, false, 1000)));
+        var viewModel = CreateWithCatalog(catalog);
+
+        await viewModel.LoadModelCatalogAsync();
+
+        Assert.Equal(["alpha/model", "beta/model"], viewModel.FilteredQuickModels);
+    }
+
+    [Fact]
+    public async Task LoadModelCatalogAsync_only_fetches_the_catalog_once()
+    {
+        var catalog = new FakeModelCatalog(new ModelCatalogEntry("alpha/model", new ModelCapabilities(true, false, false, 1000)));
+        var viewModel = CreateWithCatalog(catalog);
+
+        await viewModel.LoadModelCatalogAsync();
+        await viewModel.LoadModelCatalogAsync();
+
+        Assert.Equal(1, catalog.CallCount);
+    }
+
+    [Fact]
+    public async Task ModelSearchText_filters_quick_models_case_insensitively()
+    {
+        var catalog = new FakeModelCatalog(
+            new ModelCatalogEntry("openrouter/GPT-Five", new ModelCapabilities(true, false, false, 1000)),
+            new ModelCatalogEntry("openrouter/other", new ModelCapabilities(true, false, false, 1000)));
+        var viewModel = CreateWithCatalog(catalog);
+        await viewModel.LoadModelCatalogAsync();
+
+        viewModel.ModelSearchText = "gpt";
+
+        Assert.Equal("openrouter/GPT-Five", Assert.Single(viewModel.FilteredQuickModels));
+    }
+
+    [Fact]
+    public async Task LoadModelCatalogAsync_failure_sets_hint_text_instead_of_throwing()
+    {
+        var viewModel = CreateWithCatalog(new FailingModelCatalog("catalog unavailable"));
+
+        await viewModel.LoadModelCatalogAsync();
+
+        Assert.Equal("catalog unavailable", viewModel.QuickModelHintText);
+        Assert.Empty(viewModel.FilteredQuickModels);
+    }
+
+    private static ChatViewModel CreateWithCatalog(IModelCatalog catalog)
+    {
+        var runtimeSettings = new TestRuntimeSettings();
+        var approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
+        return new ChatViewModel(
+            new FakeAgentRunner(),
+            new FakeSessionStore(),
+            TimeProvider.System,
+            approvals,
+            new TrackingPermissionGate(),
+            new FakeConversationOrchestrator(),
+            runtimeSettings,
+            new InlineDispatcher(),
+            new FakeSessionUsageStore(),
+            new FakePreferencesStore(),
+            catalog);
     }
 
     [Fact]
@@ -342,7 +453,8 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher(),
             new FakeSessionUsageStore(),
-            new FakePreferencesStore());
+            new FakePreferencesStore(),
+            new FakeModelCatalog());
         var request = new PermissionRequest(
             "bash",
             SideEffect.Execute,
@@ -501,7 +613,8 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher(),
             new FakeSessionUsageStore(),
-            preferences);
+            preferences,
+            new FakeModelCatalog());
 
         Assert.True(viewModel.IsInspectorCollapsed);
     }
@@ -544,7 +657,8 @@ public sealed class ChatViewModelTests
             runtimeSettings,
             new InlineDispatcher(),
             new FakeSessionUsageStore(),
-            new FakePreferencesStore());
+            new FakePreferencesStore(),
+            new FakeModelCatalog());
         viewModel.InputText = "hello";
 
         await viewModel.SendCommand.ExecuteAsync(null);
@@ -855,5 +969,24 @@ public sealed class ChatViewModelTests
         public AppPreferences Load() => Saved ?? new AppPreferences();
 
         public void Save(AppPreferences preferences) => Saved = preferences;
+    }
+
+    // Mirrors ModelsProvidersSettingsViewModelTests.FakeModelCatalog — kept as its own nested
+    // fake rather than shared, matching this file's existing per-file fake convention.
+    private sealed class FakeModelCatalog(params ModelCatalogEntry[] entries) : IModelCatalog
+    {
+        public int CallCount { get; private set; }
+
+        public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct)
+        {
+            CallCount++;
+            return Task.FromResult<IReadOnlyList<ModelCatalogEntry>>(entries);
+        }
+    }
+
+    private sealed class FailingModelCatalog(string message) : IModelCatalog
+    {
+        public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct) =>
+            throw new InvalidOperationException(message);
     }
 }

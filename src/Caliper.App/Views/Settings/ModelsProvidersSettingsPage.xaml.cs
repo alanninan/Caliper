@@ -42,8 +42,7 @@ public sealed partial class ModelsProvidersSettingsPage : Page
 
     // Must stay an instance method for WinUI's generated event wiring.
 #pragma warning disable CA1822
-    private void RestartApp_Click(object sender, RoutedEventArgs e) =>
-        Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+    private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
 #pragma warning restore CA1822
 
     private void ModelPicker_TextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs args)

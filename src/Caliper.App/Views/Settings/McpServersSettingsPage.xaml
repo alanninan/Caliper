@@ -27,7 +27,15 @@
                 IsClosable="False"
                 IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="McpRestartAppButton"
+                        Click="RestartApp_Click"
+                        Content="Restart Caliper"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
 
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>

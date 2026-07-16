@@ -20,6 +20,12 @@ public sealed partial class ToolsSettingsViewModel(
     [ObservableProperty]
     public partial bool StatusIsError { get; set; }
 
+    // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired — set from the ConfigWriter
+    // result rather than assumed, so a save that didn't actually change EnabledTools doesn't claim
+    // a restart is needed.
+    [ObservableProperty]
+    public partial bool RestartRequired { get; set; }
+
     public string EnabledCountText => $"{Tools.Count(static t => t.IsEnabled):N0} of {Tools.Count:N0} enabled";
 
     [RelayCommand]
@@ -45,13 +51,17 @@ public sealed partial class ToolsSettingsViewModel(
     [RelayCommand]
     private async Task SaveAsync()
     {
+        RestartRequired = false;
         var caliper = await configWriter.LoadCaliperAsync(CancellationToken.None);
         caliper.EnabledTools = [.. Tools.Where(static t => t.IsEnabled).Select(static t => t.Name)];
 
         var result = await configWriter.SaveCaliperAsync(caliper, CancellationToken.None);
         StatusIsError = !result.Success;
+        RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success
-            ? "Saved. Restart Caliper for the enabled tool set to take effect."
+            ? RestartRequired
+                ? "Saved. Restart Caliper for the enabled tool set to take effect."
+                : "Saved."
             : result.Error ?? "Save failed.";
     }
 }

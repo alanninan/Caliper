@@ -23,7 +23,15 @@
                 IsClosable="False"
                 IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="SearchRestartAppButton"
+                        Click="RestartApp_Click"
+                        Content="Restart Caliper"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
 
             <settings:SettingsExpander Header="Backend" Description="Stub returns no results; Tavily requires an API key.">
                 <ComboBox AutomationProperties.AutomationId="SearchBackendPicker" MinWidth="180" ItemsSource="{x:Bind ViewModel.BackendOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.Backend, Mode=TwoWay}" />

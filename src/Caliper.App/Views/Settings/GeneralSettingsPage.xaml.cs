@@ -41,6 +41,11 @@ public sealed partial class GeneralSettingsPage : Page
             windowContent.RequestedTheme = ViewModel.SelectedTheme.ToElementTheme();
     }
 
+    // Must stay an instance method for WinUI's generated event wiring.
+#pragma warning disable CA1822
+    private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
+#pragma warning restore CA1822
+
     private async void BrowseWorkingRoot_Click(object sender, RoutedEventArgs e)
     {
         try

@@ -35,6 +35,11 @@ public sealed partial class PermissionsSettingsPage : Page
         }
     }
 
+    // Must stay an instance method for WinUI's generated event wiring.
+#pragma warning disable CA1822
+    private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
+#pragma warning restore CA1822
+
     private void AddAllowlistEntry_Click(object sender, RoutedEventArgs e) =>
         AddEntry(ViewModel.ShellAutoAllowlist, NewAllowlistEntry);
 

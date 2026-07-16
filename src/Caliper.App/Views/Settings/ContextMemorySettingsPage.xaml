@@ -23,7 +23,15 @@
                 IsClosable="False"
                 IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
                 Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}" />
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="ContextMemoryRestartAppButton"
+                        Click="RestartApp_Click"
+                        Content="Restart Caliper"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
 
             <settings:SettingsExpander Header="Context compaction" Description="Keeps the conversation inside the model's context window.">
                 <ToggleSwitch AutomationProperties.AutomationId="AutoCompactSwitch" IsOn="{x:Bind ViewModel.AutoCompact, Mode=TwoWay}" />

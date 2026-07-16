@@ -56,6 +56,12 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     // splitter drag. Seeded from saved prefs (or the historical default) in ApplySavedPaneWidths.
     private double _lastExpandedSessionsWidth = DefaultSessionsPaneWidth;
     private double _lastExpandedInspectorWidth = DefaultInspectorPaneWidth;
+    // U6: the previously-observed RunStatus, so a toast fires only for a genuine transition out of
+    // an in-flight run (Running, or Stopping en route to a terminal status) into a terminal one —
+    // never a session switch or reload that happens to touch RunStatus without a run having been
+    // active (ChatViewModel doesn't reset RunStatus on those paths today, but this stays correct
+    // even if it someday does).
+    private ChatRunStatus _previousRunStatus = ChatRunStatus.Ready;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -189,8 +195,23 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         }
     }
 
-    private void RestartApp_Click(object sender, RoutedEventArgs e) =>
-        Microsoft.Windows.AppLifecycle.AppInstance.Restart(string.Empty);
+    private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
+
+    // U4: lazy, once-per-flyout-open fetch of the model catalog for the header quick-switcher.
+    // ChatViewModel.LoadModelCatalogAsync never throws (it folds a catalog fetch failure into the
+    // hint text), so this stays a plain await with no try/catch of its own.
+    private async void ModelQuickSwitcherFlyout_Opened(object sender, object e) =>
+        await ViewModel.LoadModelCatalogAsync();
+
+    private void QuickModelPicker_QuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        var model = (args.ChosenSuggestion as string) ?? args.QueryText.Trim();
+        if (string.IsNullOrWhiteSpace(model))
+            return;
+
+        ViewModel.ApplyModelCommand.Execute(model);
+        ModelQuickSwitcherFlyout.Hide();
+    }
 
     private void InspectTool_Click(object sender, RoutedEventArgs e)
     {
@@ -505,6 +526,12 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             return;
         }
 
+        if (e.PropertyName == nameof(ChatViewModel.RunStatus))
+        {
+            NotifyRunFinishedIfWindowInactive();
+            return;
+        }
+
         if (e.PropertyName != nameof(ChatViewModel.PendingApproval))
             return;
 
@@ -645,6 +672,43 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             // COMException in some unregistered/unpackaged states, but not exhaustively so) — a
             // best-effort toast must never break the approval countdown UI it's attached to.
             _logger.LogError(ex, "Failed to show approval notification toast.");
+        }
+    }
+
+    // U6: toasts when a run that was actually in flight (Running, optionally passing through
+    // Stopping) finishes while the window is inactive. ChatRunStatus.Ready/Cancelled/StepLimit/
+    // LoopDetected/Failed are all terminal; only Ready reflects a clean completion (see
+    // ChatRunStatusExtensions.FromCompletion), so every other terminal status reads as "Run failed"
+    // here — distinguishing step-limit/loop-detected wording isn't in scope for this toast.
+    private void NotifyRunFinishedIfWindowInactive()
+    {
+        var previous = _previousRunStatus;
+        var current = ViewModel.RunStatus;
+        _previousRunStatus = current;
+
+        var wasActive = previous is ChatRunStatus.Running or ChatRunStatus.Stopping;
+        var isTerminalNow = current is not (ChatRunStatus.Running or ChatRunStatus.Stopping);
+        if (!wasActive || !isTerminalNow)
+            return;
+
+        if (App.Window is not MainWindow { IsActive: false })
+            return;
+
+        try
+        {
+            var succeeded = current == ChatRunStatus.Ready;
+            var subtitle = Sessions.SelectedSession?.Title;
+            var notification = new AppNotificationBuilder()
+                .AddText(succeeded ? "Run finished" : "Run failed")
+                .AddText(!string.IsNullOrWhiteSpace(subtitle) ? subtitle : current.ToDisplayText())
+                .BuildNotification();
+            AppNotificationManager.Default.Show(notification);
+        }
+        catch (Exception ex)
+        {
+            // A11: same WinRT/COM interop caveat as NotifyApprovalIfWindowInactive — a best-effort
+            // toast must never break the run-status flow it's attached to.
+            _logger.LogError(ex, "Failed to show run-finished notification toast.");
         }
     }
 

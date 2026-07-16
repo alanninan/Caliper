@@ -78,4 +78,28 @@ public sealed class SearchSettingsViewModelTests
         Assert.True(viewModel.StatusIsError);
         Assert.Equal("Backend requires an API key.", viewModel.StatusMessage);
     }
+
+    [Fact]
+    public async Task SaveAsync_sets_restart_required_from_config_writer_result()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true };
+        var viewModel = new SearchSettingsViewModel(configWriter, new FakeCredentialStore()) { Backend = "Tavily" };
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.RestartRequired);
+        Assert.Equal("Saved. Restart Caliper for search changes to take effect.", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task SaveAsync_failed_save_does_not_set_restart_required()
+    {
+        var configWriter = new FakeConfigWriter { NextRestartRequired = true, NextSuccess = false, NextError = "boom" };
+        var viewModel = new SearchSettingsViewModel(configWriter, new FakeCredentialStore()) { Backend = "Tavily" };
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.RestartRequired);
+        Assert.True(viewModel.StatusIsError);
+    }
 }
