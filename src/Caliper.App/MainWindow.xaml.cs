@@ -17,6 +17,10 @@ namespace Caliper.App;
 
 public sealed partial class MainWindow : Window
 {
+    // Pre-Loaded fallback for the caption-button reservation (matches the XAML default); also used
+    // whenever the live insets report 0, which they can early in window startup.
+    private const double FallbackCaptionInsetDips = 144;
+
     [LibraryImport("user32.dll")]
     private static partial uint GetDpiForWindow(nint windowHandle);
 
@@ -35,6 +39,12 @@ public sealed partial class MainWindow : Window
         AppWindow.TitleBar.ButtonBackgroundColor = Colors.Transparent;
         AppWindow.TitleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
         ApplyTitleBarButtonColors();
+        // Loaded sets the initial caption reservation (insets aren't reliable before then);
+        // SizeChanged re-applies it on resize/DPI moves. Per the title-bar customization docs,
+        // AppWindow.Changed is NOT suitable here — during maximize/minimize it can fire before the
+        // title bar element is resized, so the calculation would use stale values.
+        AppTitleBar.Loaded += (_, _) => UpdateTitleBarCaptionInsets();
+        AppTitleBar.SizeChanged += (_, _) => UpdateTitleBarCaptionInsets();
         Activated += (_, e) => IsActive = e.WindowActivationState != WindowActivationState.Deactivated;
         Closed += MainWindow_Closed;
         if (Content is FrameworkElement rootElement)
@@ -66,13 +76,20 @@ public sealed partial class MainWindow : Window
         if (preferences is { WindowWidth: { } width, WindowHeight: { } height, WindowX: { } x, WindowY: { } y })
         {
             AppWindow.MoveAndResize(ClampToVisibleDisplay(new RectInt32(x, y, width, height)));
-            return;
+        }
+        else
+        {
+            var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+            var scale = GetDpiForWindow(windowHandle) / 96.0;
+            var size = ClampSizeToWorkArea(new SizeInt32((int)(1400 * scale), (int)(900 * scale)));
+            AppWindow.Resize(size);
         }
 
-        var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var scale = GetDpiForWindow(windowHandle) / 96.0;
-        var size = ClampSizeToWorkArea(new SizeInt32((int)(1400 * scale), (int)(900 * scale)));
-        AppWindow.Resize(size);
+        // Apply the floating bounds above first, then maximize on top of them — this way the
+        // stored restore rect (used the next time the window is un-maximized) is always the
+        // clamped floating bounds, never the maximized rect.
+        if (preferences.IsMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
+            presenter.Maximize();
     }
 
     // Saved bounds can reference a monitor that has since been unplugged or a layout that shrank,
@@ -99,15 +116,55 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
-        var position = AppWindow.Position;
-        var size = AppWindow.Size;
-        _preferences.Save(_preferences.Load() with
+        // Closing while maximized must not clobber the saved restore rect with the maximized
+        // rect (the size of the whole work area) — only persist Position/Size while floating, and
+        // always persist IsMaximized so the next launch can restore-then-maximize (ApplyWindowBounds).
+        var isMaximized = (AppWindow.Presenter as OverlappedPresenter)?.State == OverlappedPresenterState.Maximized;
+        var updated = _preferences.Load() with { IsMaximized = isMaximized };
+        if (!isMaximized)
         {
-            WindowX = position.X,
-            WindowY = position.Y,
-            WindowWidth = size.Width,
-            WindowHeight = size.Height,
-        });
+            var position = AppWindow.Position;
+            var size = AppWindow.Size;
+            updated = updated with
+            {
+                WindowX = position.X,
+                WindowY = position.Y,
+                WindowWidth = size.Width,
+                WindowHeight = size.Height,
+            };
+        }
+
+        _preferences.Save(updated);
+    }
+
+    // B9: the caption-button reservation used to be a hardcoded Padding="16,0,144,0". The real
+    // inset varies with DPI and is mirrored under RTL, so size it from the live
+    // AppWindow.TitleBar.RightInset/LeftInset instead. Those values are physical pixels; XAML
+    // wants DIPs, so divide by XamlRoot.RasterizationScale.
+    private void UpdateTitleBarCaptionInsets()
+    {
+        var scale = AppTitleBar.XamlRoot?.RasterizationScale ?? 0;
+        if (scale <= 0)
+            scale = 1.0;
+
+        // The insets describe *visual* sides (physical pixels), while Thickness is flow-relative
+        // (mirrored under RTL). The caption buttons sit at the visual right in LTR (RightInset)
+        // and the visual left in RTL (LeftInset) — the flow-relative end side in both cases, so
+        // the reservation always lands in Padding's third component. FlowDirection is an inherited
+        // property, so this stays correct if an RTL flow direction is ever applied app-wide.
+        var captionInsetPhysical = AppTitleBar.FlowDirection == FlowDirection.RightToLeft
+            ? AppWindow.TitleBar.LeftInset
+            : AppWindow.TitleBar.RightInset;
+
+        // Insets can still be 0 early in window startup — keep the fallback reservation until a
+        // real value arrives (Loaded/SizeChanged re-run this).
+        var endInsetDips = captionInsetPhysical > 0
+            ? captionInsetPhysical / scale
+            : FallbackCaptionInsetDips;
+
+        var padding = new Thickness(16, 0, endInsetDips, 0);
+        if (AppTitleBar.Padding != padding)
+            AppTitleBar.Padding = padding;
     }
 
     private void ApplyTitleBarButtonColors()

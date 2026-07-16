@@ -149,6 +149,26 @@ public sealed class ChatViewModelTests
     }
 
     [Fact]
+    public void SendCommand_only_executable_while_idle_with_text()
+    {
+        // The composer's shared send-or-queue path (Enter, Ctrl+Enter, Send button) leans on these
+        // guards: send when idle, never while running, never for a whitespace prompt.
+        var runner = new FakeAgentRunner();
+        var viewModel = Create(runner, out _, out _);
+
+        Assert.False(viewModel.SendCommand.CanExecute(null));
+
+        viewModel.InputText = "   ";
+        Assert.False(viewModel.SendCommand.CanExecute(null));
+
+        viewModel.InputText = "hello";
+        Assert.True(viewModel.SendCommand.CanExecute(null));
+
+        viewModel.IsRunning = true;
+        Assert.False(viewModel.SendCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void QueueMessageCommand_only_executable_while_running_with_text()
     {
         var runner = new FakeAgentRunner();

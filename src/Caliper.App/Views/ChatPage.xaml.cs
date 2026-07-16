@@ -345,6 +345,15 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             return;
 
         e.Handled = true;
+        SendOrQueue();
+    }
+
+    // Shared by plain Enter in the composer, the Ctrl+Enter page-level accelerator, and (via the
+    // bound commands directly) the Send button, so the three paths can never drift apart: send
+    // when idle, queue when a run is active, no-op on an empty/whitespace prompt (the commands'
+    // CanExecute already encodes that).
+    private void SendOrQueue()
+    {
         if (ViewModel.IsRunning)
         {
             if (ViewModel.QueueMessageCommand.CanExecute(null))
@@ -354,6 +363,25 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         {
             ViewModel.SendCommand.Execute(null);
         }
+    }
+
+    // B7: promoted from the Send button's KeyboardAccelerator, which lived inside a Visibility=
+    // Collapsed button while a run was active — collapsed elements don't process accelerators, so
+    // Ctrl+Enter went dead mid-run even though the F1 dialog documents it as always-on.
+    private void SendOrQueueAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        SendOrQueue();
+    }
+
+    // B3: promoted from the New-session button's KeyboardAccelerator, which lived inside the
+    // sessions pane Border that gets Visibility=Collapsed when the pane is hidden — collapsed
+    // elements don't process accelerators, so Ctrl+N went dead whenever the pane was toggled off.
+    private void NewSessionAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (Sessions.NewSessionCommand.CanExecute(null))
+            Sessions.NewSessionCommand.Execute(null);
     }
 
     private void ApproveAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)

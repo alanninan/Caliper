@@ -14,6 +14,11 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!--
+            The end padding reserves space for the system caption buttons (min/max/close). 144 is
+            only the pre-Loaded fallback; UpdateTitleBarCaptionInsets sizes it from the live
+            AppWindow.TitleBar insets (DPI-aware, RTL-aware) once the title bar has loaded.
+        -->
         <Grid
             x:Name="AppTitleBar"
             Height="48"

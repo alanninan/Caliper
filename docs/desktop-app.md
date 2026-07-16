@@ -35,8 +35,11 @@ App never runs unattended specs, so it needs no routing prompt.
 - API keys live in **Windows Credential Manager** (Settings → Models & providers), never in
   `config.json`. Endpoint/key changes are restart-required; the app offers a one-click
   "Restart Caliper".
-- UI preferences (theme, window placement — clamped back on-screen, sessions-pane state,
-  subagent-runs toggle) persist in `~/.caliper/app-ui.json` (`AppPreferencesStore`).
+- UI preferences (theme, window placement, sessions-pane state, subagent-runs toggle)
+  persist in `~/.caliper/app-ui.json` (`AppPreferencesStore`). Window placement restores
+  clamped back onto a live display; closing while maximized keeps the saved *floating*
+  bounds and an `IsMaximized` flag, so the next launch restores the floating rect and then
+  re-maximizes (older prefs files without the flag load as not-maximized).
   Runtime settings still come from `~/.caliper/config.json` via the same `IConfigWriter`
   seam the console uses.
 

@@ -17,6 +17,10 @@ public sealed record AppPreferences
     public int? WindowY { get; init; }
     public int? WindowWidth { get; init; }
     public int? WindowHeight { get; init; }
+    // Whether the window was maximized at last close. When true, WindowX/Y/Width/Height still hold
+    // the last known *restore* (floating) rect, not the maximized rect — see MainWindow_Closed.
+    // Absent in older prefs files, which default to false (not maximized) via plain JSON deserialize.
+    public bool IsMaximized { get; init; }
 }
 
 public interface IAppPreferencesStore
@@ -32,16 +36,25 @@ public interface IAppPreferencesStore
 /// </summary>
 public sealed class AppPreferencesStore : IAppPreferencesStore
 {
-    private static readonly string PreferencesPath = Path.Combine(CaliperHome.Resolve(), "app-ui.json");
+    private readonly string _preferencesPath;
+
+    public AppPreferencesStore()
+        : this(Path.Combine(CaliperHome.Resolve(), "app-ui.json"))
+    {
+    }
+
+    // Test seam: the tests compile this file as linked source, so they can round-trip against a
+    // temp file instead of the user's real ~/.caliper/app-ui.json.
+    internal AppPreferencesStore(string preferencesPath) => _preferencesPath = preferencesPath;
 
     public AppPreferences Load()
     {
         try
         {
-            if (!File.Exists(PreferencesPath))
+            if (!File.Exists(_preferencesPath))
                 return new AppPreferences();
 
-            var json = File.ReadAllText(PreferencesPath);
+            var json = File.ReadAllText(_preferencesPath);
             return JsonSerializer.Deserialize<AppPreferences>(json) ?? new AppPreferences();
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -54,7 +67,7 @@ public sealed class AppPreferencesStore : IAppPreferencesStore
     {
         try
         {
-            File.WriteAllText(PreferencesPath, JsonSerializer.Serialize(preferences));
+            File.WriteAllText(_preferencesPath, JsonSerializer.Serialize(preferences));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

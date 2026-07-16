@@ -509,6 +509,8 @@
         <KeyboardAccelerator Key="L" Modifiers="Control" Invoked="FocusPrompt_Invoked" />
         <KeyboardAccelerator Key="Y" Modifiers="Control,Shift" Invoked="ApproveAccelerator_Invoked" />
         <KeyboardAccelerator Key="N" Modifiers="Control,Shift" Invoked="DenyAccelerator_Invoked" />
+        <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="NewSessionAccelerator_Invoked" />
+        <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="SendOrQueueAccelerator_Invoked" />
         <KeyboardAccelerator Key="F1" Invoked="ShowShortcutsAccelerator_Invoked" />
     </Page.KeyboardAccelerators>
 
@@ -554,9 +556,6 @@
                         AutomationProperties.AutomationId="NewSessionButton"
                         AutomationProperties.Name="New session"
                         Command="{x:Bind Sessions.NewSessionCommand}">
-                        <Button.KeyboardAccelerators>
-                            <KeyboardAccelerator Key="N" Modifiers="Control" />
-                        </Button.KeyboardAccelerators>
                         <FontIcon Glyph="&#xE710;" />
                     </Button>
                 </Grid>
@@ -839,11 +838,7 @@
                             Command="{x:Bind ViewModel.SendCommand}"
                             Content="Send"
                             Style="{StaticResource AccentButtonStyle}"
-                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.IsRunning), Mode=OneWay}">
-                            <Button.KeyboardAccelerators>
-                                <KeyboardAccelerator Key="Enter" Modifiers="Control" />
-                            </Button.KeyboardAccelerators>
-                        </Button>
+                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.IsRunning), Mode=OneWay}" />
                         <Button
                             AutomationProperties.AutomationId="ComposerStopButton"
                             Command="{x:Bind ViewModel.StopCommand}"
