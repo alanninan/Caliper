@@ -18,7 +18,7 @@ public sealed partial class SkillsPage : Page
 
     public SkillsPage() => InitializeComponent();
 
-    protected override void OnNavigatedTo(NavigationEventArgs e) => ViewModel.LoadSkills();
+    protected override void OnNavigatedTo(NavigationEventArgs e) => ViewModel.RefreshCommand.Execute(null);
 
     private async void SkillList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

@@ -12,13 +12,34 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <StackPanel Spacing="8">
-            <TextBlock Text="Skills" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Specialized instruction packs the agent can load for focused workflows."
-                TextWrapping="Wrap" />
-        </StackPanel>
+        <Grid ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="8">
+                <TextBlock Text="Skills" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Specialized instruction packs the agent can load for focused workflows."
+                    TextWrapping="Wrap" />
+                <TextBlock
+                    AutomationProperties.AutomationId="SkillsStatusText"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                VerticalAlignment="Top"
+                AutomationProperties.AutomationId="RefreshSkillsButton"
+                Command="{x:Bind ViewModel.RefreshCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                    <TextBlock Text="Refresh" />
+                </StackPanel>
+            </Button>
+        </Grid>
         <Grid Grid.Row="1" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="380" />

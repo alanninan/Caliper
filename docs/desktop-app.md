@@ -51,6 +51,22 @@ stopped being sent to the model.
   both panes stay clip-free at once; their column `MinWidth`s (180/360/240) were sized to fit
   under it.
 
+## Skills and Memory pages
+
+- **Skills**: a header "Refresh" button re-lists from `ISkillStore` on demand (not just on page
+  navigation), and a caption near the header shows the discovered count. A refresh that finds
+  the previously selected skill still present re-selects it by name and keeps its already-loaded
+  body rather than re-fetching; otherwise selection resets to the placeholder state.
+- **Memory**: each row has a per-entry Forget action — an inline confirmation `Flyout` ("Forget
+  '{key}'?"), not an immediate delete or a per-row `ContentDialog` — and a small Edit action that
+  copies the row's scope/key/value into a "Remember a new fact" expander below the list. The
+  expander's scope picker chooses between `MemoryScope.Global` and
+  `MemoryScope.Project(WorkingRoot)`; saving calls `IMemoryStore.RememberAsync`, which **upserts**
+  on scope+key, so there's no separate typed update — editing a row is just prefilling the form
+  and saving again. Key/value fields clear only after a successful save; a failed forget or
+  remember leaves the list and the user's input exactly as they were and reports the error in the
+  page's status message.
+
 ## Approvals
 
 `ApprovalService` implements `IPermissionPrompt` as docked approval cards with keyboard
@@ -120,6 +136,13 @@ typed restart computation entirely) — General, Agent behavior, Context & memor
 save fields that are live seams, so `IConfigWriter` never reports true for them; the flag and
 action button are still wired identically there for uniformity. All eight non-Models pages reuse
 the same restart call via the internal `AppRestart.Restart()` helper.
+
+Advanced's raw JSON editor also validates inline as you type: each edit debounces ~500ms (via the
+injected `TimeProvider`, so it's exercised deterministically in tests with a `FakeTimeProvider`)
+before a `JsonDocument.Parse` check sets an inline error caption under the editor; a cancelled,
+superseded debounce never overwrites a newer edit's result. This is advisory UI only — "Save raw
+JSON" still runs its own independent validation (via `IConfigFileStore.WriteAsync`) and remains
+the actual gate on what gets written.
 
 ## Conventions
 

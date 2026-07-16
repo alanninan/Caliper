@@ -13,6 +13,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <Grid ColumnSpacing="16">
             <Grid.ColumnDefinitions>
@@ -25,7 +27,14 @@
             </StackPanel>
             <Button Grid.Column="1" AutomationProperties.AutomationId="MemoryRefreshButton" Command="{x:Bind ViewModel.RefreshMemoryCommand}" Content="Refresh memory" />
         </Grid>
-        <Grid Grid.Row="1" ColumnSpacing="12">
+        <InfoBar
+            Grid.Row="1"
+            AutomationProperties.AutomationId="MemoryStatusInfoBar"
+            IsClosable="False"
+            IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+            Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+            Severity="Informational" />
+        <Grid Grid.Row="2" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />
@@ -33,7 +42,43 @@
             <settings:SettingsCard Header="Entries" Description="{x:Bind ViewModel.MemoryCountText, Mode=OneWay}" />
             <settings:SettingsCard Grid.Column="1" Header="Project document" Description="{x:Bind ViewModel.ProjectDocumentPath, Mode=OneWay}" />
         </Grid>
-        <Grid Grid.Row="2" ColumnSpacing="16">
+        <Expander
+            x:Name="AddMemoryExpander"
+            Grid.Row="3"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
+            AutomationProperties.AutomationId="AddMemoryExpander"
+            Header="Remember a new fact">
+            <StackPanel Spacing="8">
+                <ComboBox
+                    Width="200"
+                    AutomationProperties.AutomationId="MemoryScopePicker"
+                    Header="Scope"
+                    SelectedIndex="{x:Bind ViewModel.MemoryScopeIndex, Mode=TwoWay}">
+                    <ComboBoxItem Content="Global" />
+                    <ComboBoxItem Content="Project" />
+                </ComboBox>
+                <TextBox
+                    AutomationProperties.AutomationId="MemoryKeyBox"
+                    Header="Key"
+                    PlaceholderText="e.g. code-style"
+                    Text="{x:Bind ViewModel.MemoryKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox
+                    AutomationProperties.AutomationId="MemoryValueBox"
+                    MinHeight="120"
+                    AcceptsReturn="True"
+                    Header="Value"
+                    PlaceholderText="What should Caliper remember?"
+                    Text="{x:Bind ViewModel.MemoryValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    TextWrapping="Wrap" />
+                <Button
+                    AutomationProperties.AutomationId="RememberMemoryButton"
+                    Command="{x:Bind ViewModel.RememberCommand}"
+                    Content="Remember"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+        </Expander>
+        <Grid Grid.Row="4" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="420" />
                 <ColumnDefinition Width="*" />
@@ -43,11 +88,50 @@
                     <ListView AutomationProperties.AutomationId="MemoryList" ItemsSource="{x:Bind ViewModel.Memories, Mode=OneWay}">
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="vm:MemoryItemViewModel">
-                                <StackPanel Padding="16" Spacing="4">
-                                    <TextBlock Text="{x:Bind Key}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Value}" TextWrapping="Wrap" />
-                                    <TextBlock Text="{x:Bind Scope}" Style="{StaticResource CaptionTextBlockStyle}" />
-                                </StackPanel>
+                                <Grid Padding="16" ColumnSpacing="4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{x:Bind Key}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Value}" TextWrapping="Wrap" />
+                                        <TextBlock Text="{x:Bind Scope}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    </StackPanel>
+                                    <Button
+                                        Grid.Column="1"
+                                        VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="{x:Bind EditAutomationId}"
+                                        AutomationProperties.Name="Edit this memory"
+                                        Click="EditMemory_Click"
+                                        Tag="{x:Bind}">
+                                        <FontIcon FontSize="14" Glyph="&#xE70F;" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="2"
+                                        VerticalAlignment="Top"
+                                        AutomationProperties.AutomationId="{x:Bind ForgetAutomationId}"
+                                        AutomationProperties.Name="Forget this memory"
+                                        Tag="{x:Bind}">
+                                        <FontIcon FontSize="14" Glyph="&#xE74D;" />
+                                        <Button.Flyout>
+                                            <Flyout>
+                                                <StackPanel MinWidth="200" Spacing="12">
+                                                    <TextBlock Text="{x:Bind ForgetConfirmText}" TextWrapping="Wrap" />
+                                                    <Button
+                                                        HorizontalAlignment="Right"
+                                                        AutomationProperties.AutomationId="{x:Bind ConfirmForgetAutomationId}"
+                                                        Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                                                        Click="ConfirmForget_Click"
+                                                        Content="Forget"
+                                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                        Tag="{x:Bind}" />
+                                                </StackPanel>
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>

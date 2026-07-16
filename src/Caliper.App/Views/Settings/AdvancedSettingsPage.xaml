@@ -48,11 +48,18 @@
                     AutomationProperties.AutomationId="RawJsonTextBox"
                     AcceptsReturn="True"
                     FontFamily="{StaticResource CodeFontFamily}"
-                    Height="360"
+                    MinHeight="360"
                     Text="{x:Bind ViewModel.RawJson, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                     TextWrapping="NoWrap"
                     ScrollViewer.VerticalScrollBarVisibility="Auto"
                     ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                <TextBlock
+                    AutomationProperties.AutomationId="JsonValidationText"
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Text="{x:Bind ViewModel.JsonValidationMessage, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasJsonError), Mode=OneWay}" />
                 <Button AutomationProperties.AutomationId="SaveRawJsonButton" Command="{x:Bind ViewModel.SaveRawCommand}" Content="Save raw JSON" />
             </StackPanel>
         </StackPanel>
