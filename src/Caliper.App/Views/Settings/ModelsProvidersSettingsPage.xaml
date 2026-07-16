@@ -7,82 +7,148 @@
     xmlns:settings="using:CommunityToolkit.WinUI.Controls"
     xmlns:vm="using:Caliper.App.ViewModels.Settings">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="960" Spacing="16">
-            <Grid ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Models &amp; providers" Style="{StaticResource TitleTextBlockStyle}" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}" TextWrapping="Wrap" />
-                </StackPanel>
+    <!--
+        D5: the model catalog below can hold hundreds of OpenRouter models, so it needs a
+        virtualizing ListView with the remaining page height, not a ScrollViewer-wrapped
+        StackPanel/ItemsControl. Mirrors ToolsSettingsPage's Grid pattern (Auto rows for
+        header/status/form content, a trailing * row for the list) instead of one page-level
+        ScrollViewer around everything. The upper form sections (Active model, OpenRouter,
+        Gemini) move into their own ScrollViewer. Its row needs the MaxHeight: a ScrollViewer
+        in an unbounded Auto row is measured with infinite height, so it would never scroll —
+        it would just grow to its full expanded-content height and starve the catalog row.
+        Capping the row keeps the collapsed-expanders common case unchanged (it's shorter than
+        the cap) while an expanded form section scrolls instead of pushing the catalog to zero.
+    -->
+    <Grid Padding="36,28" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" MaxHeight="380" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid MaxWidth="960" HorizontalAlignment="Left" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="8">
+                <TextBlock Text="Models &amp; providers" Style="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}" TextWrapping="Wrap" />
+            </StackPanel>
+            <Button
+                Grid.Column="1"
+                AutomationProperties.AutomationId="SaveModelsProvidersButton"
+                Command="{x:Bind ViewModel.SaveCommand}"
+                Content="Save"
+                Style="{StaticResource AccentButtonStyle}" />
+        </Grid>
+
+        <InfoBar
+            Grid.Row="1"
+            MaxWidth="960"
+            HorizontalAlignment="Left"
+            IsClosable="False"
+            IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+            Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+            Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+            <InfoBar.ActionButton>
                 <Button
-                    Grid.Column="1"
-                    AutomationProperties.AutomationId="SaveModelsProvidersButton"
-                    Command="{x:Bind ViewModel.SaveCommand}"
-                    Content="Save"
-                    Style="{StaticResource AccentButtonStyle}" />
-            </Grid>
-            <InfoBar
-                IsClosable="False"
-                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
-                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
-                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
-                <InfoBar.ActionButton>
-                    <Button
-                        AutomationProperties.AutomationId="RestartAppButton"
-                        Click="RestartApp_Click"
-                        Content="Restart Caliper"
-                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
-                </InfoBar.ActionButton>
-            </InfoBar>
+                    AutomationProperties.AutomationId="RestartAppButton"
+                    Click="RestartApp_Click"
+                    Content="Restart Caliper"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+            </InfoBar.ActionButton>
+        </InfoBar>
 
-            <settings:SettingsExpander Header="Active model" Description="Provider determines the catalog, credentials, and request shape.">
-                <ComboBox
-                    AutomationProperties.AutomationId="ProviderPicker"
-                    MinWidth="200"
-                    ItemsSource="{x:Bind ViewModel.ProviderOptions, Mode=OneWay}"
-                    SelectedItem="{x:Bind ViewModel.CurrentProvider, Mode=TwoWay}"
-                    SelectionChanged="ProviderPicker_SelectionChanged" />
-                <settings:SettingsExpander.Items>
-                    <settings:SettingsCard Header="Model" Description="Applies immediately; type or pick from the catalog below.">
-                        <AutoSuggestBox
-                            x:Name="ModelPicker"
-                            AutomationProperties.AutomationId="ModelPicker"
-                            MinWidth="320"
-                            ItemsSource="{x:Bind ViewModel.FilteredModels, Mode=OneWay}"
-                            PlaceholderText="Search or enter a model id"
-                            QueryIcon="Find"
-                            QuerySubmitted="ModelPicker_QuerySubmitted"
-                            SuggestionChosen="ModelPicker_SuggestionChosen"
-                            Text="{x:Bind ViewModel.CurrentModel, Mode=OneWay}"
-                            TextChanged="ModelPicker_TextChanged">
-                            <AutoSuggestBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ModelItemViewModel">
-                                    <StackPanel Padding="4" Spacing="2">
-                                        <TextBlock Text="{x:Bind Id}" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                        <TextBlock Text="{x:Bind Capabilities}" Style="{StaticResource CaptionTextBlockStyle}" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </AutoSuggestBox.ItemTemplate>
-                        </AutoSuggestBox>
-                    </settings:SettingsCard>
-                    <settings:SettingsCard Header="Summarizer model" Description="Leave empty to use the main model.">
-                        <TextBox AutomationProperties.AutomationId="SummarizerModelTextBox" MinWidth="280" Text="{x:Bind ViewModel.SummarizerModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </settings:SettingsCard>
-                    <settings:SettingsCard Header="Model catalog" Description="Loads available models for the active provider.">
-                        <Button AutomationProperties.AutomationId="RefreshModelsButton" Command="{x:Bind ViewModel.LoadModelsCommand}" Content="Refresh catalog" />
-                    </settings:SettingsCard>
-                </settings:SettingsExpander.Items>
-            </settings:SettingsExpander>
+        <ScrollViewer
+            Grid.Row="2"
+            MaxWidth="960"
+            HorizontalAlignment="Left"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+                <settings:SettingsExpander Header="Active model" Description="Provider determines the catalog, credentials, and request shape.">
+                    <ComboBox
+                        AutomationProperties.AutomationId="ProviderPicker"
+                        MinWidth="200"
+                        ItemsSource="{x:Bind ViewModel.ProviderOptions, Mode=OneWay}"
+                        SelectedItem="{x:Bind ViewModel.CurrentProvider, Mode=TwoWay}"
+                        SelectionChanged="ProviderPicker_SelectionChanged" />
+                    <settings:SettingsExpander.Items>
+                        <settings:SettingsCard Header="Model" Description="Applies immediately; type or pick from the catalog below.">
+                            <AutoSuggestBox
+                                x:Name="ModelPicker"
+                                AutomationProperties.AutomationId="ModelPicker"
+                                MinWidth="320"
+                                ItemsSource="{x:Bind ViewModel.FilteredModels, Mode=OneWay}"
+                                PlaceholderText="Search or enter a model id"
+                                QueryIcon="Find"
+                                QuerySubmitted="ModelPicker_QuerySubmitted"
+                                SuggestionChosen="ModelPicker_SuggestionChosen"
+                                Text="{x:Bind ViewModel.CurrentModel, Mode=OneWay}"
+                                TextChanged="ModelPicker_TextChanged">
+                                <AutoSuggestBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ModelItemViewModel">
+                                        <StackPanel Padding="4" Spacing="2">
+                                            <TextBlock Text="{x:Bind Id}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{x:Bind Capabilities}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </AutoSuggestBox.ItemTemplate>
+                            </AutoSuggestBox>
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="Summarizer model" Description="Leave empty to use the main model.">
+                            <TextBox AutomationProperties.AutomationId="SummarizerModelTextBox" MinWidth="280" Text="{x:Bind ViewModel.SummarizerModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="Model catalog" Description="Loads available models for the active provider.">
+                            <Button AutomationProperties.AutomationId="RefreshModelsButton" Command="{x:Bind ViewModel.LoadModelsCommand}" Content="Refresh catalog" />
+                        </settings:SettingsCard>
+                    </settings:SettingsExpander.Items>
+                </settings:SettingsExpander>
 
+                <settings:SettingsExpander Header="OpenRouter" Description="Default provider for chat requests.">
+                    <settings:SettingsExpander.Items>
+                        <settings:SettingsCard Header="Endpoint">
+                            <TextBox AutomationProperties.AutomationId="OpenRouterEndpointTextBox" MinWidth="320" Text="{x:Bind ViewModel.OpenRouterEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="App title">
+                            <TextBox AutomationProperties.AutomationId="OpenRouterAppTitleTextBox" MinWidth="220" Text="{x:Bind ViewModel.OpenRouterAppTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="App referer">
+                            <TextBox AutomationProperties.AutomationId="OpenRouterAppRefererTextBox" MinWidth="220" Text="{x:Bind ViewModel.OpenRouterAppReferer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_OPENROUTER_KEY.">
+                            <PasswordBox AutomationProperties.AutomationId="OpenRouterApiKeyPasswordBox" MinWidth="220" Password="{x:Bind ViewModel.OpenRouterApiKey, Mode=TwoWay}" PasswordRevealMode="Peek" />
+                        </settings:SettingsCard>
+                    </settings:SettingsExpander.Items>
+                </settings:SettingsExpander>
+
+                <settings:SettingsExpander Header="Gemini" Description="OpenAI-compatible surface.">
+                    <settings:SettingsExpander.Items>
+                        <settings:SettingsCard Header="Endpoint">
+                            <TextBox AutomationProperties.AutomationId="GeminiEndpointTextBox" MinWidth="320" Text="{x:Bind ViewModel.GeminiEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_GEMINI_KEY.">
+                            <PasswordBox AutomationProperties.AutomationId="GeminiApiKeyPasswordBox" MinWidth="220" Password="{x:Bind ViewModel.GeminiApiKey, Mode=TwoWay}" PasswordRevealMode="Peek" />
+                        </settings:SettingsCard>
+                    </settings:SettingsExpander.Items>
+                </settings:SettingsExpander>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border
+            Grid.Row="3"
+            MaxWidth="960"
+            HorizontalAlignment="Left"
+            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource OverlayCornerRadius}"
+            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasModels), Mode=OneWay}">
             <ListView
                 AutomationProperties.AutomationId="ModelsList"
-                MaxHeight="360"
-                ItemsSource="{x:Bind ViewModel.Models, Mode=OneWay}"
-                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasModels), Mode=OneWay}">
+                ItemsSource="{x:Bind ViewModel.Models, Mode=OneWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ModelItemViewModel">
                         <Grid Padding="12" ColumnSpacing="12">
@@ -99,34 +165,6 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-
-            <settings:SettingsExpander Header="OpenRouter" Description="Default provider for chat requests.">
-                <settings:SettingsExpander.Items>
-                    <settings:SettingsCard Header="Endpoint">
-                        <TextBox AutomationProperties.AutomationId="OpenRouterEndpointTextBox" MinWidth="320" Text="{x:Bind ViewModel.OpenRouterEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </settings:SettingsCard>
-                    <settings:SettingsCard Header="App title">
-                        <TextBox AutomationProperties.AutomationId="OpenRouterAppTitleTextBox" MinWidth="220" Text="{x:Bind ViewModel.OpenRouterAppTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </settings:SettingsCard>
-                    <settings:SettingsCard Header="App referer">
-                        <TextBox AutomationProperties.AutomationId="OpenRouterAppRefererTextBox" MinWidth="220" Text="{x:Bind ViewModel.OpenRouterAppReferer, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </settings:SettingsCard>
-                    <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_OPENROUTER_KEY.">
-                        <PasswordBox AutomationProperties.AutomationId="OpenRouterApiKeyPasswordBox" MinWidth="220" Password="{x:Bind ViewModel.OpenRouterApiKey, Mode=TwoWay}" PasswordRevealMode="Peek" />
-                    </settings:SettingsCard>
-                </settings:SettingsExpander.Items>
-            </settings:SettingsExpander>
-
-            <settings:SettingsExpander Header="Gemini" Description="OpenAI-compatible surface.">
-                <settings:SettingsExpander.Items>
-                    <settings:SettingsCard Header="Endpoint">
-                        <TextBox AutomationProperties.AutomationId="GeminiEndpointTextBox" MinWidth="320" Text="{x:Bind ViewModel.GeminiEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    </settings:SettingsCard>
-                    <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_GEMINI_KEY.">
-                        <PasswordBox AutomationProperties.AutomationId="GeminiApiKeyPasswordBox" MinWidth="220" Password="{x:Bind ViewModel.GeminiApiKey, Mode=TwoWay}" PasswordRevealMode="Peek" />
-                    </settings:SettingsCard>
-                </settings:SettingsExpander.Items>
-            </settings:SettingsExpander>
-        </StackPanel>
-    </ScrollViewer>
+        </Border>
+    </Grid>
 </Page>

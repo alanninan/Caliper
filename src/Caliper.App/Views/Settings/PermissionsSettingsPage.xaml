@@ -77,7 +77,12 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="Shell auto-allowlist" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Command prefixes allowed automatically in Auto mode." Style="{StaticResource CaptionTextBlockStyle}" />
-                <ListView AutomationProperties.AutomationId="ShellAllowlistList" MaxHeight="200" ItemsSource="{x:Bind ViewModel.ShellAutoAllowlist}" ItemTemplate="{StaticResource AllowlistRowTemplate}" />
+                <!-- D5: no SelectedItem binding is used here — each row removes itself via its
+                     own "Remove" button (Tag-carried value), so a ListView's selection/scrolling
+                     machinery isn't needed. Converted to a non-scrolling ItemsControl; the short
+                     allowlist now flows into the page's own ScrollViewer instead of scrolling
+                     in its own MaxHeight box. -->
+                <ItemsControl AutomationProperties.AutomationId="ShellAllowlistList" ItemsSource="{x:Bind ViewModel.ShellAutoAllowlist}" ItemTemplate="{StaticResource AllowlistRowTemplate}" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -91,7 +96,9 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="Shell denylist" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Command fragments that always require approval, in every mode." Style="{StaticResource CaptionTextBlockStyle}" />
-                <ListView AutomationProperties.AutomationId="ShellDenylistList" MaxHeight="200" ItemsSource="{x:Bind ViewModel.ShellDenylist}" ItemTemplate="{StaticResource DenylistRowTemplate}" />
+                <!-- D5: same reasoning as ShellAllowlistList above — per-row Remove buttons, no
+                     ListView selection needed. -->
+                <ItemsControl AutomationProperties.AutomationId="ShellDenylistList" ItemsSource="{x:Bind ViewModel.ShellDenylist}" ItemTemplate="{StaticResource DenylistRowTemplate}" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -105,7 +112,9 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="Auto-allow file roots" Style="{StaticResource BodyStrongTextBlockStyle}" />
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Paths outside the working root that file tools may access without a prompt." Style="{StaticResource CaptionTextBlockStyle}" />
-                <ListView AutomationProperties.AutomationId="FileRootsList" MaxHeight="200" ItemsSource="{x:Bind ViewModel.AutoAllowFileRoots}" ItemTemplate="{StaticResource FileRootRowTemplate}" />
+                <!-- D5: same reasoning as ShellAllowlistList above — per-row Remove buttons, no
+                     ListView selection needed. -->
+                <ItemsControl AutomationProperties.AutomationId="FileRootsList" ItemsSource="{x:Bind ViewModel.AutoAllowFileRoots}" ItemTemplate="{StaticResource FileRootRowTemplate}" />
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />

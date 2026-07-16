@@ -11,6 +11,12 @@ as pretty-printed JSON, output, and file diffs for write/edit operations). Conte
 compactions render as full-width expandable dividers so you can see where earlier turns
 stopped being sent to the model.
 
+- **Diff rendering**: side-by-side and inline diff rows mark added/modified/removed cells with
+  a background fill; kind also reads without color via the inline view's `+`/`-`/`~` prefix
+  column and the side-by-side view's positional side (removed = old side only, added = new
+  side only, modified = both). In a high-contrast theme all three kinds share the same
+  WindowColor/WindowText fill (Hotlight/GrayText aren't valid fill colors against the default
+  row-text foreground) plus a WindowText underline on the changed cell.
 - **Sessions pane** hides subagent child sessions (`parent_session_id` set) behind a
   "Show subagent runs" toggle; job runs (`[job] {name}`) appear like any session. Right-clicking
   a session row opens the same Rename/Delete menu as its "..." button (a duplicated

@@ -11,18 +11,28 @@
                     <StaticResource x:Key="DiffAddedBackgroundBrush" ResourceKey="SystemFillColorSuccessBackgroundBrush" />
                     <StaticResource x:Key="DiffModifiedBackgroundBrush" ResourceKey="SystemFillColorCautionBackgroundBrush" />
                     <StaticResource x:Key="DiffRemovedBackgroundBrush" ResourceKey="SystemFillColorCriticalBackgroundBrush" />
+                    <SolidColorBrush x:Key="DiffChangedBorderBrush" Color="Transparent" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <StaticResource x:Key="DiffAddedBackgroundBrush" ResourceKey="SystemFillColorSuccessBackgroundBrush" />
                     <StaticResource x:Key="DiffModifiedBackgroundBrush" ResourceKey="SystemFillColorCautionBackgroundBrush" />
                     <StaticResource x:Key="DiffRemovedBackgroundBrush" ResourceKey="SystemFillColorCriticalBackgroundBrush" />
+                    <SolidColorBrush x:Key="DiffChangedBorderBrush" Color="Transparent" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
-                    <!-- Distinct system colors so added/modified/removed stay distinguishable
-                         under a high-contrast theme instead of all rendering as plain window. -->
-                    <StaticResource x:Key="DiffAddedBackgroundBrush" ResourceKey="SystemColorHighlightColorBrush" />
-                    <StaticResource x:Key="DiffModifiedBackgroundBrush" ResourceKey="SystemColorHotlightColorBrush" />
-                    <StaticResource x:Key="DiffRemovedBackgroundBrush" ResourceKey="SystemColorGrayTextColorBrush" />
+                    <!-- D1: Hotlight/GrayText are foreground-only colors (hyperlinks / disabled
+                         text) and are not valid HC fill pairings with the default WindowText
+                         foreground row text keeps — using them as a Background made diff rows
+                         unreadable. All three diff kinds now share the WindowColor/WindowText
+                         pairing (readable, HC-compliant) and rely on other-than-color cues to
+                         convey kind: the inline `+`/`-`/`~` Prefix column, side-by-side
+                         positional semantics (removed = old side only, added = new side only,
+                         modified = both sides), and the WindowText underline below via
+                         DiffChangedBorderBrush. -->
+                    <StaticResource x:Key="DiffAddedBackgroundBrush" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="DiffModifiedBackgroundBrush" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="DiffRemovedBackgroundBrush" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="DiffChangedBorderBrush" ResourceKey="SystemColorWindowTextColorBrush" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <ResourceDictionary.MergedDictionaries>
