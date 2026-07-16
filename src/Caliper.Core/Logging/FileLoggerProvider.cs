@@ -5,23 +5,26 @@ using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
 
-namespace Caliper.Console;
+namespace Caliper.Core.Logging;
 
 /// <summary>
 /// A minimal, AOT-safe file logger. Caliper.Core signals degraded states (respond-only fallback,
 /// tokenizer fallback, MCP errors, summarization fallback) only through <see cref="ILogger"/>, so
-/// the console host writes Warning+ to a file the user can inspect instead of discarding them.
+/// a host can write Warning+ to a file the user can inspect instead of discarding them. Shared by
+/// Caliper.Console and Caliper.App so both hosts persist the same diagnostics to the same file.
 /// </summary>
-internal sealed class FileLoggerProvider : ILoggerProvider
+public sealed class FileLoggerProvider : ILoggerProvider
 {
     private readonly string _filePath;
     private readonly LogLevel _minLevel;
+    private readonly TimeProvider _timeProvider;
     private readonly object _gate = new();
 
-    public FileLoggerProvider(string filePath, LogLevel minLevel)
+    public FileLoggerProvider(string filePath, LogLevel minLevel, TimeProvider timeProvider)
     {
         _filePath = filePath;
         _minLevel = minLevel;
+        _timeProvider = timeProvider;
     }
 
     public ILogger CreateLogger(string categoryName) => new FileLogger(categoryName, this);
@@ -64,7 +67,7 @@ internal sealed class FileLoggerProvider : ILoggerProvider
                 return;
 
             var builder = new StringBuilder()
-                .Append(DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture))
+                .Append(provider._timeProvider.GetUtcNow().ToString("O", CultureInfo.InvariantCulture))
                 .Append(" [").Append(logLevel).Append("] ")
                 .Append(category).Append(" - ")
                 .Append(formatter(state, exception));

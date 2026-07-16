@@ -10,6 +10,7 @@ using Caliper.App.ViewModels.Settings;
 using Caliper.Core;
 using Caliper.Core.Abstractions;
 using Caliper.Core.Configuration;
+using Caliper.Core.Logging;
 using Caliper.Core.Permissions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -45,6 +46,15 @@ public partial class App : Application
         });
         builder.Logging.ClearProviders();
         builder.Logging.AddDebug();
+        // Core reports degraded states (respond-only fallback, tokenizer fallback, MCP errors) only
+        // via ILogger, and every App "A11" resilience boundary logs its swallowed exception the same
+        // way. Mirror the Console: Warning+ globally, and persisted to the same shared log file, so
+        // none of it is silently lost outside a debugger.
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+        builder.Logging.AddProvider(new FileLoggerProvider(
+            Path.Combine(CaliperHome.LogsPath, "caliper.log"),
+            LogLevel.Warning,
+            TimeProvider.System));
         builder.Configuration.Sources.Clear();
         builder.Configuration
             .AddJsonFile(CaliperHome.ConfigPath, optional: true, reloadOnChange: false)
@@ -60,6 +70,7 @@ public partial class App : Application
         builder.Services.AddSingleton(DispatcherQueue.GetForCurrentThread());
         builder.Services.AddSingleton<IUiDispatcher, DispatcherQueueAdapter>();
         builder.Services.AddSingleton<IAppPreferencesStore, AppPreferencesStore>();
+        builder.Services.AddSingleton<ISessionUsageStore, SessionUsageStore>();
         builder.Services.AddSingleton<ICredentialStore>(credentialStore);
         builder.Services.AddSingleton<ApprovalService>();
         builder.Services.AddSingleton<IPermissionPrompt>(services =>

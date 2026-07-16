@@ -42,6 +42,7 @@
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\AdvancedSettingsViewModel.cs" Link="ViewModels\Settings\AdvancedSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\Permissions\ApprovalService.cs" Link="Permissions\ApprovalService.cs" />
     <Compile Include="..\..\src\Caliper.App\Preferences\AppPreferencesStore.cs" Link="Preferences\AppPreferencesStore.cs" />
+    <Compile Include="..\..\src\Caliper.App\Preferences\SessionUsageStore.cs" Link="Preferences\SessionUsageStore.cs" />
     <Compile Include="..\..\src\Caliper.App\Security\WindowsCredentialStore.cs" Link="Security\WindowsCredentialStore.cs" />
   </ItemGroup>
   <ItemGroup>

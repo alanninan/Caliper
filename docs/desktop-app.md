@@ -42,6 +42,20 @@ App never runs unattended specs, so it needs no routing prompt.
   re-maximizes (older prefs files without the flag load as not-maximized).
   Runtime settings still come from `~/.caliper/config.json` via the same `IConfigWriter`
   seam the console uses.
+- The chat token-usage footer (cumulative prompt/completion counts) persists per session in
+  `~/.caliper/app-usage.json` (`SessionUsageStore`), so it survives an app restart. Core's
+  session store keeps no usage data, so this is App-side only, keyed by session id, and
+  removed alongside the session in `RemoveSession`.
+
+## Logging
+
+Like the Console, the App logs Warning-and-above through `ILogger` to the shared
+`~/.caliper/logs/caliper.log` (`FileLoggerProvider`, now in `Caliper.Core.Logging` so both
+hosts use the same implementation) — this is the only place degraded states (Core's
+respond-only fallback, tokenizer fallback, MCP errors, summarization fallback, and the App's
+own top-level "A11" resilience-boundary catches) are recorded outside a debugger. `AddDebug()`
+still runs alongside it for the Visual Studio Output window, filtered to the same Warning+
+minimum level.
 
 ## Settings pages
 

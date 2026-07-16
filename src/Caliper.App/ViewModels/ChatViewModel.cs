@@ -4,6 +4,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Caliper.App.Permissions;
+using Caliper.App.Preferences;
 using Caliper.Core.Abstractions;
 using Caliper.Core.Events;
 using Caliper.Core.Models;
@@ -25,6 +26,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     private readonly IConversationOrchestrator _conversations;
     private readonly IRuntimeSettings _runtimeSettings;
     private readonly IUiDispatcher _dispatcher;
+    private readonly ISessionUsageStore _usageStore;
     private readonly Dictionary<string, ObservableCollection<ChatItemViewModel>> _transcripts =
         new(StringComparer.Ordinal);
     // Token usage is per session: while a run streams in A and the user views B, B's footer must
@@ -49,7 +51,8 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         IPermissionGate permissionGate,
         IConversationOrchestrator conversations,
         IRuntimeSettings runtimeSettings,
-        IUiDispatcher dispatcher)
+        IUiDispatcher dispatcher,
+        ISessionUsageStore usageStore)
     {
         _runner = runner;
         _sessions = sessions;
@@ -59,8 +62,15 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         _conversations = conversations;
         _runtimeSettings = runtimeSettings;
         _dispatcher = dispatcher;
+        _usageStore = usageStore;
         _approvals.ApprovalRequested += Approvals_ApprovalRequested;
         _runtimeSettings.SettingsChanged += RuntimeSettings_SettingsChanged;
+
+        // Restore the token-usage footer across restarts: Core's session store persists no usage
+        // data, so this is the only source for it. A stale entry for a since-deleted session is
+        // harmless — it just never gets looked up by SelectSessionAsync.
+        foreach (var (sessionId, usage) in usageStore.LoadAll())
+            _usageBySession[sessionId] = FormatUsage(usage.PromptTokens, usage.CompletionTokens);
     }
 
     private void RuntimeSettings_SettingsChanged(object? sender, EventArgs e)
@@ -236,6 +246,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         _permissionGate.ResetSessionApprovals(sessionId);
         _transcripts.Remove(sessionId);
         _usageBySession.Remove(sessionId);
+        _usageStore.Remove(sessionId);
         _recentTranscripts.Remove(sessionId);
         if (string.Equals(_currentSessionId, sessionId, StringComparison.Ordinal))
             ClearSessionSelection();
@@ -312,6 +323,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
                 {
                     var usage = FormatUsage(mapper.PromptTokens, mapper.CompletionTokens);
                     _usageBySession[sessionId] = usage;
+                    _usageStore.Save(sessionId, new SessionUsage(mapper.PromptTokens, mapper.CompletionTokens));
                     // Only reflect it in the footer if the user is still looking at this session.
                     if (string.Equals(_currentSessionId, sessionId, StringComparison.Ordinal))
                         UsageText = usage;

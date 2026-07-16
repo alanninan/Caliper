@@ -7,6 +7,7 @@ using Caliper.Core.Abstractions;
 using Caliper.Core.Configuration;
 using Caliper.Core.Context;
 using Caliper.Core.Events;
+using Caliper.Core.Logging;
 using Caliper.Core.Memory;
 using Caliper.Core.Models;
 using Caliper.Core.Permissions;
@@ -73,9 +74,10 @@ builder.Logging.ClearProviders();
 // Core reports degraded states (respond-only fallback, tokenizer fallback, MCP errors) only via
 // ILogger. Persist Warning+ to a file so they aren't silently lost, without cluttering the REPL.
 builder.Logging.SetMinimumLevel(LogLevel.Warning);
-builder.Logging.AddProvider(new Caliper.Console.FileLoggerProvider(
+builder.Logging.AddProvider(new FileLoggerProvider(
     Path.Combine(CaliperHome.LogsPath, "caliper.log"),
-    LogLevel.Warning));
+    LogLevel.Warning,
+    TimeProvider.System));
 builder.Configuration.Sources.Clear();
 builder.Configuration
     .AddJsonFile(CaliperHome.ConfigPath, optional: true, reloadOnChange: false)

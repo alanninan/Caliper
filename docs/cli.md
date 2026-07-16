@@ -73,8 +73,9 @@ doubles as a dry-run harness for a job's allowlist before you trust the cron (se
 
 - First Ctrl+C cancels the current run (per-run cancellation token); the process keeps
   running. In `--serve`, Ctrl+C stops the scheduler after in-flight jobs unwind.
-- Warning-and-above logs go to `~/.caliper/logs/caliper.log`. Unattended denials are logged
-  as Warnings individually and summarized per run.
+- Warning-and-above logs go to `~/.caliper/logs/caliper.log` (shared with the desktop app —
+  see [desktop-app.md](desktop-app.md)). Unattended denials are logged as Warnings
+  individually and summarized per run.
 
 ## Credentials
 

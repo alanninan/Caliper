@@ -4,6 +4,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Caliper.App.Permissions;
+using Caliper.App.Preferences;
 using Caliper.App.ViewModels;
 using Caliper.Core.Abstractions;
 using Caliper.Core.Agents;
@@ -20,18 +21,20 @@ public sealed class ChatViewModelTests
         FakeAgentRunner runner,
         out FakeSessionStore sessions,
         out TrackingPermissionGate permissionGate) =>
-        Create(runner, out sessions, out permissionGate, out _);
+        Create(runner, out sessions, out permissionGate, out _, out _);
 
     private static ChatViewModel Create(
         FakeAgentRunner runner,
         out FakeSessionStore sessions,
         out TrackingPermissionGate permissionGate,
-        out ApprovalService approvals)
+        out ApprovalService approvals,
+        out FakeSessionUsageStore usageStore)
     {
         sessions = new FakeSessionStore();
         permissionGate = new TrackingPermissionGate();
         var runtimeSettings = new TestRuntimeSettings();
         approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
+        usageStore = new FakeSessionUsageStore();
         return new ChatViewModel(
             runner,
             sessions,
@@ -40,7 +43,8 @@ public sealed class ChatViewModelTests
             permissionGate,
             new FakeConversationOrchestrator(),
             runtimeSettings,
-            new InlineDispatcher());
+            new InlineDispatcher(),
+            usageStore);
     }
 
     private static PermissionRequest Request(string tool, string requestId) =>
@@ -131,6 +135,48 @@ public sealed class ChatViewModelTests
         viewModel.RemoveSession("session-1");
 
         Assert.Contains("session-1", permissionGate.ResetSessions);
+    }
+
+    [Fact]
+    public async Task SelectSessionAsync_shows_usage_persisted_from_a_previous_run()
+    {
+        // B8: the footer must survive an app restart. Seed the fake store the way LoadAll() would
+        // be populated from disk, before the view model (and its constructor-time seeding) exists.
+        var usageStore = new FakeSessionUsageStore();
+        usageStore.Seed("session-1", new SessionUsage(120, 40));
+        var runner = new FakeAgentRunner();
+        var sessions = new FakeSessionStore();
+        var permissionGate = new TrackingPermissionGate();
+        var runtimeSettings = new TestRuntimeSettings();
+        var approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
+        var viewModel = new ChatViewModel(
+            runner,
+            sessions,
+            TimeProvider.System,
+            approvals,
+            permissionGate,
+            new FakeConversationOrchestrator(),
+            runtimeSettings,
+            new InlineDispatcher(),
+            usageStore);
+        sessions.Seed("session-1");
+
+        await viewModel.SelectSessionAsync("session-1", CancellationToken.None);
+
+        Assert.Equal("Total prompt: 120  Total completion: 40", viewModel.UsageText);
+    }
+
+    [Fact]
+    public async Task RemoveSession_removes_persisted_usage_from_the_store()
+    {
+        var runner = new FakeAgentRunner();
+        var viewModel = Create(runner, out var sessions, out _, out _, out var usageStore);
+        sessions.Seed("session-1");
+        await viewModel.SelectSessionAsync("session-1", CancellationToken.None);
+
+        viewModel.RemoveSession("session-1");
+
+        Assert.Contains("session-1", usageStore.RemovedSessionIds);
     }
 
     [Fact]
@@ -251,7 +297,8 @@ public sealed class ChatViewModelTests
             permissionGate,
             new FakeConversationOrchestrator(),
             runtimeSettings,
-            new InlineDispatcher());
+            new InlineDispatcher(),
+            new FakeSessionUsageStore());
         var changed = new List<string?>();
         viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
@@ -278,7 +325,8 @@ public sealed class ChatViewModelTests
             permissionGate,
             new FakeConversationOrchestrator(),
             runtimeSettings,
-            new InlineDispatcher());
+            new InlineDispatcher(),
+            new FakeSessionUsageStore());
         var request = new PermissionRequest(
             "bash",
             SideEffect.Execute,
@@ -300,7 +348,7 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task Approval_requests_queue_fifo_and_promote_on_resolution()
     {
-        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals, out _);
 
         var firstTask = approvals.AskAsync(Request("bash", "r1"), CancellationToken.None);
         var secondTask = approvals.AskAsync(Request("powershell", "r2"), CancellationToken.None);
@@ -327,7 +375,7 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task Queued_approval_resolved_externally_is_dropped_without_disturbing_current()
     {
-        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals, out _);
         using var secondCancellation = new CancellationTokenSource();
 
         var firstTask = approvals.AskAsync(Request("bash", "r1"), CancellationToken.None);
@@ -351,7 +399,7 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task Current_approval_resolved_externally_promotes_next_queued()
     {
-        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals, out _);
         using var firstCancellation = new CancellationTokenSource();
 
         var firstTask = approvals.AskAsync(Request("bash", "r1"), firstCancellation.Token);
@@ -372,7 +420,7 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task PendingApprovalCountText_reflects_queue_depth()
     {
-        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals);
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out var approvals, out _);
 
         var tasks = new[]
         {
@@ -399,7 +447,7 @@ public sealed class ChatViewModelTests
     {
         // Approvals survive session switches today (the docked card stays actionable while viewing
         // another session); the queue must not regress that.
-        var viewModel = Create(new FakeAgentRunner(), out var sessions, out var permissionGate, out var approvals);
+        var viewModel = Create(new FakeAgentRunner(), out var sessions, out var permissionGate, out var approvals, out _);
         sessions.Seed("other");
 
         var firstTask = approvals.AskAsync(Request("bash", "r1"), CancellationToken.None);
