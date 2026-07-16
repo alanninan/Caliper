@@ -27,6 +27,10 @@ public static class XamlConverters
 
     public static double DimOpacity(bool isDimmed) => isDimmed ? 0.5 : 1.0;
 
+    // A3: lets a plain double (DIPs) computed in a view model — e.g.
+    // FileDiffViewModel row's LineNumberColumnWidth — drive a ColumnDefinition.Width via x:Bind.
+    public static GridLength Dip(double value) => new(value);
+
     // U7: a null return (not an empty string) suppresses ToolTipService's tooltip entirely — an
     // empty-string ToolTip still opens an empty popup on hover. Persisted (reloaded) messages have
     // no timestamp, so their bubbles show no tooltip at all rather than a blank one.

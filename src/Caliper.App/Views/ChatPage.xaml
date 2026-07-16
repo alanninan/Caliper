@@ -364,7 +364,20 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
+                    <!--
+                        A1: this is the docked approval card's line announcing what approval is
+                        being requested (the request's Reason, e.g. "This tool requires your
+                        approval before it can continue.") — Assertive because an approval prompt
+                        blocks the run and needs to interrupt, unlike the Polite status/countdown
+                        lines elsewhere on this page. x:Name lets ChatPage.xaml.cs reach it (it's
+                        inside a DataTemplate, so it isn't a page-level field) to raise
+                        LiveRegionChanged after a new approval's Reason text is in place — WinUI
+                        doesn't raise that automatically on a Text change (verified against
+                        Microsoft Learn's live-region guidance).
+                    -->
                     <TextBlock
+                        x:Name="ApprovalReasonText"
+                        AutomationProperties.LiveSetting="Assertive"
                         Text="{x:Bind Reason}"
                         TextWrapping="Wrap" />
                     <TextBlock
@@ -508,11 +521,16 @@
             SessionTemplate="{StaticResource SessionTemplate}" />
 
         <DataTemplate x:Key="SideBySideDiffTemplate" x:DataType="vm:SideBySideDiffRowViewModel">
+            <!-- A3: both number columns share LineNumberColumnWidth (computed once per diff in
+                 FileDiffViewModel.Create from the largest line number in the change) so every row
+                 in the same diff aligns — per-row Auto sizing would let a virtualized row width
+                 drift from its neighbors. Mode=OneTime: the value never changes after the row is
+                 built (mirrors FormatLineNumber's OneTime binding on the same row). -->
             <Grid MinHeight="20">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="{x:Bind converters:XamlConverters.Dip(LineNumberColumnWidth), Mode=OneTime}" />
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="36" />
+                    <ColumnDefinition Width="{x:Bind converters:XamlConverters.Dip(LineNumberColumnWidth), Mode=OneTime}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Border Grid.ColumnSpan="2" Background="{ThemeResource DiffRemovedBackgroundBrush}" BorderBrush="{ThemeResource DiffChangedBorderBrush}" BorderThickness="0,0,0,1" Visibility="{x:Bind local:ChatPage.IsRemoved(OldKind), Mode=OneTime}" />
@@ -528,10 +546,12 @@
         </DataTemplate>
 
         <DataTemplate x:Key="InlineDiffTemplate" x:DataType="vm:InlineDiffRowViewModel">
+            <!-- A3: see SideBySideDiffTemplate's comment — same LineNumberColumnWidth mechanism,
+                 just a single number column here (the +/-/~ prefix column stays fixed at 24). -->
             <Grid MinHeight="24">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="24" />
-                    <ColumnDefinition Width="40" />
+                    <ColumnDefinition Width="{x:Bind converters:XamlConverters.Dip(LineNumberColumnWidth), Mode=OneTime}" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <Border Grid.ColumnSpan="3" Background="{ThemeResource DiffAddedBackgroundBrush}" BorderBrush="{ThemeResource DiffChangedBorderBrush}" BorderThickness="0,0,0,1" Visibility="{x:Bind local:ChatPage.IsAdded(Kind), Mode=OneTime}" />
@@ -910,7 +930,11 @@
                                     Text="{x:Bind WelcomeMessage, Mode=OneWay}"
                                     TextAlignment="Center"
                                     TextWrapping="Wrap" />
+                                <!-- A4: x:Name so ChatPage.xaml.cs can send keyboard focus here when
+                                     the card first appears (see UpdateWelcomeCardFocus) — otherwise a
+                                     keyboard user tabbing into an empty transcript has nowhere to land. -->
                                 <Button
+                                    x:Name="FirstRunGoToSettingsButton"
                                     AutomationProperties.AutomationId="FirstRunGoToSettingsButton"
                                     HorizontalAlignment="Center"
                                     Click="GoToProviderSettings_Click"
@@ -918,6 +942,7 @@
                                     Style="{StaticResource AccentButtonStyle}"
                                     Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ShowAddKeyWelcome), Mode=OneWay}" />
                                 <Button
+                                    x:Name="FirstRunRestartButton"
                                     AutomationProperties.AutomationId="FirstRunRestartButton"
                                     HorizontalAlignment="Center"
                                     Click="RestartApp_Click"
@@ -954,7 +979,12 @@
                 </Button>
             </Grid>
 
+            <!-- A2: x:Name so ChatPage.xaml.cs can reach ContentTemplateRoot (the realized InfoBar)
+                 to wire AutomationProperties.DescribedBy -> ApprovalCountdownText — DescribedBy has
+                 no XAML setter (Microsoft Learn: "does not have a Set accessor... not really a
+                 XAML attached property with a markup usage"), so it can only be set in code. -->
             <ContentControl
+                x:Name="PendingApprovalCard"
                 Grid.Row="2"
                 Margin="20,0,20,4"
                 HorizontalAlignment="Stretch"
@@ -971,11 +1001,15 @@
                 Style="{StaticResource CaptionTextBlockStyle}"
                 Text="{x:Bind ViewModel.PendingApprovalCountText, Mode=OneWay}"
                 Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasQueuedApprovals), Mode=OneWay}" />
+            <!-- A1: Polite — announced once when a fresh countdown starts (see
+                 ChatPage.xaml.cs's AnnounceLiveRegion call), not on every one-second tick, which
+                 would flood Narrator with a running countdown. -->
             <TextBlock
                 x:Name="ApprovalCountdownText"
                 Grid.Row="3"
                 Margin="24,0,24,8"
                 AutomationProperties.AutomationId="ApprovalCountdownText"
+                AutomationProperties.LiveSetting="Polite"
                 HorizontalAlignment="Right"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                 Style="{StaticResource CaptionTextBlockStyle}"
@@ -1033,8 +1067,12 @@
                         Height="16"
                         IsActive="{x:Bind ViewModel.IsRunning, Mode=OneWay}"
                         Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsRunning), Mode=OneWay}" />
+                    <!-- A1: Polite — a run status change isn't urgent enough to interrupt Narrator
+                         (unlike the approval Reason line above, which is Assertive). -->
                     <TextBlock
+                        x:Name="RunStatusText"
                         AutomationProperties.AutomationId="RunStatusText"
+                        AutomationProperties.LiveSetting="Polite"
                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                         Text="{x:Bind ViewModel.StatusText, Mode=OneWay}"
                         Style="{StaticResource CaptionTextBlockStyle}" />

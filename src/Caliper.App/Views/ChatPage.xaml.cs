@@ -14,6 +14,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -62,6 +64,11 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     // active (ChatViewModel doesn't reset RunStatus on those paths today, but this stays correct
     // even if it someday does).
     private ChatRunStatus _previousRunStatus = ChatRunStatus.Ready;
+    // A4: the welcome-card button we last sent keyboard focus to (null when the card is hidden) —
+    // lets UpdateWelcomeCardFocus tell "still showing the same card" apart from "just appeared" or
+    // "swapped from the add-key button to the restart button," so it only steals focus on an actual
+    // transition, never on every re-navigation back to an already-visible card.
+    private Button? _welcomeCardFocusTarget;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -116,6 +123,32 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         var hasKeyNow = HasAnyProviderKeyConfiguredLive();
         ShowAddKeyWelcome = !hasKeyNow;
         ShowRestartWelcome = hasKeyNow && !_startupHadKey;
+        UpdateWelcomeCardFocus();
+    }
+
+    // A4: the welcome card (ChatPage.xaml's WelcomeCardVisibility Border, ~line 897) is otherwise
+    // an unreachable focus target — a keyboard user tabbing into an empty transcript has nowhere
+    // to land. Runs after every RefreshFirstRunState call (constructor + each OnNavigatedTo, since
+    // this page is NavigationCacheMode=Enabled and persists across navigations) and after
+    // ViewModel.HasMessages changes, since either can flip the card's combined visibility
+    // (WelcomeCardVisibility depends on both). Only focuses on an actual transition — first
+    // appearance, or swapping from the add-key button to the restart button while still visible —
+    // never on a re-navigation back to a card that was already showing, and never while messages
+    // exist (a normal session must never have its focus stolen).
+    private void UpdateWelcomeCardFocus()
+    {
+        var isVisible = !ViewModel.HasMessages && ShowFirstRunWelcome;
+        var target = isVisible ? (ShowRestartWelcome ? FirstRunRestartButton : FirstRunGoToSettingsButton) : null;
+
+        if (target is not null && !ReferenceEquals(target, _welcomeCardFocusTarget))
+        {
+            // Deferred one dispatch tick so the just-toggled Visibility has gone through layout —
+            // an element that hasn't been arranged yet can silently refuse Focus (same reasoning as
+            // ToggleSearchAccelerator_Invoked's deferred focus on TranscriptSearchBox, above).
+            _ = DispatcherQueue.TryEnqueue(() => target.Focus(FocusState.Programmatic));
+        }
+
+        _welcomeCardFocusTarget = target;
     }
 
     public ChatPage()
@@ -532,6 +565,25 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             return;
         }
 
+        // A1: StatusText (RunStatus.ToDisplayText()) is what RunStatusText's LiveSetting="Polite"
+        // region actually displays; ChatViewModel re-raises it whenever RunStatus changes
+        // (OnRunStatusChanged), which is exactly the granularity a Narrator announcement should
+        // fire at — not every intermediate token/streaming update.
+        if (e.PropertyName == nameof(ChatViewModel.StatusText))
+        {
+            AnnounceLiveRegion(RunStatusText);
+            return;
+        }
+
+        // A4: HasMessages can flip WelcomeCardVisibility on its own (e.g. Clear context or
+        // switching to a brand-new empty session while no provider key is configured), independent
+        // of the ShowAddKeyWelcome/ShowRestartWelcome changes RefreshFirstRunState already covers.
+        if (e.PropertyName == nameof(ChatViewModel.HasMessages))
+        {
+            UpdateWelcomeCardFocus();
+            return;
+        }
+
         if (e.PropertyName != nameof(ChatViewModel.PendingApproval))
             return;
 
@@ -540,12 +592,56 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             _approvalCountdown.Start();
             UpdateApprovalCountdownText(approval);
             NotifyApprovalIfWindowInactive(approval);
+            // A1: countdown announced once when a fresh approval starts, not on every one-second
+            // tick (ApprovalCountdown_Tick) — a running countdown re-announcing itself every second
+            // would flood Narrator instead of helping it.
+            AnnounceLiveRegion(ApprovalCountdownText);
+            WireApprovalCardAccessibility();
         }
         else
         {
             _approvalCountdown.Stop();
             ApprovalCountdownText.Text = string.Empty;
         }
+    }
+
+    // A1: WinUI/UWP live regions (AutomationProperties.LiveSetting) only mark an element as
+    // eligible for announcement — per Microsoft Learn's UWP XAML live-region guidance, the
+    // framework does not raise the LiveRegionChanged automation event on its own when a bound Text
+    // property changes, so every live-region update needs this explicit nudge, called after the
+    // new text is already in place.
+    private static void AnnounceLiveRegion(FrameworkElement element)
+    {
+        if (FrameworkElementAutomationPeer.FromElement(element) is { } peer)
+            peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    // A1/A2: the approval card's Reason line (ApprovalReasonText) and the DescribedBy link from
+    // its InfoBar to ApprovalCountdownText both live inside ApprovalTemplate — a DataTemplate, so
+    // neither is a page-level x:Name field. ContentTemplateRoot gives the docked ContentControl's
+    // realized template root (the InfoBar); FindName then reaches the named descendant within that
+    // instance's own template namescope. Deferred one dispatch tick so the x:Bind driven by the
+    // PendingApproval change that triggered this call has flowed through to the templated
+    // InfoBar/TextBlock first.
+    private void WireApprovalCardAccessibility()
+    {
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (PendingApprovalCard.ContentTemplateRoot is not FrameworkElement root)
+                return;
+
+            // A2: GetDescribedBy(...).Add is the only way to set DescribedBy — it has no XAML
+            // setter. The Contains guard is the "once, not per update" requirement: this InfoBar
+            // instance is reused across successive approvals (ContentPresenter doesn't tear down
+            // and rebuild the same ContentTemplate just because Content's value changed), so adding
+            // unconditionally on every approval would duplicate the entry.
+            var describedBy = AutomationProperties.GetDescribedBy(root);
+            if (!describedBy.Contains(ApprovalCountdownText))
+                describedBy.Add(ApprovalCountdownText);
+
+            if (root.FindName("ApprovalReasonText") is TextBlock reasonText)
+                AnnounceLiveRegion(reasonText);
+        });
     }
 
     // U2: applies the saved/remembered pane widths before first layout. Values fall back to the
