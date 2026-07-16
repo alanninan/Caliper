@@ -7,6 +7,7 @@ using Caliper.App.ViewModels;
 using Caliper.Core.Agents;
 using Caliper.Core.Events;
 using Caliper.Core.Models;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Caliper.App.Tests;
 
@@ -184,6 +185,23 @@ public sealed class AgentEventMapperTests
 
         var activity = Assert.IsType<ToolActivityViewModel>(Assert.Single(items));
         Assert.Equal(2, activity.Calls.Count);
+    }
+
+    [Fact]
+    public void Map_assistant_message_sets_timestamp_from_time_provider()
+    {
+        // U7: the live-created assistant message carries the mapper's TimeProvider timestamp, so the
+        // transcript bubble can show it on hover; a reloaded (persisted) message has none instead
+        // (see PersistedTranscriptFactoryTests).
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+
+        mapper.Map(new AssistantMessageDelta("Hi"));
+        mapper.Map(new AssistantMessage("Hi"));
+
+        var message = Assert.IsType<AssistantMessageViewModel>(Assert.Single(items));
+        Assert.Equal(timeProvider.GetUtcNow(), message.Timestamp);
     }
 
     [Fact]

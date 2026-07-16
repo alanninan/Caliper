@@ -26,4 +26,10 @@ public static class XamlConverters
         isError ? InfoBarSeverity.Error : InfoBarSeverity.Informational;
 
     public static double DimOpacity(bool isDimmed) => isDimmed ? 0.5 : 1.0;
+
+    // U7: a null return (not an empty string) suppresses ToolTipService's tooltip entirely — an
+    // empty-string ToolTip still opens an empty popup on hover. Persisted (reloaded) messages have
+    // no timestamp, so their bubbles show no tooltip at all rather than a blank one.
+    public static object? TimestampToolTip(DateTimeOffset? value) =>
+        value is { } timestamp ? timestamp.ToLocalTime().ToString("g") : null;
 }

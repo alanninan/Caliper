@@ -22,6 +22,9 @@ public sealed partial class SessionItemViewModel(
     public string ActionsAutomationId => $"SessionActions_{ShortId}";
     public string DeleteAutomationId => $"DeleteSession_{ShortId}";
     public string RenameAutomationId => $"RenameSession_{ShortId}";
+    // U8: the row's right-click ContextFlyout duplicates the "..." MenuFlyout's Delete item, so it
+    // needs its own automation id rather than reusing DeleteAutomationId on two elements at once.
+    public string ContextDeleteAutomationId => $"ContextDeleteSession_{ShortId}";
     public string DeleteTooltip => IsActiveRun
         ? "Can't delete a session that's currently running"
         : "Delete";

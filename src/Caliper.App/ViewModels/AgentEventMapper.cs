@@ -173,7 +173,7 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
         if (_assistant is not null)
             return _assistant;
 
-        _assistant = new AssistantMessageViewModel();
+        _assistant = new AssistantMessageViewModel { Timestamp = _timeProvider.GetUtcNow() };
         items.Add(_assistant);
         return _assistant;
     }

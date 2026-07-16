@@ -1,6 +1,7 @@
 // Copyright 2026 Alan Ninan Thomas
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for full license information.
+using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Caliper.App.Permissions;
@@ -12,6 +13,7 @@ using Caliper.Core.Context;
 using Caliper.Core.Events;
 using Caliper.Core.Models;
 using Caliper.Core.Permissions;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Caliper.App.Tests;
 
@@ -522,6 +524,221 @@ public sealed class ChatViewModelTests
         Assert.False(preferences.Saved?.InspectorPaneCollapsed);
     }
 
+    [Fact]
+    public async Task SendAsync_user_message_gets_timestamp_from_time_provider()
+    {
+        var runner = new FakeAgentRunner
+        {
+            Events = [new AssistantMessage("hi"), new RunCompleted(CompletionReason.Completed)],
+        };
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T12:00:00Z"));
+        var runtimeSettings = new TestRuntimeSettings();
+        var approvals = new ApprovalService(new InlineDispatcher(), timeProvider, runtimeSettings);
+        var viewModel = new ChatViewModel(
+            runner,
+            new FakeSessionStore(),
+            timeProvider,
+            approvals,
+            new TrackingPermissionGate(),
+            new FakeConversationOrchestrator(),
+            runtimeSettings,
+            new InlineDispatcher(),
+            new FakeSessionUsageStore(),
+            new FakePreferencesStore());
+        viewModel.InputText = "hello";
+
+        await viewModel.SendCommand.ExecuteAsync(null);
+
+        var user = Assert.IsType<UserMessageViewModel>(viewModel.Messages[0]);
+        Assert.Equal(timeProvider.GetUtcNow(), user.Timestamp);
+    }
+
+    [Fact]
+    public void BuildTranscriptText_renders_user_assistant_tool_and_status_items_in_order()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        var activity = new ToolActivityViewModel();
+        activity.Add(new ToolCallViewModel("call-1", "read_file", string.Empty)
+        {
+            Status = "Succeeded",
+            Output = "contents",
+        });
+        ObservableCollection<ChatItemViewModel> messages =
+        [
+            new UserMessageViewModel("Hello"),
+            new AssistantMessageViewModel { Content = "Hi there", IsStreaming = false },
+            activity,
+            new RunStatusViewModel("Run ended", "Cancelled"),
+            new CompactionMarkerViewModel("Conversation compacted"),
+        ];
+        viewModel.Messages = messages;
+
+        var text = viewModel.BuildTranscriptText();
+
+        Assert.Equal(
+            "You:\nHello\n\n" +
+            "Assistant:\nHi there\n\n" +
+            $"[tools] {activity.Summary}\n\n" +
+            "[Run ended]\n\n" +
+            "[Conversation compacted]",
+            text);
+    }
+
+    [Fact]
+    public void BuildTranscriptText_skips_reasoning_and_empty_assistant_messages()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        ObservableCollection<ChatItemViewModel> messages =
+        [
+            new UserMessageViewModel("Hello"),
+            new ReasoningViewModel { Content = "thinking…" },
+            new AssistantMessageViewModel { Content = string.Empty, IsStreaming = false },
+        ];
+        viewModel.Messages = messages;
+
+        var text = viewModel.BuildTranscriptText();
+
+        Assert.Equal("You:\nHello", text);
+    }
+
+    [Fact]
+    public void SearchQuery_matches_user_assistant_and_tool_items_case_insensitively()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        var activity = new ToolActivityViewModel();
+        activity.Add(new ToolCallViewModel("call-1", "bash", string.Empty) { Output = "needle in haystack" });
+        var user = new UserMessageViewModel("looking for NEEDLE");
+        var assistant = new AssistantMessageViewModel { Content = "no match here", IsStreaming = false };
+        viewModel.Messages = [user, assistant, activity];
+
+        viewModel.SearchQuery = "needle";
+
+        Assert.Equal("1 of 2", viewModel.SearchMatchText);
+        Assert.Same(user, viewModel.CurrentSearchMatch);
+    }
+
+    [Fact]
+    public void NextAndPreviousSearchMatchCommand_wrap_around()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        var activity = new ToolActivityViewModel();
+        activity.Add(new ToolCallViewModel("call-1", "bash", string.Empty) { Output = "needle in haystack" });
+        var user = new UserMessageViewModel("looking for needle");
+        viewModel.Messages = [user, activity];
+        viewModel.SearchQuery = "needle";
+        Assert.Equal("1 of 2", viewModel.SearchMatchText);
+
+        viewModel.NextSearchMatchCommand.Execute(null);
+        Assert.Equal("2 of 2", viewModel.SearchMatchText);
+        Assert.Same(activity, viewModel.CurrentSearchMatch);
+
+        viewModel.NextSearchMatchCommand.Execute(null);
+        Assert.Equal("1 of 2", viewModel.SearchMatchText);
+        Assert.Same(user, viewModel.CurrentSearchMatch);
+
+        viewModel.PreviousSearchMatchCommand.Execute(null);
+        Assert.Equal("2 of 2", viewModel.SearchMatchText);
+        Assert.Same(activity, viewModel.CurrentSearchMatch);
+    }
+
+    [Fact]
+    public void SearchQuery_with_no_matches_shows_no_matches_text()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        viewModel.Messages = [new UserMessageViewModel("hello world")];
+
+        viewModel.SearchQuery = "zzz";
+
+        Assert.Equal("No matches", viewModel.SearchMatchText);
+        Assert.Null(viewModel.CurrentSearchMatch);
+    }
+
+    [Fact]
+    public void SearchQuery_cleared_resets_match_state()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        viewModel.Messages = [new UserMessageViewModel("hello world")];
+        viewModel.SearchQuery = "hello";
+        Assert.Equal("1 of 1", viewModel.SearchMatchText);
+
+        viewModel.SearchQuery = string.Empty;
+
+        Assert.Equal(string.Empty, viewModel.SearchMatchText);
+        Assert.Null(viewModel.CurrentSearchMatch);
+    }
+
+    [Fact]
+    public void IsSearchActive_closing_resets_query_and_match_state()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        viewModel.Messages = [new UserMessageViewModel("hello world")];
+        viewModel.IsSearchActive = true;
+        viewModel.SearchQuery = "hello";
+        Assert.Equal("1 of 1", viewModel.SearchMatchText);
+
+        viewModel.IsSearchActive = false;
+
+        Assert.Equal(string.Empty, viewModel.SearchQuery);
+        Assert.Equal(string.Empty, viewModel.SearchMatchText);
+        Assert.Null(viewModel.CurrentSearchMatch);
+    }
+
+    [Fact]
+    public void Messages_reassignment_while_search_active_recomputes_against_new_collection()
+    {
+        // U7 PITFALL: Messages is reassigned wholesale on session switch — an active search must
+        // not keep matches pointing at items from the session just left.
+        var viewModel = Create(new FakeAgentRunner(), out _, out _);
+        viewModel.Messages = [new UserMessageViewModel("needle here")];
+        viewModel.IsSearchActive = true;
+        viewModel.SearchQuery = "needle";
+        Assert.Equal("1 of 1", viewModel.SearchMatchText);
+
+        viewModel.Messages = [new UserMessageViewModel("no match")];
+
+        Assert.Equal("No matches", viewModel.SearchMatchText);
+        Assert.Null(viewModel.CurrentSearchMatch);
+    }
+
+    [Fact]
+    public async Task GetMessageCountAsync_returns_cached_transcript_count_when_session_loaded()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out var sessions, out _);
+        sessions.Seed("session-1");
+        // The Summary entry becomes a CompactionMarkerViewModel card in the cached transcript —
+        // the cached path must count only the text bubbles, matching the uncached path's
+        // MessageKind.Text semantics, so both show the same number in the delete dialog.
+        sessions.SeedMessages(
+            "session-1",
+            ChatMessage.Text(ChatRole.User, "Hi"),
+            ChatMessage.Text(ChatRole.Assistant, "Hello"),
+            new ChatMessage(ChatRole.System, MessageKind.Summary, "compacted"));
+        await viewModel.SelectSessionAsync("session-1", CancellationToken.None);
+
+        var count = await viewModel.GetMessageCountAsync("session-1", CancellationToken.None);
+
+        Assert.Equal(2, count);
+    }
+
+    [Fact]
+    public async Task GetMessageCountAsync_counts_text_messages_from_the_store_when_not_cached()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out var sessions, out _);
+        sessions.Seed("session-1");
+        sessions.SeedMessages(
+            "session-1",
+            ChatMessage.Text(ChatRole.User, "Hi"),
+            ChatMessage.Text(ChatRole.Assistant, "Hello"),
+            new ChatMessage(ChatRole.System, MessageKind.Summary, "compacted"));
+
+        // Not selected/cached — GetMessageCountAsync must load and count without populating
+        // ChatViewModel's transcript cache, and narrow to MessageKind.Text (the "Summary" entry
+        // above is not a message a user would count).
+        var count = await viewModel.GetMessageCountAsync("session-1", CancellationToken.None);
+
+        Assert.Equal(2, count);
+    }
+
     private sealed class FakeAgentRunner : IAgentRunner
     {
         private int _runCount;
@@ -555,8 +772,13 @@ public sealed class ChatViewModelTests
     private sealed class FakeSessionStore : ISessionStore
     {
         private readonly List<SessionSummary> _sessions = [];
+        private readonly Dictionary<string, List<ChatMessage>> _messages = new(StringComparer.Ordinal);
 
         public void Seed(string id) => _sessions.Add(new SessionSummary(id, id, DateTimeOffset.UtcNow));
+
+        // U8: seeds the raw persisted messages GetMessageCountAsync's uncached branch (and
+        // SelectSessionAsync's transcript rebuild) reads via LoadAsync.
+        public void SeedMessages(string id, params ChatMessage[] messages) => _messages[id] = [.. messages];
 
         public Task<string> CreateAsync(string? title, CancellationToken ct)
         {
@@ -568,7 +790,8 @@ public sealed class ChatViewModelTests
         public Task AppendAsync(string sessionId, ChatMessage message, CancellationToken ct) => Task.CompletedTask;
 
         public Task<IReadOnlyList<ChatMessage>> LoadAsync(string sessionId, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<ChatMessage>>([]);
+            Task.FromResult<IReadOnlyList<ChatMessage>>(
+                _messages.TryGetValue(sessionId, out var messages) ? [.. messages] : []);
 
         public Task<IReadOnlyList<SessionSummary>> ListAsync(CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<SessionSummary>>([.. _sessions]);

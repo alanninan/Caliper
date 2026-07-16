@@ -32,7 +32,8 @@
                     Padding="16,12"
                     HorizontalAlignment="Right"
                     Background="{ThemeResource AccentFillColorDefaultBrush}"
-                    CornerRadius="{ThemeResource OverlayCornerRadius}">
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    ToolTipService.ToolTip="{x:Bind converters:XamlConverters.TimestampToolTip(Timestamp), Mode=OneWay}">
                     <TextBlock
                         Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                         IsTextSelectionEnabled="True"
@@ -112,18 +113,18 @@
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="{ThemeResource OverlayCornerRadius}">
-                    <Grid>
-                        <TextBlock
-                            IsTextSelectionEnabled="True"
-                            Text="{x:Bind Content, Mode=OneWay}"
-                            TextWrapping="Wrap"
-                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsStreaming), Mode=OneWay}" />
-                        <markdown:MarkdownTextBlock
-                            IsTextSelectionEnabled="True"
-                            Text="{x:Bind Content, Mode=OneWay}"
-                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsStreaming), Mode=OneWay}" />
-                    </Grid>
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    ToolTipService.ToolTip="{x:Bind converters:XamlConverters.TimestampToolTip(Timestamp), Mode=OneWay}">
+                    <!--
+                        U3: a single MarkdownTextBlock bound unconditionally to Content — the prior
+                        streaming-vs-final TextBlock/MarkdownTextBlock swap caused a visible reflow
+                        jump the instant a run finished. Content is never null (defaults to
+                        string.Empty), and mid-stream markdown (e.g. an unclosed ``` fence) is
+                        transiently unbalanced but self-corrects on the next streaming flush tick.
+                    -->
+                    <markdown:MarkdownTextBlock
+                        IsTextSelectionEnabled="True"
+                        Text="{x:Bind Content, Mode=OneWay}" />
                 </Border>
                 <Button
                     x:Name="CopyButton"
@@ -399,6 +400,28 @@
                 Padding="12"
                 ColumnSpacing="8"
                 DoubleTapped="SessionRow_DoubleTapped">
+                <!--
+                    U8: right-click/press-and-hold equivalent of the "..." MenuFlyout below. Kept as
+                    a duplicate (not a shared StaticResource) because a resource-level MenuFlyout
+                    sits outside this DataTemplate's x:DataType scope, so its MenuFlyoutItems could
+                    not x:Bind to the row's SessionItemViewModel (BeginRenameCommand/DeleteCommand);
+                    duplicating inline keeps x:Bind intact. Automation ids get a "Context" prefix so
+                    they don't collide with the "..." flyout's ids on the same row.
+                -->
+                <Grid.ContextFlyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem
+                            Command="{x:Bind BeginRenameCommand}"
+                            Icon="Rename"
+                            Text="Rename" />
+                        <MenuFlyoutItem
+                            AutomationProperties.AutomationId="{x:Bind ContextDeleteAutomationId}"
+                            Command="{x:Bind DeleteCommand}"
+                            Icon="Delete"
+                            Text="Delete"
+                            ToolTipService.ToolTip="{x:Bind DeleteTooltip, Mode=OneWay}" />
+                    </MenuFlyout>
+                </Grid.ContextFlyout>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -511,6 +534,7 @@
         <KeyboardAccelerator Key="N" Modifiers="Control,Shift" Invoked="DenyAccelerator_Invoked" />
         <KeyboardAccelerator Key="N" Modifiers="Control" Invoked="NewSessionAccelerator_Invoked" />
         <KeyboardAccelerator Key="Enter" Modifiers="Control" Invoked="SendOrQueueAccelerator_Invoked" />
+        <KeyboardAccelerator Key="F" Modifiers="Control" Invoked="ToggleSearchAccelerator_Invoked" />
         <KeyboardAccelerator Key="F1" Invoked="ShowShortcutsAccelerator_Invoked" />
     </Page.KeyboardAccelerators>
 
@@ -622,7 +646,11 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Spacing="4">
                     <TextBlock Text="Workspace" Style="{StaticResource TitleTextBlockStyle}" />
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <TextBlock
@@ -641,6 +669,7 @@
                     </StackPanel>
                 </StackPanel>
                 <CommandBar
+                    Grid.Row="0"
                     Grid.Column="1"
                     Background="Transparent"
                     DefaultLabelPosition="Right">
@@ -691,11 +720,66 @@
                         </AppBarButton.KeyboardAccelerators>
                     </AppBarButton>
                     <AppBarButton
+                        AutomationProperties.AutomationId="CopyTranscriptButton"
+                        Click="CopyTranscript_Click"
+                        Icon="Copy"
+                        Label="Copy conversation" />
+                    <AppBarButton
                         AutomationProperties.AutomationId="ShortcutsToolbarButton"
                         Click="ShortcutsButton_Click"
                         Icon="Help"
                         Label="Shortcuts" />
                 </CommandBar>
+                <Grid
+                    Grid.Row="1"
+                    Grid.ColumnSpan="2"
+                    Margin="0,8,0,0"
+                    ColumnSpacing="8"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsSearchActive), Mode=OneWay}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        x:Name="TranscriptSearchBox"
+                        AutomationProperties.AutomationId="TranscriptSearchBox"
+                        AutomationProperties.Name="Search transcript"
+                        KeyDown="TranscriptSearchBox_KeyDown"
+                        PlaceholderText="Search transcript"
+                        Text="{x:Bind ViewModel.SearchQuery, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        Margin="8,0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="SearchMatchText"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.SearchMatchText, Mode=OneWay}"
+                        Style="{StaticResource CaptionTextBlockStyle}" />
+                    <Button
+                        Grid.Column="2"
+                        AutomationProperties.AutomationId="SearchPreviousButton"
+                        AutomationProperties.Name="Previous match"
+                        Command="{x:Bind ViewModel.PreviousSearchMatchCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE70E;" />
+                    </Button>
+                    <Button
+                        Grid.Column="3"
+                        AutomationProperties.AutomationId="SearchNextButton"
+                        AutomationProperties.Name="Next match"
+                        Command="{x:Bind ViewModel.NextSearchMatchCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE70D;" />
+                    </Button>
+                    <Button
+                        Grid.Column="4"
+                        AutomationProperties.AutomationId="SearchCloseButton"
+                        AutomationProperties.Name="Close search"
+                        Command="{x:Bind ViewModel.CloseSearchCommand}">
+                        <FontIcon FontSize="12" Glyph="&#xE711;" />
+                    </Button>
+                </Grid>
             </Grid>
 
             <Grid Grid.Row="1">
@@ -769,6 +853,7 @@
                             </StackPanel>
                         </Border>
                         <ItemsRepeater
+                            x:Name="TranscriptItemsRepeater"
                             ItemTemplate="{StaticResource ChatItemTemplateSelector}"
                             ItemsSource="{x:Bind ViewModel.Messages, Mode=OneWay}">
                             <ItemsRepeater.Layout>
@@ -999,13 +1084,28 @@
                             AutomationProperties.AutomationId="ToolDetailsTabs"
                             IsAddTabButtonVisible="False">
                             <TabViewItem AutomationProperties.AutomationId="ToolOutputTab" Header="Output" IsClosable="False">
-                                <ScrollViewer Padding="12" HorizontalScrollBarVisibility="Auto">
-                                    <TextBlock
-                                        FontFamily="{StaticResource CodeFontFamily}"
-                                        IsTextSelectionEnabled="True"
-                                        Text="{x:Bind ViewModel.SelectedToolOutput, Mode=OneWay}"
-                                        TextWrapping="Wrap" />
-                                </ScrollViewer>
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Button
+                                        Margin="8,8,8,0"
+                                        HorizontalAlignment="Right"
+                                        AutomationProperties.AutomationId="CopyToolOutputButton"
+                                        AutomationProperties.Name="Copy tool output"
+                                        Click="CopyToolOutput_Click"
+                                        Style="{StaticResource CopyButtonStyle}">
+                                        <FontIcon FontSize="12" Glyph="&#xE8C8;" />
+                                    </Button>
+                                    <ScrollViewer Grid.Row="1" Padding="12" HorizontalScrollBarVisibility="Auto">
+                                        <TextBlock
+                                            FontFamily="{StaticResource CodeFontFamily}"
+                                            IsTextSelectionEnabled="True"
+                                            Text="{x:Bind ViewModel.SelectedToolOutput, Mode=OneWay}"
+                                            TextWrapping="Wrap" />
+                                    </ScrollViewer>
+                                </Grid>
                             </TabViewItem>
                             <TabViewItem AutomationProperties.AutomationId="ToolArgumentsTab" Header="Arguments" IsClosable="False" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.SelectedToolHasArguments), Mode=OneWay}">
                                 <ScrollViewer Padding="12" HorizontalScrollBarVisibility="Auto">

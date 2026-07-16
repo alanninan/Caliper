@@ -14,11 +14,19 @@ public abstract class ChatItemViewModel : ObservableObject;
 public sealed class UserMessageViewModel(string content) : ChatItemViewModel
 {
     public string Content { get; } = content;
+
+    // U7: set from TimeProvider on the live send path (ChatViewModel.SendAsync); left null when
+    // rebuilt from a persisted transcript (Core stores no per-message timestamp).
+    public DateTimeOffset? Timestamp { get; init; }
 }
 
 public sealed partial class AssistantMessageViewModel : ChatItemViewModel
 {
     public bool HasContent => !string.IsNullOrWhiteSpace(Content);
+
+    // U7: set from TimeProvider when AgentEventMapper creates the live streaming message; left
+    // null when rebuilt from a persisted transcript (Core stores no per-message timestamp).
+    public DateTimeOffset? Timestamp { get; init; }
 
     [ObservableProperty]
     public partial string Content { get; set; } = string.Empty;

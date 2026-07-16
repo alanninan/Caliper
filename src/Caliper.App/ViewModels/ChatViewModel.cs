@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for full license information.
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Text;
 using Caliper.App.Permissions;
 using Caliper.App.Preferences;
 using Caliper.Core.Abstractions;
@@ -165,11 +166,35 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     [ObservableProperty]
     public partial bool IsInspectorCollapsed { get; set; }
 
+    // U7: transcript search state. Matches are recomputed from scratch (never cached indexes)
+    // whenever the query changes or Messages is reassigned (session switch) — see OnMessagesChanged.
+    private readonly List<ChatItemViewModel> _searchMatches = [];
+    private int _searchMatchIndex = -1;
+
+    [ObservableProperty]
+    public partial string SearchQuery { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsSearchActive { get; set; }
+
+    [ObservableProperty]
+    public partial ChatItemViewModel? CurrentSearchMatch { get; set; }
+
+    public string SearchMatchText { get; private set; } = string.Empty;
+
     public string RuntimeSummary => $"{_runtimeSettings.Caliper.Provider} · {_runtimeSettings.Caliper.Model}";
     public string PermissionModeText => _runtimeSettings.Permissions.Mode.ToString();
 
-    partial void OnMessagesChanged(ObservableCollection<ChatItemViewModel> value) =>
+    partial void OnMessagesChanged(ObservableCollection<ChatItemViewModel> value)
+    {
         OnPropertyChanged(nameof(HasMessages));
+        // U7 PITFALL: Messages is reassigned wholesale on session switch (SelectSessionAsync,
+        // EnsureSessionAsync, ClearSessionSelection) rather than mutated in place, so an active
+        // search must recompute against the newly assigned collection rather than keep matches
+        // pointing at items from the session just left.
+        if (IsSearchActive)
+            RecomputeSearchMatches();
+    }
 
     partial void OnInputTextChanged(string value)
     {
@@ -202,6 +227,18 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
 
     partial void OnIsInspectorCollapsedChanged(bool value) =>
         _preferencesStore.Save(_preferencesStore.Load() with { InspectorPaneCollapsed = value });
+
+    partial void OnSearchQueryChanged(string value) => RecomputeSearchMatches();
+
+    // Closing the search box (Esc, the close button) resets all search state, not just visibility.
+    partial void OnIsSearchActiveChanged(bool value)
+    {
+        if (!value)
+        {
+            SearchQuery = string.Empty;
+            RecomputeSearchMatches();
+        }
+    }
 
     partial void OnSelectedToolChanged(ToolCallViewModel? value)
     {
@@ -275,6 +312,52 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         UsageText = string.Empty;
     }
 
+    // U7: pure/testable plain-text export of the current transcript for the "Copy conversation"
+    // toolbar button — reasoning is skipped (it's a secondary/collapsible detail, not part of the
+    // conversation itself); tool activity and status/compaction markers each collapse to one line.
+    public string BuildTranscriptText()
+    {
+        var builder = new StringBuilder();
+        foreach (var item in Messages)
+        {
+            switch (item)
+            {
+                case UserMessageViewModel user:
+                    builder.Append("You:").Append('\n').Append(user.Content).Append("\n\n");
+                    break;
+                case AssistantMessageViewModel assistant when assistant.HasContent:
+                    builder.Append("Assistant:").Append('\n').Append(assistant.Content).Append("\n\n");
+                    break;
+                case ToolActivityViewModel activity:
+                    builder.Append("[tools] ").Append(activity.Summary).Append("\n\n");
+                    break;
+                case RunStatusViewModel status:
+                    builder.Append('[').Append(status.Title).Append("]\n\n");
+                    break;
+                case CompactionMarkerViewModel marker:
+                    builder.Append('[').Append(marker.Label).Append("]\n\n");
+                    break;
+            }
+        }
+
+        return builder.ToString().TrimEnd('\r', '\n');
+    }
+
+    // U8: counts what a user would call "messages" in the delete-confirmation dialog: the
+    // user/assistant text bubbles, not tool-activity cards or status/compaction markers. Both
+    // paths use the same semantics so the dialog shows the same number whether or not the session
+    // happens to be open this run — cached transcripts count their text-bubble view models, and
+    // uncached sessions count raw MessageKind.Text entries (the kind that renders as a bubble)
+    // without populating the VM cache or building view models.
+    public async Task<int> GetMessageCountAsync(string sessionId, CancellationToken ct)
+    {
+        if (_transcripts.TryGetValue(sessionId, out var cached))
+            return cached.Count(item => item is UserMessageViewModel or AssistantMessageViewModel);
+
+        var messages = await _sessions.LoadAsync(sessionId, ct);
+        return messages.Count(message => message.Kind == MessageKind.Text);
+    }
+
     private bool CanSend() => !IsRunning && !string.IsNullOrWhiteSpace(InputText);
 
     private bool CanQueue() => IsRunning && !string.IsNullOrWhiteSpace(InputText);
@@ -310,7 +393,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         var isFirstMessage = runMessages.Count == 0;
         var mapper = new AgentEventMapper(runMessages, _timeProvider);
 
-        runMessages.Add(new UserMessageViewModel(prompt));
+        runMessages.Add(new UserMessageViewModel(prompt) { Timestamp = _timeProvider.GetUtcNow() });
         NotifyTranscriptChanged(runMessages);
         if (isFirstMessage)
             await AutoTitleSessionAsync(sessionId, prompt);
@@ -410,6 +493,84 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
 
     [RelayCommand]
     private void ToggleInspector() => IsInspectorCollapsed = !IsInspectorCollapsed;
+
+    [RelayCommand]
+    private void CloseSearch() => IsSearchActive = false;
+
+    private bool CanNavigateSearchMatches() => _searchMatches.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanNavigateSearchMatches))]
+    private void NextSearchMatch() => MoveSearchMatch(1);
+
+    [RelayCommand(CanExecute = nameof(CanNavigateSearchMatches))]
+    private void PreviousSearchMatch() => MoveSearchMatch(-1);
+
+    private void MoveSearchMatch(int direction)
+    {
+        if (_searchMatches.Count == 0)
+            return;
+
+        _searchMatchIndex = ((_searchMatchIndex + direction) % _searchMatches.Count + _searchMatches.Count)
+            % _searchMatches.Count;
+        CurrentSearchMatch = _searchMatches[_searchMatchIndex];
+        UpdateSearchMatchText();
+    }
+
+    // Recomputes from scratch against the *current* Messages collection every time — never against
+    // a cached/stale reference (see the U7 pitfall note on OnMessagesChanged).
+    private void RecomputeSearchMatches()
+    {
+        _searchMatches.Clear();
+        _searchMatchIndex = -1;
+        CurrentSearchMatch = null;
+
+        var query = SearchQuery.Trim();
+        if (query.Length > 0)
+        {
+            foreach (var item in Messages)
+            {
+                if (MatchesSearchQuery(item, query))
+                    _searchMatches.Add(item);
+            }
+
+            if (_searchMatches.Count > 0)
+            {
+                _searchMatchIndex = 0;
+                CurrentSearchMatch = _searchMatches[0];
+            }
+        }
+
+        UpdateSearchMatchText();
+        NextSearchMatchCommand.NotifyCanExecuteChanged();
+        PreviousSearchMatchCommand.NotifyCanExecuteChanged();
+    }
+
+    private void UpdateSearchMatchText()
+    {
+        var hasQuery = SearchQuery.Trim().Length > 0;
+        SearchMatchText = !hasQuery
+            ? string.Empty
+            : _searchMatches.Count == 0
+                ? "No matches"
+                : $"{_searchMatchIndex + 1} of {_searchMatches.Count}";
+        OnPropertyChanged(nameof(SearchMatchText));
+    }
+
+    // Only these visible-text sources participate in search; a ToolCallViewModel is never a
+    // top-level Messages entry (it's always nested under a ToolActivityViewModel's Calls), so a
+    // match there surfaces the containing activity card as the searchable/scrollable item.
+    private static bool MatchesSearchQuery(ChatItemViewModel item, string query) =>
+        item switch
+        {
+            UserMessageViewModel user => ContainsQuery(user.Content, query),
+            AssistantMessageViewModel assistant => ContainsQuery(assistant.Content, query),
+            ToolActivityViewModel activity => activity.Calls.Any(call =>
+                ContainsQuery(call.Headline, query) || ContainsQuery(call.Output, query)),
+            _ => false,
+        };
+
+    private static bool ContainsQuery(string text, string query) =>
+        text.Contains(query, StringComparison.OrdinalIgnoreCase);
 
     private bool CanMutateContext() => !IsRunning && !IsContextBusy;
 

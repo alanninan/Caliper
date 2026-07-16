@@ -296,12 +296,27 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     {
         try
         {
+            var content = $"Delete \"{e.Session.Title}\" and its saved transcript? This cannot be undone.";
+            try
+            {
+                // U8: best-effort — a failed count must fall back to the original wording, not
+                // block the dialog from showing at all.
+                var count = await ViewModel.GetMessageCountAsync(e.Session.Id, CancellationToken.None);
+                var noun = count == 1 ? "message" : "messages";
+                content = $"Delete \"{e.Session.Title}\" and its saved transcript? " +
+                    $"This will permanently delete {count} {noun}. This cannot be undone.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to compute message count for session {SessionId}.", e.Session.Id);
+            }
+
             var dialog = new ContentDialog
             {
                 XamlRoot = XamlRoot,
                 Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style,
                 Title = "Delete session?",
-                Content = $"Delete \"{e.Session.Title}\" and its saved transcript? This cannot be undone.",
+                Content = content,
                 PrimaryButtonText = "Delete",
                 CloseButtonText = "Cancel",
                 DefaultButton = ContentDialogButton.Close,
@@ -357,6 +372,24 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         JumpToLatestButton.Visibility = Visibility.Collapsed;
     }
 
+    // U7: TranscriptItemsRepeater has no built-in scrolling (it's not a Control/ListView), and it
+    // virtualizes — an off-screen match's element may not exist yet. GetOrCreateElement forces
+    // realization and queues the result as the next layout's anchor; UpdateLayout gives it a valid
+    // position before StartBringIntoView can act on it (the documented ItemsRepeater pattern).
+    private void ScrollToSearchMatch(ChatItemViewModel? match)
+    {
+        if (match is null)
+            return;
+
+        var index = ViewModel.Messages.IndexOf(match);
+        if (index < 0)
+            return;
+
+        var element = TranscriptItemsRepeater.GetOrCreateElement(index);
+        element.UpdateLayout();
+        element.StartBringIntoView();
+    }
+
     private void PromptTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != VirtualKey.Enter)
@@ -407,6 +440,39 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             Sessions.NewSessionCommand.Execute(null);
     }
 
+    // U7: Ctrl+F toggles the transcript search box; closing it (via ChatViewModel.IsSearchActive's
+    // change handler) resets the query and matches, so re-opening always starts fresh.
+    private void ToggleSearchAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        ViewModel.IsSearchActive = !ViewModel.IsSearchActive;
+        if (ViewModel.IsSearchActive)
+        {
+            // The search box's Visibility binding needs a layout pass to apply before it can take
+            // focus; queue the focus call rather than calling it inline.
+            _ = DispatcherQueue.TryEnqueue(() => TranscriptSearchBox.Focus(FocusState.Keyboard));
+        }
+    }
+
+    private void TranscriptSearchBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case VirtualKey.Enter:
+                e.Handled = true;
+                var shiftPressed = InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+                    .HasFlag(CoreVirtualKeyStates.Down);
+                var command = shiftPressed ? ViewModel.PreviousSearchMatchCommand : ViewModel.NextSearchMatchCommand;
+                if (command.CanExecute(null))
+                    command.Execute(null);
+                break;
+            case VirtualKey.Escape:
+                e.Handled = true;
+                ViewModel.IsSearchActive = false;
+                break;
+        }
+    }
+
     private void ApproveAccelerator_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         if (ViewModel.PendingApproval is not { } approval || !approval.AllowCommand.CanExecute(null))
@@ -430,6 +496,12 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         if (e.PropertyName == nameof(ChatViewModel.IsInspectorCollapsed))
         {
             ApplyInspectorCollapseChange();
+            return;
+        }
+
+        if (e.PropertyName == nameof(ChatViewModel.CurrentSearchMatch))
+        {
+            ScrollToSearchMatch(ViewModel.CurrentSearchMatch);
             return;
         }
 
@@ -616,6 +688,30 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         Clipboard.SetContent(package);
     }
 
+    // U7: "Copy conversation" toolbar button — mirrors CopyMessage_Click's DataPackage usage.
+    private void CopyTranscript_Click(object sender, RoutedEventArgs e)
+    {
+        var content = ViewModel.BuildTranscriptText();
+        if (string.IsNullOrEmpty(content))
+            return;
+
+        var package = new DataPackage();
+        package.SetText(content);
+        Clipboard.SetContent(package);
+    }
+
+    // U7: inspector Output tab's copy button.
+    private void CopyToolOutput_Click(object sender, RoutedEventArgs e)
+    {
+        var content = ViewModel.SelectedToolOutput;
+        if (string.IsNullOrEmpty(content))
+            return;
+
+        var package = new DataPackage();
+        package.SetText(content);
+        Clipboard.SetContent(package);
+    }
+
     private void GoToProviderSettings_Click(object sender, RoutedEventArgs e) => Frame.Navigate(typeof(SettingsPage));
 
     private async void ShortcutsButton_Click(object sender, RoutedEventArgs e) => await ShowShortcutsAsync();
@@ -638,6 +734,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
                 ("Escape", "Stop the active run"),
                 ("Ctrl+L", "Focus the message box"),
                 ("Ctrl+N", "New session"),
+                ("Ctrl+F", "Search the transcript"),
                 ("F2", "Rename the selected session"),
                 ("Ctrl+B", "Toggle the sessions pane"),
                 ("Ctrl+Shift+B", "Toggle the inspector pane"),

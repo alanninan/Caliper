@@ -156,6 +156,26 @@ public sealed class PersistedTranscriptFactoryTests
     }
 
     [Fact]
+    public void Create_rebuilds_user_and_assistant_messages_with_no_timestamp()
+    {
+        // U7: Core persists no per-message time, so a reloaded transcript's bubbles carry no
+        // timestamp (unlike the live path, which stamps them from TimeProvider — see
+        // ChatViewModelTests and AgentEventMapperTests).
+        ChatMessage[] messages =
+        [
+            ChatMessage.Text(ChatRole.User, "Hi"),
+            ChatMessage.Text(ChatRole.Assistant, "Hello"),
+        ];
+
+        var transcript = PersistedTranscriptFactory.Create(messages);
+
+        Assert.Collection(
+            transcript,
+            item => Assert.Null(Assert.IsType<UserMessageViewModel>(item).Timestamp),
+            item => Assert.Null(Assert.IsType<AssistantMessageViewModel>(item).Timestamp));
+    }
+
+    [Fact]
     public void Create_groups_consecutive_tool_calls_into_one_activity()
     {
         var readCall = new ToolCall(

@@ -12,9 +12,27 @@ compactions render as full-width expandable dividers so you can see where earlie
 stopped being sent to the model.
 
 - **Sessions pane** hides subagent child sessions (`parent_session_id` set) behind a
-  "Show subagent runs" toggle; job runs (`[job] {name}`) appear like any session.
+  "Show subagent runs" toggle; job runs (`[job] {name}`) appear like any session. Right-clicking
+  a session row opens the same Rename/Delete menu as its "..." button (a duplicated
+  `ContextFlyout`, not a shared one — a resource-level `MenuFlyout` would sit outside the row's
+  `DataTemplate` `x:DataType` scope and couldn't `x:Bind` to the row's commands). Deleting a
+  session asks for confirmation with a message count ("This will permanently delete 12
+  messages.") counting the user/assistant text bubbles — from the cached transcript when the
+  session is loaded, otherwise from the store's `MessageKind.Text` entries (no view models built
+  just to count); a failed count falls back to the plain confirmation wording.
 - **Live events** map through `AgentEventMapper` (streamed run → view models);
   `PersistedTranscriptFactory` rebuilds the same view models from stored messages on reload.
+  Assistant bubbles render as Markdown from the first streamed token — there's no separate
+  plain-text streaming state, so finishing a run no longer causes a visible reflow jump.
+  Live (not reloaded) user/assistant bubbles show their send/receive time as a hover tooltip.
+- **Transcript search** (`Ctrl+F`) reveals a search box in the workspace header; Enter/Shift+Enter
+  or the next/previous buttons step through case-insensitive matches across user messages,
+  assistant messages, and tool call headlines/output (a "N of M" / "No matches" indicator tracks
+  position), scrolling the transcript to the current match; Escape or the close button clears the
+  query and closes it. A "Copy conversation" toolbar button copies a plain-text export of the
+  transcript (reasoning omitted, tool activity and status/compaction markers collapsed to one
+  line each); the inspector's Output tab has its own copy button for just the selected tool's
+  output.
 - Both the sessions pane (`Ctrl+B`) and the inspector pane (`Ctrl+Shift+B`) can be collapsed
   from the workspace header toolbar; each state persists (`SessionsPaneCollapsed` /
   `InspectorPaneCollapsed`) and restores on next launch. Widths dragged with either
