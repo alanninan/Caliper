@@ -26,8 +26,4 @@ public static class XamlConverters
         isError ? InfoBarSeverity.Error : InfoBarSeverity.Informational;
 
     public static double DimOpacity(bool isDimmed) => isDimmed ? 0.5 : 1.0;
-
-    public static GridLength PaneWidth(bool isCollapsed) => new(isCollapsed ? 0 : 260);
-
-    public static double PaneMinWidth(bool isCollapsed) => isCollapsed ? 0 : 220;
 }

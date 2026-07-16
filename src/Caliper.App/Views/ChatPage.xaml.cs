@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for full license information.
 using System.ComponentModel;
 using System.Globalization;
+using Caliper.App.Preferences;
 using Caliper.App.Security;
 using Caliper.App.ViewModels;
 using Caliper.Core.Abstractions;
@@ -29,12 +30,20 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
 {
     private const double AutoscrollPinTolerance = 24;
 
+    // U1: lowered alongside MainWindow's 800x560 DIP minimum so both panes can be expanded at
+    // once without clipping (180 + 360 workspace MinWidth + 240 + 2*4px splitters = 788 <= 800).
+    private const double SessionsPaneMinWidth = 180;
+    private const double InspectorPaneMinWidth = 240;
+    private const double DefaultSessionsPaneWidth = 260;
+    private const double DefaultInspectorPaneWidth = 320;
+
     public ChatViewModel ViewModel { get; } = App.Services.GetRequiredService<ChatViewModel>();
     public SessionsViewModel Sessions { get; } = App.Services.GetRequiredService<SessionsViewModel>();
 
     private readonly ILogger<ChatPage> _logger = App.Services.GetRequiredService<ILogger<ChatPage>>();
     private readonly TimeProvider _timeProvider = App.Services.GetRequiredService<TimeProvider>();
     private readonly ICredentialStore _credentials = App.Services.GetRequiredService<ICredentialStore>();
+    private readonly IAppPreferencesStore _preferences = App.Services.GetRequiredService<IAppPreferencesStore>();
     // Whether the app was launched with a provider key already bound. Provider clients bind once at
     // startup, so a key added afterward can't actually connect until a restart.
     private readonly bool _startupHadKey = HasAnyProviderKeyConfigured();
@@ -42,6 +51,11 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     private bool _initialized;
     private bool _showAddKeyWelcome;
     private bool _showRestartWelcome;
+    // U2: the last known expanded width for each pane — restored on expand, captured before
+    // collapse (from ActualWidth, since a pane that starts collapsed reports 0) and on every
+    // splitter drag. Seeded from saved prefs (or the historical default) in ApplySavedPaneWidths.
+    private double _lastExpandedSessionsWidth = DefaultSessionsPaneWidth;
+    private double _lastExpandedInspectorWidth = DefaultInspectorPaneWidth;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -115,6 +129,15 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         Sessions.DeleteRequested += Sessions_DeleteRequested;
         _approvalCountdown.Tick += ApprovalCountdown_Tick;
+
+        // U2: pane Width/MinWidth are managed here, not in XAML (see ChatWorkspace's column
+        // comment) — apply the saved/remembered widths before first layout, then keep them in
+        // sync with collapse toggles and persist on unload as a defensive extra (the primary save
+        // points are collapse-time, above, and each splitter drag's ManipulationCompleted, below —
+        // see the U2 report for why Unloaded alone isn't relied on).
+        ApplySavedPaneWidths();
+        Sessions.PropertyChanged += Sessions_PropertyChanged;
+        Unloaded += ChatPage_Unloaded;
     }
 
     public static Visibility IsAdded(DiffLineKind kind) =>
@@ -404,6 +427,12 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
 
     private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(ChatViewModel.IsInspectorCollapsed))
+        {
+            ApplyInspectorCollapseChange();
+            return;
+        }
+
         if (e.PropertyName != nameof(ChatViewModel.PendingApproval))
             return;
 
@@ -418,6 +447,92 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             _approvalCountdown.Stop();
             ApprovalCountdownText.Text = string.Empty;
         }
+    }
+
+    // U2: applies the saved/remembered pane widths before first layout. Values fall back to the
+    // historical defaults for prefs files that predate this feature (or a pane never resized),
+    // and are clamped to each pane's MinWidth so a stale saved value narrower than the current
+    // MinWidth (e.g. after this change lowered them) can't leave the column under-sized.
+    private void ApplySavedPaneWidths()
+    {
+        var preferences = _preferences.Load();
+        _lastExpandedSessionsWidth = Math.Max(preferences.SessionsPaneWidth ?? DefaultSessionsPaneWidth, SessionsPaneMinWidth);
+        _lastExpandedInspectorWidth = Math.Max(preferences.InspectorPaneWidth ?? DefaultInspectorPaneWidth, InspectorPaneMinWidth);
+
+        SetColumnWidth(SessionsColumn, Sessions.IsPaneCollapsed, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
+        SetColumnWidth(InspectorColumn, ViewModel.IsInspectorCollapsed, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+    }
+
+    private static void SetColumnWidth(ColumnDefinition column, bool isCollapsed, double expandedWidth, double minWidth)
+    {
+        if (isCollapsed)
+        {
+            column.Width = new GridLength(0);
+            column.MinWidth = 0;
+        }
+        else
+        {
+            column.Width = new GridLength(expandedWidth);
+            column.MinWidth = minWidth;
+        }
+    }
+
+    private void Sessions_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(SessionsViewModel.IsPaneCollapsed))
+            return;
+
+        // PITFALL: capture ActualWidth before zeroing the column, and only when it's positive —
+        // a pane that starts collapsed (e.g. at construction) reports ActualWidth 0, and blindly
+        // capturing that would clobber the remembered/saved width with 0.
+        if (Sessions.IsPaneCollapsed && SessionsColumn.ActualWidth > 0)
+            _lastExpandedSessionsWidth = Math.Max(SessionsColumn.ActualWidth, SessionsPaneMinWidth);
+
+        SetColumnWidth(SessionsColumn, Sessions.IsPaneCollapsed, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
+        PersistPaneWidths();
+    }
+
+    private void ApplyInspectorCollapseChange()
+    {
+        if (ViewModel.IsInspectorCollapsed && InspectorColumn.ActualWidth > 0)
+            _lastExpandedInspectorWidth = Math.Max(InspectorColumn.ActualWidth, InspectorPaneMinWidth);
+
+        SetColumnWidth(InspectorColumn, ViewModel.IsInspectorCollapsed, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        PersistPaneWidths();
+    }
+
+    // Chosen over Page.Unloaded as the authoritative save point for a completed drag: ChatPage is
+    // NavigationCacheMode=Enabled and shares MainPage's root Frame with Settings/Skills/Memory, so
+    // Unloaded fires reliably when navigating to one of those (still useful as a defensive extra,
+    // below) but is not guaranteed to run through to completion on process/window teardown.
+    // SizerBase (the CommunityToolkit GridSplitter's base class) drives its own resize entirely
+    // off the standard UIElement ManipulationStarted/ManipulationCompleted routed events — a
+    // second handler on the same element fires alongside the control's internal one — so this is
+    // the same, well-defined "drag ended" signal the control itself relies on, not a proxy for it.
+    private void SessionsGridSplitter_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        if (!Sessions.IsPaneCollapsed && SessionsColumn.ActualWidth > 0)
+            _lastExpandedSessionsWidth = Math.Max(SessionsColumn.ActualWidth, SessionsPaneMinWidth);
+        PersistPaneWidths();
+    }
+
+    private void DetailsGridSplitter_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+    {
+        if (!ViewModel.IsInspectorCollapsed && InspectorColumn.ActualWidth > 0)
+            _lastExpandedInspectorWidth = Math.Max(InspectorColumn.ActualWidth, InspectorPaneMinWidth);
+        PersistPaneWidths();
+    }
+
+    private void ChatPage_Unloaded(object sender, RoutedEventArgs e) => PersistPaneWidths();
+
+    private void PersistPaneWidths()
+    {
+        var current = _preferences.Load();
+        _preferences.Save(current with
+        {
+            SessionsPaneWidth = _lastExpandedSessionsWidth,
+            InspectorPaneWidth = _lastExpandedInspectorWidth,
+        });
     }
 
     private void ApprovalCountdown_Tick(object? sender, object e)
@@ -525,6 +640,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
                 ("Ctrl+N", "New session"),
                 ("F2", "Rename the selected session"),
                 ("Ctrl+B", "Toggle the sessions pane"),
+                ("Ctrl+Shift+B", "Toggle the inspector pane"),
                 ("Ctrl+Shift+K", "Compact context"),
                 ("Ctrl+Shift+Delete", "Clear context"),
                 ("Ctrl+Shift+Y", "Approve the pending request"),

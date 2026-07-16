@@ -15,6 +15,15 @@ stopped being sent to the model.
   "Show subagent runs" toggle; job runs (`[job] {name}`) appear like any session.
 - **Live events** map through `AgentEventMapper` (streamed run → view models);
   `PersistedTranscriptFactory` rebuilds the same view models from stored messages on reload.
+- Both the sessions pane (`Ctrl+B`) and the inspector pane (`Ctrl+Shift+B`) can be collapsed
+  from the workspace header toolbar; each state persists (`SessionsPaneCollapsed` /
+  `InspectorPaneCollapsed`) and restores on next launch. Widths dragged with either
+  `GridSplitter` also persist (`SessionsPaneWidth` / `InspectorPaneWidth`, in DIPs) — saved on
+  every drag's `ManipulationCompleted` and whenever a pane collapses, so a resized pane snaps
+  back to its own remembered width, not a fixed default, when re-expanded. The main window
+  enforces an 800×560 DIP minimum size (`OverlappedPresenter.PreferredMinimumWidth/Height`) so
+  both panes stay clip-free at once; their column `MinWidth`s (180/360/240) were sized to fit
+  under it.
 
 ## Approvals
 
@@ -35,11 +44,12 @@ App never runs unattended specs, so it needs no routing prompt.
 - API keys live in **Windows Credential Manager** (Settings → Models & providers), never in
   `config.json`. Endpoint/key changes are restart-required; the app offers a one-click
   "Restart Caliper".
-- UI preferences (theme, window placement, sessions-pane state, subagent-runs toggle)
-  persist in `~/.caliper/app-ui.json` (`AppPreferencesStore`). Window placement restores
-  clamped back onto a live display; closing while maximized keeps the saved *floating*
-  bounds and an `IsMaximized` flag, so the next launch restores the floating rect and then
-  re-maximizes (older prefs files without the flag load as not-maximized).
+- UI preferences (theme, window placement, sessions/inspector pane collapsed state and
+  widths, subagent-runs toggle) persist in `~/.caliper/app-ui.json` (`AppPreferencesStore`).
+  Window placement restores clamped back onto a live display; closing while maximized keeps
+  the saved *floating* bounds and an `IsMaximized` flag, so the next launch restores the
+  floating rect and then re-maximizes (older prefs files without the flag, or without the
+  inspector/pane-width keys, load with the old defaults: inspector expanded, widths null).
   Runtime settings still come from `~/.caliper/config.json` via the same `IConfigWriter`
   seam the console uses.
 - The chat token-usage footer (cumulative prompt/completion counts) persists per session in
@@ -61,7 +71,9 @@ minimum level.
 
 Structured pages (General, Models & providers, Permissions, Tools, Agent behavior,
 Context & memory, MCP servers, Search, Advanced) edit typed config sections through
-`IConfigWriter`, which reports which changes are live vs restart-required.
+`IConfigWriter`, which reports which changes are live vs restart-required. The settings
+`NavigationView` uses top (`PaneDisplayMode="Top"`) navigation, not a second left rail nested
+inside the app's root nav — items that don't fit collapse into a "More" overflow menu.
 
 ## Conventions
 

@@ -80,6 +80,46 @@ public sealed class AppPreferencesStoreTests : IDisposable
         Assert.Equal(AppThemePreference.System, loaded.Theme);
     }
 
+    [Fact]
+    public void Save_then_load_round_trips_inspector_pane_collapsed()
+    {
+        var store = CreateStore();
+
+        store.Save(new AppPreferences { InspectorPaneCollapsed = true });
+
+        Assert.True(store.Load().InspectorPaneCollapsed);
+    }
+
+    [Fact]
+    public void Save_then_load_round_trips_pane_widths()
+    {
+        var store = CreateStore();
+
+        store.Save(new AppPreferences { SessionsPaneWidth = 210.5, InspectorPaneWidth = 340 });
+        var loaded = store.Load();
+
+        Assert.Equal(210.5, loaded.SessionsPaneWidth);
+        Assert.Equal(340, loaded.InspectorPaneWidth);
+    }
+
+    [Fact]
+    public void Load_prefs_file_without_inspector_or_width_keys_defaults_to_false_and_null_widths()
+    {
+        // U1/U2: a prefs file written before the inspector-collapse flag and the pane-width keys
+        // existed must keep loading (backward compatible), defaulting the flag to false and both
+        // widths to null so ChatPage falls back to its historical default widths.
+        var store = CreateStore();
+        File.WriteAllText(
+            Path.Combine(_directory, "app-ui.json"),
+            """{"Theme":1,"SessionsPaneCollapsed":true,"WindowX":5,"WindowY":6,"WindowWidth":800,"WindowHeight":600}""");
+
+        var loaded = store.Load();
+
+        Assert.False(loaded.InspectorPaneCollapsed);
+        Assert.Null(loaded.SessionsPaneWidth);
+        Assert.Null(loaded.InspectorPaneWidth);
+    }
+
     public void Dispose()
     {
         try

@@ -27,6 +27,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     private readonly IRuntimeSettings _runtimeSettings;
     private readonly IUiDispatcher _dispatcher;
     private readonly ISessionUsageStore _usageStore;
+    private readonly IAppPreferencesStore _preferencesStore;
     private readonly Dictionary<string, ObservableCollection<ChatItemViewModel>> _transcripts =
         new(StringComparer.Ordinal);
     // Token usage is per session: while a run streams in A and the user views B, B's footer must
@@ -52,7 +53,8 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         IConversationOrchestrator conversations,
         IRuntimeSettings runtimeSettings,
         IUiDispatcher dispatcher,
-        ISessionUsageStore usageStore)
+        ISessionUsageStore usageStore,
+        IAppPreferencesStore preferencesStore)
     {
         _runner = runner;
         _sessions = sessions;
@@ -63,6 +65,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         _runtimeSettings = runtimeSettings;
         _dispatcher = dispatcher;
         _usageStore = usageStore;
+        _preferencesStore = preferencesStore;
         _approvals.ApprovalRequested += Approvals_ApprovalRequested;
         _runtimeSettings.SettingsChanged += RuntimeSettings_SettingsChanged;
 
@@ -71,6 +74,9 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         // harmless — it just never gets looked up by SelectSessionAsync.
         foreach (var (sessionId, usage) in usageStore.LoadAll())
             _usageBySession[sessionId] = FormatUsage(usage.PromptTokens, usage.CompletionTokens);
+
+        // Mirrors SessionsViewModel's pane-collapsed persistence pattern for the inspector pane.
+        IsInspectorCollapsed = preferencesStore.Load().InspectorPaneCollapsed;
     }
 
     private void RuntimeSettings_SettingsChanged(object? sender, EventArgs e)
@@ -156,6 +162,9 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     [ObservableProperty]
     public partial string ContextStatusMessage { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial bool IsInspectorCollapsed { get; set; }
+
     public string RuntimeSummary => $"{_runtimeSettings.Caliper.Provider} · {_runtimeSettings.Caliper.Model}";
     public string PermissionModeText => _runtimeSettings.Permissions.Mode.ToString();
 
@@ -190,6 +199,9 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
     }
 
     partial void OnRunStatusChanged(ChatRunStatus value) => OnPropertyChanged(nameof(StatusText));
+
+    partial void OnIsInspectorCollapsedChanged(bool value) =>
+        _preferencesStore.Save(_preferencesStore.Load() with { InspectorPaneCollapsed = value });
 
     partial void OnSelectedToolChanged(ToolCallViewModel? value)
     {
@@ -395,6 +407,9 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         RunStatus = ChatRunStatus.Stopping;
         _runCancellation?.Cancel();
     }
+
+    [RelayCommand]
+    private void ToggleInspector() => IsInspectorCollapsed = !IsInspectorCollapsed;
 
     private bool CanMutateContext() => !IsRunning && !IsContextBusy;
 

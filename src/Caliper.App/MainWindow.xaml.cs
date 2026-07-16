@@ -59,6 +59,7 @@ public sealed partial class MainWindow : Window
 
         ApplySavedTheme();
         ApplyWindowBounds();
+        ApplyMinimumWindowSize();
         RootFrame.Navigate(typeof(MainPage));
     }
 
@@ -90,6 +91,24 @@ public sealed partial class MainWindow : Window
         // clamped floating bounds, never the maximized rect.
         if (preferences.IsMaximized && AppWindow.Presenter is OverlappedPresenter presenter)
             presenter.Maximize();
+    }
+
+    // U1: with both the sessions and inspector panes expanded, ChatPage's lowered pane/workspace
+    // MinWidths sum to 788 DIPs (180 + 360 + 240 + 2*4px splitters) — a floor below that clips
+    // content, so the window itself must refuse to shrink past a size that fits it.
+    // OverlappedPresenter.PreferredMinimumWidth/Height share AppWindow's coordinate system, which
+    // the Windows App SDK docs describe as physical device pixels (same as AppWindow.Resize,
+    // which ApplyWindowBounds above already scales by DPI) — not DIPs like XAML layout — so scale
+    // the desired 800x560 DIP minimum by the same GetDpiForWindow/96.0 factor used there.
+    private void ApplyMinimumWindowSize()
+    {
+        if (AppWindow.Presenter is not OverlappedPresenter presenter)
+            return;
+
+        var windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var scale = GetDpiForWindow(windowHandle) / 96.0;
+        presenter.PreferredMinimumWidth = (int)(800 * scale);
+        presenter.PreferredMinimumHeight = (int)(560 * scale);
     }
 
     // Saved bounds can reference a monitor that has since been unplugged or a layout that shrank,

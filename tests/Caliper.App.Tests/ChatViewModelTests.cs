@@ -21,20 +21,30 @@ public sealed class ChatViewModelTests
         FakeAgentRunner runner,
         out FakeSessionStore sessions,
         out TrackingPermissionGate permissionGate) =>
-        Create(runner, out sessions, out permissionGate, out _, out _);
+        Create(runner, out sessions, out permissionGate, out _, out _, out _);
 
     private static ChatViewModel Create(
         FakeAgentRunner runner,
         out FakeSessionStore sessions,
         out TrackingPermissionGate permissionGate,
         out ApprovalService approvals,
-        out FakeSessionUsageStore usageStore)
+        out FakeSessionUsageStore usageStore) =>
+        Create(runner, out sessions, out permissionGate, out approvals, out usageStore, out _);
+
+    private static ChatViewModel Create(
+        FakeAgentRunner runner,
+        out FakeSessionStore sessions,
+        out TrackingPermissionGate permissionGate,
+        out ApprovalService approvals,
+        out FakeSessionUsageStore usageStore,
+        out FakePreferencesStore preferences)
     {
         sessions = new FakeSessionStore();
         permissionGate = new TrackingPermissionGate();
         var runtimeSettings = new TestRuntimeSettings();
         approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
         usageStore = new FakeSessionUsageStore();
+        preferences = new FakePreferencesStore();
         return new ChatViewModel(
             runner,
             sessions,
@@ -44,7 +54,8 @@ public sealed class ChatViewModelTests
             new FakeConversationOrchestrator(),
             runtimeSettings,
             new InlineDispatcher(),
-            usageStore);
+            usageStore,
+            preferences);
     }
 
     private static PermissionRequest Request(string tool, string requestId) =>
@@ -158,7 +169,8 @@ public sealed class ChatViewModelTests
             new FakeConversationOrchestrator(),
             runtimeSettings,
             new InlineDispatcher(),
-            usageStore);
+            usageStore,
+            new FakePreferencesStore());
         sessions.Seed("session-1");
 
         await viewModel.SelectSessionAsync("session-1", CancellationToken.None);
@@ -298,7 +310,8 @@ public sealed class ChatViewModelTests
             new FakeConversationOrchestrator(),
             runtimeSettings,
             new InlineDispatcher(),
-            new FakeSessionUsageStore());
+            new FakeSessionUsageStore(),
+            new FakePreferencesStore());
         var changed = new List<string?>();
         viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
@@ -326,7 +339,8 @@ public sealed class ChatViewModelTests
             new FakeConversationOrchestrator(),
             runtimeSettings,
             new InlineDispatcher(),
-            new FakeSessionUsageStore());
+            new FakeSessionUsageStore(),
+            new FakePreferencesStore());
         var request = new PermissionRequest(
             "bash",
             SideEffect.Execute,
@@ -465,6 +479,49 @@ public sealed class ChatViewModelTests
         Assert.Equal(PermissionDecision.Deny, await secondTask);
     }
 
+    [Fact]
+    public void IsInspectorCollapsed_initial_value_comes_from_preferences_store()
+    {
+        var runner = new FakeAgentRunner();
+        var sessions = new FakeSessionStore();
+        var permissionGate = new TrackingPermissionGate();
+        var runtimeSettings = new TestRuntimeSettings();
+        var approvals = new ApprovalService(new InlineDispatcher(), TimeProvider.System, runtimeSettings);
+        var preferences = new FakePreferencesStore { Saved = new AppPreferences { InspectorPaneCollapsed = true } };
+
+        var viewModel = new ChatViewModel(
+            runner,
+            sessions,
+            TimeProvider.System,
+            approvals,
+            permissionGate,
+            new FakeConversationOrchestrator(),
+            runtimeSettings,
+            new InlineDispatcher(),
+            new FakeSessionUsageStore(),
+            preferences);
+
+        Assert.True(viewModel.IsInspectorCollapsed);
+    }
+
+    [Fact]
+    public void ToggleInspectorCommand_flips_and_persists_collapsed_state()
+    {
+        var viewModel = Create(new FakeAgentRunner(), out _, out _, out _, out _, out var preferences);
+
+        Assert.False(viewModel.IsInspectorCollapsed);
+
+        viewModel.ToggleInspectorCommand.Execute(null);
+
+        Assert.True(viewModel.IsInspectorCollapsed);
+        Assert.True(preferences.Saved?.InspectorPaneCollapsed);
+
+        viewModel.ToggleInspectorCommand.Execute(null);
+
+        Assert.False(viewModel.IsInspectorCollapsed);
+        Assert.False(preferences.Saved?.InspectorPaneCollapsed);
+    }
+
     private sealed class FakeAgentRunner : IAgentRunner
     {
         private int _runCount;
@@ -566,5 +623,14 @@ public sealed class ChatViewModelTests
             action();
             return true;
         }
+    }
+
+    private sealed class FakePreferencesStore : IAppPreferencesStore
+    {
+        public AppPreferences? Saved { get; set; }
+
+        public AppPreferences Load() => Saved ?? new AppPreferences();
+
+        public void Save(AppPreferences preferences) => Saved = preferences;
     }
 }

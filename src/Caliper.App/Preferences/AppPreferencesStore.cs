@@ -12,6 +12,14 @@ public sealed record AppPreferences
 {
     public AppThemePreference Theme { get; init; } = AppThemePreference.System;
     public bool SessionsPaneCollapsed { get; init; }
+    // Absent (defaults to false) in prefs files written before the inspector pane gained a
+    // collapse toggle, so old files keep loading with the inspector shown.
+    public bool InspectorPaneCollapsed { get; init; }
+    // Last user-resized (GridSplitter) or restored width for each pane, in DIPs. Null in prefs
+    // files predating this feature (and before the pane has ever been resized), in which case
+    // the page falls back to its historical default width.
+    public double? SessionsPaneWidth { get; init; }
+    public double? InspectorPaneWidth { get; init; }
     public bool ShowSubagentRuns { get; init; }
     public int? WindowX { get; init; }
     public int? WindowY { get; init; }

@@ -8,7 +8,7 @@
         x:Name="SettingsNav"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
-        PaneDisplayMode="Left"
+        PaneDisplayMode="Top"
         SelectionChanged="SettingsNav_SelectionChanged">
         <NavigationView.MenuItems>
             <NavigationViewItem AutomationProperties.AutomationId="GeneralSettingsNavItem" Content="General" Tag="General">

@@ -516,14 +516,17 @@
 
     <Grid x:Name="ChatWorkspace">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition
-                x:Name="SessionsColumn"
-                Width="{x:Bind converters:XamlConverters.PaneWidth(Sessions.IsPaneCollapsed), Mode=OneWay}"
-                MinWidth="{x:Bind converters:XamlConverters.PaneMinWidth(Sessions.IsPaneCollapsed), Mode=OneWay}" />
+            <!--
+                Width/MinWidth for SessionsColumn and InspectorColumn are managed entirely in
+                code-behind (ChatPage.xaml.cs): a GridSplitter writes Width directly, and an
+                x:Bind here would fight it by re-evaluating a fixed value on every collapse
+                toggle (U2). The values below are placeholders overwritten before first layout.
+            -->
+            <ColumnDefinition x:Name="SessionsColumn" Width="260" />
             <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" MinWidth="420" />
+            <ColumnDefinition Width="*" MinWidth="360" />
             <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="320" MinWidth="280" />
+            <ColumnDefinition x:Name="InspectorColumn" Width="320" />
         </Grid.ColumnDefinitions>
 
         <Border
@@ -599,6 +602,7 @@
             AutomationProperties.AutomationId="SessionsGridSplitter"
             AutomationProperties.Name="Resize sessions and workspace panes"
             Width="4"
+            ManipulationCompleted="SessionsGridSplitter_ManipulationCompleted"
             ResizeBehavior="PreviousAndNext"
             ResizeDirection="Columns"
             Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(Sessions.IsPaneCollapsed), Mode=OneWay}" />
@@ -647,6 +651,16 @@
                         Label="Sessions">
                         <AppBarButton.KeyboardAccelerators>
                             <KeyboardAccelerator Key="B" Modifiers="Control" />
+                        </AppBarButton.KeyboardAccelerators>
+                    </AppBarButton>
+                    <AppBarButton
+                        AutomationProperties.AutomationId="InspectorToggleButton"
+                        AutomationProperties.Name="Toggle inspector pane"
+                        Command="{x:Bind ViewModel.ToggleInspectorCommand}"
+                        Icon="DockRight"
+                        Label="Inspector">
+                        <AppBarButton.KeyboardAccelerators>
+                            <KeyboardAccelerator Key="B" Modifiers="Control,Shift" />
                         </AppBarButton.KeyboardAccelerators>
                     </AppBarButton>
                     <AppBarButton
@@ -895,15 +909,18 @@
             AutomationProperties.AutomationId="DetailsGridSplitter"
             AutomationProperties.Name="Resize workspace and inspector panes"
             Width="4"
+            ManipulationCompleted="DetailsGridSplitter_ManipulationCompleted"
             ResizeBehavior="PreviousAndNext"
-            ResizeDirection="Columns" />
+            ResizeDirection="Columns"
+            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.IsInspectorCollapsed), Mode=OneWay}" />
 
         <Border
             Grid.Column="4"
             Padding="16"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
             BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}"
-            BorderThickness="1,0,0,0">
+            BorderThickness="1,0,0,0"
+            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.IsInspectorCollapsed), Mode=OneWay}">
             <Grid RowSpacing="16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
