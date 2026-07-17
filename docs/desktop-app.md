@@ -124,6 +124,46 @@ its error in an `InfoBar` instead of throwing.
   and the caption is explicit that this only ticks while the window stays open — headless
   scheduling remains `--serve`.
 
+## Runs page
+
+A top-level "Runs" nav item (`Views/RunsPage.xaml`, `ViewModels/RunsViewModel.cs`) gives the App
+parity with the console's `/runs` and `--resume <run-id>` — see [durable-runs.md](durable-runs.md)
+for the underlying tracking/resume mechanics this page surfaces.
+
+- **List**: the 20 most-recently-updated rows from `IRunStore.ListRecentAsync`, each showing a
+  short run id, job name ("—" when it wasn't a scheduled job), status (with a "(resumed)" suffix
+  once a run has been resumed at least once), step/budget ("Step N/M"), and a localized "updated"
+  time — mirroring the console's `RenderRunsListAsync` table exactly. A row's `Reason` (the
+  completion reason, an error, or the startup-sweep's interruption note) shows as secondary text
+  when present, and an "unattended" caption appears when the run's `RunSpec.Unattended` was true.
+  `Interrupted` rows are visually distinguished with a caution-colored (`SystemFillColorCautionBrush`)
+  status badge and icon, never a hardcoded color. A header "Refresh" button reloads the list on
+  demand; a `ProgressRing` covers the load, and the empty state repeats the console's own wording
+  ("One-shot, --unattended, scheduled, and subagent runs are tracked; interactive chat turns are
+  not.") so it's clear why an ordinary chat session never shows up here.
+- **Resume**: only `Interrupted` rows show a "Resume" button, which drives
+  `IConversationOrchestrator.ResumeAsync` on a background thread — the identical path
+  `--resume <run-id>` takes, including the remaining-step-budget rebase and the dangling-call
+  healing note. The button disables and shows a per-row spinner while in flight, and a run can never
+  be resumed twice concurrently from this UI. On completion, a page-level `InfoBar` reports the
+  outcome: the error if the resume failed, otherwise "Finished: {reason}", plus a denial count
+  ("N action(s) denied (unattended policy)") when the unattended policy denied anything, and a
+  closing pointer to the session ("Transcript is in session '{short id}' — open it from Chat"). The
+  list is then reloaded, so the row reflects the run's real terminal status/reason rather than a
+  transient message. As cheap v1 transcript freshness (same scope cut as the Schedules page's own
+  "Run now"), the Chat page's sessions pane is refreshed right after, and if the resumed run's
+  session happens to be the one currently open in Chat, it's re-selected so the transcript doesn't
+  go stale — no live event streaming into an open transcript and no new cross-page navigation were
+  added; both are deferred.
+- **Startup sweep surfacing**: right after launch, `MainPage` checks `IRunStore.ListRecentAsync`
+  for any `Interrupted` rows (the ones the startup sweep just produced) independent of whether the
+  user ever opens the Runs page. If any exist, a dismissible `InfoBar` ("N run(s) were interrupted —
+  view Runs.", Warning severity) appears above the content frame, with a "View Runs" action that
+  selects the Runs nav item. Dismissing it (either the close button or the action) is session-only —
+  it doesn't persist and reappears fresh on the next launch if the count is still non-zero. The
+  check runs off the UI thread and is wrapped in the same top-level A11 try/catch boundary every
+  other page uses, so a run-store failure can never crash startup.
+
 ## Approvals
 
 `ApprovalService` implements `IPermissionPrompt` as docked approval cards with keyboard

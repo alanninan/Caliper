@@ -139,6 +139,7 @@ public partial class App : Application
         builder.Services.AddSingleton<SkillsViewModel>();
         builder.Services.AddSingleton<MemoryViewModel>();
         builder.Services.AddSingleton<SchedulesViewModel>();
+        builder.Services.AddSingleton<RunsViewModel>();
         builder.Services.AddSingleton<GeneralSettingsViewModel>();
         builder.Services.AddSingleton<ModelsProvidersSettingsViewModel>();
         builder.Services.AddSingleton<AgentBehaviorSettingsViewModel>();

@@ -65,3 +65,10 @@ The scheduler **never auto-resumes** an interrupted job — its next cron tick s
 `Completed (resumed)`), `step/budget`, last update. Exit codes for `--resume` match the
 unattended convention: `0` clean, `1` error, `2` completed-with-denials
 ([cli.md](cli.md)).
+
+The WinUI app (`Caliper.App`) offers the same inspection and resume as a second surface: its
+Runs page lists the same rows (with each row's `Reason` shown as secondary text) and offers a
+"Resume" action on `Interrupted` rows that drives the same `ResumeAsync` path — remaining-step
+rebase, dangling-call healing, and unattended deny+report included. See
+[desktop-app.md](desktop-app.md#runs-page) for the page's own behavior (startup-sweep banner,
+outcome reporting, transcript-freshness handling).

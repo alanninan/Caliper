@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.RunsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:local="using:Caliper.App.Views"
+    xmlns:vm="using:Caliper.App.ViewModels">
+
+    <Page.Resources>
+        <DataTemplate x:Key="RunRowTemplate" x:DataType="vm:RunItemViewModel">
+            <Grid Padding="16,12" ColumnSpacing="12" RowSpacing="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontFamily="{StaticResource CodeFontFamily}" Style="{StaticResource BodyStrongTextBlockStyle}" Text="{x:Bind ShortRunId, Mode=OneTime}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" Text="{x:Bind JobText, Mode=OneTime}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="4">
+                    <FontIcon
+                        FontSize="12"
+                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                        Glyph="&#xE7BA;"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsInterrupted), Mode=OneTime}" />
+                    <TextBlock
+                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind StatusText, Mode=OneTime}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsInterrupted), Mode=OneTime}" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Text="{x:Bind StatusText, Mode=OneTime}"
+                        Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsInterrupted), Mode=OneTime}" />
+                </StackPanel>
+
+                <TextBlock
+                    Grid.Row="1"
+                    Grid.ColumnSpan="2"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind MetaText, Mode=OneTime}"
+                    TextTrimming="CharacterEllipsis" />
+
+                <TextBlock
+                    Grid.Row="2"
+                    Grid.ColumnSpan="2"
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind Reason, Mode=OneTime}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasReason), Mode=OneTime}" />
+
+                <StackPanel
+                    Grid.Row="3"
+                    Grid.Column="1"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(CanResume), Mode=OneTime}">
+                    <ProgressRing
+                        Width="16"
+                        Height="16"
+                        IsActive="{x:Bind IsResuming, Mode=OneWay}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsResuming), Mode=OneWay}" />
+                    <Button
+                        AutomationProperties.AutomationId="ResumeRunButton"
+                        Click="Resume_Click"
+                        Content="{x:Bind local:RunsPage.ResumeButtonText(IsResuming), Mode=OneWay}"
+                        IsEnabled="{x:Bind converters:XamlConverters.InvertBool(IsResuming), Mode=OneWay}"
+                        Tag="{x:Bind}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="1080" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Runs" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="One-shot, --unattended, scheduled, and subagent runs are tracked here; interactive chat turns are not."
+                        TextWrapping="Wrap" />
+                </StackPanel>
+                <Button AutomationProperties.AutomationId="RefreshRunsButton" Grid.Column="1" VerticalAlignment="Top" Command="{x:Bind ViewModel.LoadCommand}" Content="Refresh" />
+            </Grid>
+
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.ResumeOutcomeText), Mode=OneWay}"
+                Message="{x:Bind ViewModel.ResumeOutcomeText, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.ResumeOutcomeIsError), Mode=OneWay}" />
+
+            <ProgressRing
+                AutomationProperties.AutomationId="RunsLoadingRing"
+                HorizontalAlignment="Center"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}"
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsLoading), Mode=OneWay}" />
+
+            <Border
+                MaxWidth="480"
+                Padding="28,24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}"
+                Visibility="{x:Bind local:RunsPage.EmptyStateVisibility(ViewModel.IsLoading, ViewModel.HasRuns), Mode=OneWay}">
+                <StackPanel Spacing="16">
+                    <FontIcon HorizontalAlignment="Center" FontSize="28" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" Glyph="&#xE81C;" />
+                    <TextBlock HorizontalAlignment="Center" Text="No tracked runs yet" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="One-shot, --unattended, scheduled, and subagent runs are tracked; interactive chat turns are not."
+                        TextAlignment="Center"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}"
+                Visibility="{x:Bind local:RunsPage.ListVisibility(ViewModel.IsLoading, ViewModel.HasRuns), Mode=OneWay}">
+                <ListView
+                    AutomationProperties.AutomationId="RunsList"
+                    ItemTemplate="{StaticResource RunRowTemplate}"
+                    ItemsSource="{x:Bind ViewModel.Runs, Mode=OneWay}"
+                    SelectionMode="None" />
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

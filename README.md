@@ -10,7 +10,8 @@ The project is designed around deterministic host-side control: model output pro
 
 - Console-first agent loop with streaming responses, plus a WinUI 3 desktop app (`Caliper.App`)
   with a three-pane workbench, inline tool/diff inspector, docked permission approvals, structured
-  settings pages, and a Schedules page for managing and running cron jobs.
+  settings pages, a Schedules page for managing and running cron jobs, and a Runs page for
+  inspecting and resuming durable runs.
 - OpenRouter and Google Gemini provider integration through `Microsoft.Extensions.AI` (Gemini via
   its OpenAI-compatible endpoint).
 - Runtime model switching with `/model <slug>` and catalog inspection with `/models`; runtime
@@ -63,6 +64,9 @@ The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
 - A Schedules page manages `Caliper:Schedules` jobs (add/edit/remove, enable/disable, "Run now")
   and can optionally run `SchedulerHostedService` in-process while the window is open — jobs still
   run unattended (permission prompts deny + report), and headless scheduling remains `--serve`.
+- A Runs page lists durable runs (`IRunStore`) with parity to the console's `/runs` and
+  `--resume <run-id>`, including a "Resume" action for runs the startup sweep left `Interrupted`
+  and a launch-time banner when any exist.
 
 ## Prerequisites
 

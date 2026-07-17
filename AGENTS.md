@@ -85,10 +85,11 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   children — not interactive REPL/App streaming) gets a `runs`-table row (`IRunStore` /
   `SqliteRunStore`): `running → completed | failed | cancelled | interrupted`, with the step
   counter bumped per turn. A startup sweep flips stale `running` rows to `interrupted`.
-  `--resume <run-id>` / `/runs` resume and inspect; resume relies on the dangling-call healing
-  in `NativeToolStrategy`, appends a system-kind "verify before repeating side effects" note,
-  and continues with the remaining step budget. Side-effecting calls are never auto-redispatched;
-  the scheduler never auto-resumes (next tick starts fresh).
+  `--resume <run-id>` / `/runs` resume and inspect, as does the App's Runs page (list + a "Resume"
+  action gated to `Interrupted` rows, plus a launch-time banner from a startup interruption check);
+  resume relies on the dangling-call healing in `NativeToolStrategy`, appends a system-kind "verify
+  before repeating side effects" note, and continues with the remaining step budget. Side-effecting
+  calls are never auto-redispatched; the scheduler never auto-resumes (next tick starts fresh).
 - **Config precedence:** `~/.caliper/config.json` → `CALIPER_` env vars → CLI overrides.
   The live options class is **`CaliperOptions`** (the `Caliper:` section).
 - **Sandboxed shell execution:** `ShellTool` (bash/powershell) delegates process launch to an

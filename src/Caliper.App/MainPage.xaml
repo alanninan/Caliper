@@ -2,7 +2,8 @@
 <Page
     x:Class="Caliper.App.MainPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:Caliper.App">
 
     <NavigationView
         x:Name="RootNav"
@@ -31,7 +32,30 @@
                     <FontIcon Glyph="&#xE787;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem AutomationProperties.AutomationId="RunsNavigationItem" Content="Runs" Tag="Runs">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE81C;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
         </NavigationView.MenuItems>
-        <Frame x:Name="RootContentFrame" />
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <InfoBar
+                AutomationProperties.AutomationId="InterruptedRunsBanner"
+                Grid.Row="0"
+                Margin="16,12,16,0"
+                Closed="InterruptedRunsBanner_Closed"
+                IsOpen="{x:Bind RunsViewModel.ShowStartupBanner, Mode=OneWay}"
+                Message="{x:Bind local:MainPage.InterruptedBannerMessage(RunsViewModel.InterruptedStartupCount), Mode=OneWay}"
+                Severity="Warning">
+                <InfoBar.ActionButton>
+                    <Button AutomationProperties.AutomationId="ViewRunsButton" Click="ViewRuns_Click" Content="View Runs" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+            <Frame x:Name="RootContentFrame" Grid.Row="1" />
+        </Grid>
     </NavigationView>
 </Page>
