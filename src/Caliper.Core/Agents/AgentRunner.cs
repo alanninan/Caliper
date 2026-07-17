@@ -247,7 +247,10 @@ public sealed class AgentRunner(
                 // behavior unchanged.
                 var loadSkillAllowed = spec.ToolFilter is null ||
                     spec.ToolFilter.Contains("load_skill", StringComparer.OrdinalIgnoreCase);
-                if (call.Tool == "load_skill" && loadSkillAllowed)
+                // A malformed load_skill call has no reliable "name" argument to read (TO_FIX §1),
+                // so let it fall through to the general malformed short-circuit below instead of
+                // reporting the misleading "Missing required argument: name".
+                if (call.Tool == "load_skill" && loadSkillAllowed && call.MalformedReason is null)
                 {
                     // Persist the tool-call message first so the stored transcript is a valid
                     // call→result pair; a result without its call is rejected on the next model turn.
@@ -284,9 +287,48 @@ public sealed class AgentRunner(
                     yield break;
                 }
 
+                // TO_FIX §1: a call the model streamed with unparseable arguments can never be
+                // dispatched correctly, so skip both the permission prompt (nothing to approve — the
+                // call cannot run) and the tool registry lookup. The signature was already recorded
+                // above, so a model that repeats the identical malformed call still trips
+                // DuplicateCallLimit and ends the run in LoopDetected, same as any other loop.
+                if (call.MalformedReason is not null)
+                {
+                    await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
+                    var malformedResult = new ToolResult(
+                        false,
+                        $"The model streamed malformed arguments for '{call.Tool}' (JSON parse error: {call.MalformedReason}). The call was not executed — re-issue the call with valid JSON arguments.");
+                    await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolResult(call, malformedResult), ct).ConfigureAwait(false);
+                    yield return new ToolFailed(call.CallId, call.Tool, malformedResult.Output);
+                    continue;
+                }
+
                 var tool = effectiveToolRegistry.Find(call.Tool);
                 if (tool is not null)
                 {
+                    // TO_FIX §1.3 / §3: defense against providers that "succeed" with an empty object
+                    // instead of raising a parse error — the malformed-args guard above never sees
+                    // these, so a tool whose schema requires arguments gets its own short-circuit
+                    // rather than a misleading validation failure after a burned permission prompt.
+                    // Mirrors DispatchWithRetry's IMcpTool bypass of ToolArgumentValidator below: an
+                    // MCP tool's own SDK owns argument validation, so Caliper-side schema guards
+                    // (this one included) must not second-guess it.
+                    var requiredArgNames = GetRequiredPropertyNames(tool.ParameterSchema);
+                    if (tool is not IMcpTool &&
+                        requiredArgNames.Count > 0 &&
+                        call.Arguments.ValueKind == JsonValueKind.Object &&
+                        !call.Arguments.EnumerateObject().Any())
+                    {
+                        await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolCall(call), ct).ConfigureAwait(false);
+                        var names = string.Join(", ", requiredArgNames);
+                        var emptyArgsResult = new ToolResult(
+                            false,
+                            $"The call to '{call.Tool}' arrived with empty arguments, but the tool requires: {names}. The call was not executed — re-issue the call with valid JSON arguments.");
+                        await sessions.AppendAsync(spec.SessionId, ChatMessage.FromToolResult(call, emptyArgsResult), ct).ConfigureAwait(false);
+                        yield return new ToolFailed(call.CallId, call.Tool, emptyArgsResult.Output);
+                        continue;
+                    }
+
                     var permissionRequest = new PermissionRequest(
                         call.Tool,
                         tool.EffectiveSideEffect(call.Arguments),
@@ -516,6 +558,27 @@ public sealed class AgentRunner(
     private static bool IsRetryable(Exception ex) =>
         // Retrying a rate-limited request with no Retry-After backoff just wastes quota.
         ex is not HttpRequestException { StatusCode: System.Net.HttpStatusCode.TooManyRequests };
+
+    // TO_FIX §1.3: schemas without a "required" array (or a non-array "required") have nothing to
+    // guard — {} is a legitimate call for those tools, so this returns empty rather than guessing.
+    private static List<string> GetRequiredPropertyNames(JsonElement schema)
+    {
+        if (schema.ValueKind != JsonValueKind.Object ||
+            !schema.TryGetProperty("required", out var required) ||
+            required.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        var names = new List<string>();
+        foreach (var entry in required.EnumerateArray())
+        {
+            if (entry.ValueKind == JsonValueKind.String && entry.GetString() is { Length: > 0 } name)
+                names.Add(name);
+        }
+
+        return names;
+    }
 
     private static Task BackoffAsync(int attempt, CancellationToken ct) =>
         Task.Delay(TimeSpan.FromMilliseconds(250 * (1 << attempt)), ct);

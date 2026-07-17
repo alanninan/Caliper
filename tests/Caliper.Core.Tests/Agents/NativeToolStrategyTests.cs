@@ -14,6 +14,7 @@ using Caliper.Core.Permissions;
 using Caliper.Core.Protocol;
 using Caliper.Core.Tools;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using AIChatMessage = Microsoft.Extensions.AI.ChatMessage;
@@ -62,6 +63,65 @@ public sealed class NativeToolStrategyTests
             message.Contents.OfType<FunctionResultContent>().Any(result =>
                 result.CallId == "call_1" &&
                 result.Result?.ToString() == "echoed: hello"));
+    }
+
+    [Fact]
+    public async Task Malformed_streamed_arguments_set_MalformedReason_and_log_a_warning()
+    {
+        // Mirrors what Microsoft.Extensions.AI's adapter hands back on a streamed-argument parse
+        // failure (TO_FIX §1): Arguments = null, the parse error stashed in .Exception, no throw.
+        var parseError = new FormatException("Unexpected character encountered while parsing value.");
+        var malformedCall = new FunctionCallContent("call_1", "echo", new Dictionary<string, object?>())
+        {
+            Arguments = null,
+            Exception = parseError,
+        };
+        var client = new ScriptedChatClient([[new ChatResponseUpdate(AIChatRole.Assistant, [malformedCall])]]);
+        var logger = new RecordingLogger<NativeToolStrategy>();
+        var strategy = new NativeToolStrategy(
+            new SingleChatClientProvider(client),
+            new StaticCapabilityProvider(new ModelCapabilities(true, true, true, 32768)),
+            new RuntimeSettings(
+                Options.Create(new CaliperOptions { Model = "test/model" }),
+                Options.Create(new PermissionsOptions())),
+            logger);
+
+        var updates = await Collect(strategy.NextAsync(
+            new TurnContext("system", [], BuildRegistry(new EchoTool()), new GenerationParameters()),
+            CancellationToken.None));
+
+        var completed = Assert.IsType<TurnCompleted>(updates.Last());
+        var call = Assert.Single(completed.Turn.ToolCalls);
+        Assert.Equal("Unexpected character encountered while parsing value.", call.MalformedReason);
+        Assert.Empty(call.Arguments.EnumerateObject());
+        Assert.Contains(logger.Entries, entry =>
+            entry.Level == LogLevel.Warning &&
+            entry.Message.Contains("malformed", StringComparison.OrdinalIgnoreCase) &&
+            entry.Message.Contains("call_1", StringComparison.Ordinal) &&
+            entry.Message.Contains("echo", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task WellFormed_streamed_arguments_leave_MalformedReason_null()
+    {
+        var client = new ScriptedChatClient(
+            [[FunctionCall("call_1", "echo", new Dictionary<string, object?> { ["text"] = "hi" })]]);
+        var strategy = new NativeToolStrategy(
+            new SingleChatClientProvider(client),
+            new StaticCapabilityProvider(new ModelCapabilities(true, true, true, 32768)),
+            new RuntimeSettings(
+                Options.Create(new CaliperOptions { Model = "test/model" }),
+                Options.Create(new PermissionsOptions())),
+            NullLogger<NativeToolStrategy>.Instance);
+
+        var updates = await Collect(strategy.NextAsync(
+            new TurnContext("system", [], BuildRegistry(new EchoTool()), new GenerationParameters()),
+            CancellationToken.None));
+
+        var completed = Assert.IsType<TurnCompleted>(updates.Last());
+        var call = Assert.Single(completed.Turn.ToolCalls);
+        Assert.Null(call.MalformedReason);
+        Assert.Equal("hi", call.Arguments.GetProperty("text").GetString());
     }
 
     [Fact]
@@ -647,4 +707,25 @@ sealed class NativeAllowAllGate : IPermissionGate
 {
     public Task<PermissionDecision> EvaluateAsync(PermissionRequest request, CancellationToken ct) =>
         Task.FromResult(PermissionDecision.Allow);
+}
+
+// Mirrors SchedulerHostedServiceTests' RecordingLogger<T> — this test file has no logger-capture
+// helper of its own yet, and the malformed-arguments warning (TO_FIX §1) needs one to assert on.
+sealed class RecordingLogger<T> : ILogger<T>
+{
+    private readonly List<(LogLevel Level, string Message)> _entries = [];
+
+    public IReadOnlyList<(LogLevel Level, string Message)> Entries => _entries;
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter) =>
+        _entries.Add((logLevel, formatter(state, exception)));
 }

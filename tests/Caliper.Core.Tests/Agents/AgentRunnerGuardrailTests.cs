@@ -57,6 +57,9 @@ public sealed class AgentRunnerGuardrailTests
     private static TurnCompleted LoadSkill(string skill, string callId = "skill_1") =>
         CallTool("load_skill", JsonDocument.Parse($$"""{"name":{{JsonSerializer.Serialize(skill)}}}""").RootElement.Clone(), callId);
 
+    private static TurnCompleted CallMalformedTool(string tool, JsonElement arguments, string malformedReason, string callId = "call_1") =>
+        new(new ModelTurn(null, [new ToolCall(callId, tool, arguments, malformedReason)], null, new UsageInfo(1, 1, 2)));
+
     private static async Task<List<AgentEvent>> RunAll(
         AgentRunner runner,
         string sessionId,
@@ -107,6 +110,111 @@ public sealed class AgentRunnerGuardrailTests
         var events    = await RunAll(runner, sessionId, "go");
 
         Assert.Contains(events, e => e is RunCompleted { Reason: CompletionReason.LoopDetected });
+    }
+
+    [Fact]
+    public async Task Malformed_tool_call_short_circuits_without_permission_prompt_or_invocation()
+    {
+        // TO_FIX §1: a call whose streamed arguments failed to parse (MalformedReason set by
+        // NativeToolStrategy) must never reach the tool or a permission prompt.
+        var tool = new WriteToolStub();
+        var args = JsonDocument.Parse("{}").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallMalformedTool(tool.Name, args, "Unexpected end of JSON input"),
+            Respond("done"));
+
+        var store = new InMemorySessionStoreStub();
+        var sessionId = await store.CreateAsync(null, CancellationToken.None);
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool), sessions: store);
+
+        var events = await RunAll(runner, sessionId, "go");
+
+        Assert.Equal(0, tool.InvocationCount);
+        Assert.DoesNotContain(events, e => e is PermissionRequested);
+        Assert.DoesNotContain(events, e => e is ToolInvoked);
+        var failed = Assert.Single(events.OfType<ToolFailed>());
+        Assert.Contains("was not executed", failed.Error, StringComparison.Ordinal);
+        Assert.Contains("Unexpected end of JSON input", failed.Error, StringComparison.Ordinal);
+        Assert.Contains(events, e => e is AssistantMessage { Content: "done" });
+
+        var history = (await store.LoadAsync(sessionId, CancellationToken.None)).ToList();
+        var callIndex = history.FindIndex(m => m.Kind == MessageKind.ToolCall && m.ToolCallId == "call_1");
+        Assert.True(callIndex >= 0, "the malformed call must still be persisted");
+        Assert.Contains(
+            history.Skip(callIndex + 1),
+            m => m.Kind == MessageKind.ToolResult && m.ToolCallId == "call_1");
+    }
+
+    [Fact]
+    public async Task WellFormed_tool_call_still_dispatches_normally_alongside_the_malformed_guard()
+    {
+        var tool = new WriteToolStub();
+        var args = JsonDocument.Parse("""{"value":"go"}""").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallTool(tool.Name, args),
+            Respond("done"));
+
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool));
+
+        var events = await RunAll(runner, "test-session", "go");
+
+        Assert.Equal(1, tool.InvocationCount);
+        Assert.Contains(events, e => e is PermissionRequested);
+        Assert.Contains(events, e => e is ToolSucceeded { Tool: "write_stub" });
+        Assert.Contains(events, e => e is AssistantMessage { Content: "done" });
+    }
+
+    [Fact]
+    public async Task DuplicateCallLimit_emits_LoopDetected_when_malformed_call_repeats_verbatim()
+    {
+        // TO_FIX §1 explicitly requires keeping loop detection for a model that keeps repeating the
+        // same malformed call — the short-circuit must not skip the signature bookkeeping.
+        var args = JsonDocument.Parse("{}").RootElement.Clone();
+        var strategy = FakeTurnStrategy.AlwaysReturning(CallMalformedTool("nonexistent", args, "bad json"));
+
+        var runner = Build(strategy, new CaliperOptions { Model = "x", MaxSteps = 20, DuplicateCallLimit = 2 });
+        var events = await RunAll(runner, "test-session", "go");
+
+        Assert.Contains(events, e => e is RunCompleted { Reason: CompletionReason.LoopDetected });
+    }
+
+    [Fact]
+    public async Task Empty_arguments_short_circuit_when_tool_schema_requires_fields()
+    {
+        var tool = new WriteToolStub();
+        var args = JsonDocument.Parse("{}").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallTool(tool.Name, args),
+            Respond("done"));
+
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool));
+
+        var events = await RunAll(runner, "test-session", "go");
+
+        Assert.Equal(0, tool.InvocationCount);
+        Assert.DoesNotContain(events, e => e is PermissionRequested);
+        var failed = Assert.Single(events.OfType<ToolFailed>());
+        Assert.Contains("value", failed.Error, StringComparison.Ordinal);
+        Assert.Contains("was not executed", failed.Error, StringComparison.Ordinal);
+        Assert.Contains(events, e => e is AssistantMessage { Content: "done" });
+    }
+
+    [Fact]
+    public async Task Empty_arguments_still_dispatch_when_tool_schema_has_no_required_fields()
+    {
+        var tool = new NoRequiredArgsToolStub();
+        var args = JsonDocument.Parse("{}").RootElement.Clone();
+        var strategy = CapturingTurnStrategy.Returning(
+            CallTool(tool.Name, args),
+            Respond("done"));
+
+        var runner = Build(strategy, registry: new SingleToolRegistry(tool));
+
+        var events = await RunAll(runner, "test-session", "go");
+
+        Assert.Equal(1, tool.InvocationCount);
+        Assert.Contains(events, e => e is ToolSucceeded { Tool: "no_required_stub" });
+        Assert.Contains(events, e => e is AssistantMessage { Content: "done" });
     }
 
     [Fact]
@@ -859,6 +967,25 @@ file sealed class WriteToolStub : ITool
     {
         InvocationCount++;
         return Task.FromResult(new ToolResult(true, "wrote"));
+    }
+}
+
+file sealed class NoRequiredArgsToolStub : ITool
+{
+    private static readonly JsonElement s_parameterSchema = JsonDocument.Parse(
+        """{"type":"object","additionalProperties":false,"properties":{"value":{"type":"string"}}}""")
+        .RootElement.Clone();
+
+    public int InvocationCount { get; private set; }
+    public string Name => "no_required_stub";
+    public string Description => "Has no required arguments, so empty {} is legitimate.";
+    public JsonElement ParameterSchema => s_parameterSchema;
+    public SideEffect SideEffect => SideEffect.ReadOnly;
+
+    public Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct)
+    {
+        InvocationCount++;
+        return Task.FromResult(new ToolResult(true, "ok"));
     }
 }
 

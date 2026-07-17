@@ -90,6 +90,14 @@ before the model sees it. This healing is what makes crash-resume "load, heal, c
 (see [durable-runs.md](durable-runs.md)). A constrained-envelope strategy exists for models
 without native tool calling.
 
+`Microsoft.Extensions.AI`'s streaming adapter can hand back a tool call whose argument JSON
+failed to parse mid-stream without throwing (provider-dependent, intermittent). `NativeToolStrategy`
+detects this (`ToolCall.MalformedReason`) and logs a warning instead of silently treating it as
+`{}`; `AgentRunner` never dispatches a malformed call or requests permission for it, and instead
+feeds the model a failed tool result naming the parse error so it re-issues the call. The same
+short-circuit covers a tool that "succeeds" with an empty `{}` when its schema has required
+fields. Loop detection still applies if the model repeats the identical malformed call.
+
 ## Models
 
 Two providers behind `ModelProviderRouter` (`IChatClientProvider` + `IModelCapabilityProvider`

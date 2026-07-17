@@ -86,10 +86,30 @@ public sealed class NativeToolStrategy(
                         var callId = string.IsNullOrWhiteSpace(functionCall.CallId)
                             ? $"call_{calls.Count + 1}"
                             : functionCall.CallId;
+
+                        // TO_FIX §1: the adapter accumulates streamed argument fragments and parses
+                        // them at end-of-stream. On a parse failure it does not throw — it hands back
+                        // Arguments = null (which JsonValue.FromValueMap turns into "{}") with the
+                        // parse error stashed in .Exception. Surface that instead of silently
+                        // dispatching garbage arguments.
+                        string? malformedReason = null;
+                        if (functionCall.Exception is not null)
+                        {
+                            malformedReason = string.IsNullOrEmpty(functionCall.Exception.Message)
+                                ? "malformed streamed arguments"
+                                : functionCall.Exception.Message;
+                            logger.LogWarning(
+                                functionCall.Exception,
+                                "Model streamed malformed arguments for tool '{Tool}' (call {CallId}); the call will not be executed.",
+                                functionCall.Name,
+                                callId);
+                        }
+
                         calls[callId] = new ToolCall(
                             callId,
                             functionCall.Name,
-                            JsonValue.FromValueMap(functionCall.Arguments));
+                            JsonValue.FromValueMap(functionCall.Arguments),
+                            malformedReason);
                         break;
 
                     case UsageContent usageContent:

@@ -14,5 +14,9 @@ public sealed record ModelTurn(
     string? ReasoningOpaque,
     UsageInfo Usage);
 
-public sealed record ToolCall(string CallId, string Tool, System.Text.Json.JsonElement Arguments);
+// MalformedReason (TO_FIX §1): non-null when the model streamed arguments that failed to parse
+// (Microsoft.Extensions.AI's adapter swallows the parse failure and hands back an empty object —
+// see NativeToolStrategy's FunctionCallContent case). AgentRunner short-circuits these before
+// dispatch or permission prompts; a default keeps every pre-existing 3-arg construction compiling.
+public sealed record ToolCall(string CallId, string Tool, System.Text.Json.JsonElement Arguments, string? MalformedReason = null);
 public sealed record UsageInfo(int? PromptTokens, int? CompletionTokens, int? TotalTokens);
