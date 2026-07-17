@@ -30,6 +30,7 @@
     <Compile Include="..\..\src\Caliper.App\ViewModels\PersistedTranscriptFactory.cs" Link="ViewModels\PersistedTranscriptFactory.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SessionItemViewModel.cs" Link="ViewModels\SessionItemViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SessionsViewModel.cs" Link="ViewModels\SessionsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\SchedulesViewModel.cs" Link="ViewModels\SchedulesViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SkillsViewModel.cs" Link="ViewModels\SkillsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\ToolCallStatus.cs" Link="ViewModels\ToolCallStatus.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\GeneralSettingsViewModel.cs" Link="ViewModels\Settings\GeneralSettingsViewModel.cs" />
@@ -44,6 +45,7 @@
     <Compile Include="..\..\src\Caliper.App\Permissions\ApprovalService.cs" Link="Permissions\ApprovalService.cs" />
     <Compile Include="..\..\src\Caliper.App\Preferences\AppPreferencesStore.cs" Link="Preferences\AppPreferencesStore.cs" />
     <Compile Include="..\..\src\Caliper.App\Preferences\SessionUsageStore.cs" Link="Preferences\SessionUsageStore.cs" />
+    <Compile Include="..\..\src\Caliper.App\Scheduling\AppSchedulerController.cs" Link="Scheduling\AppSchedulerController.cs" />
     <Compile Include="..\..\src\Caliper.App\Security\WindowsCredentialStore.cs" Link="Security\WindowsCredentialStore.cs" />
   </ItemGroup>
   <ItemGroup>

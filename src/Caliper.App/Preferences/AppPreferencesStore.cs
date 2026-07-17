@@ -29,6 +29,11 @@ public sealed record AppPreferences
     // the last known *restore* (floating) rect, not the maximized rect — see MainWindow_Closed.
     // Absent in older prefs files, which default to false (not maximized) via plain JSON deserialize.
     public bool IsMaximized { get; init; }
+    // P2: whether SchedulerHostedService should run inside this app process (AppSchedulerController)
+    // for as long as the window stays open. Host-local behavior — belongs here, not in config.json —
+    // since headless scheduling (`--serve`) is a separate, unrelated on/off switch. Absent in prefs
+    // files predating this feature, which default to false (opt-in, scheduler stays off).
+    public bool RunSchedulerInApp { get; init; }
 }
 
 public interface IAppPreferencesStore

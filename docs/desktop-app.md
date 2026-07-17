@@ -78,6 +78,52 @@ stopped being sent to the model.
   remember leaves the list and the user's input exactly as they were and reports the error in the
   page's status message.
 
+## Schedules page
+
+A top-level "Schedules" nav item (`Views/SchedulesPage.xaml`, `ViewModels/SchedulesViewModel.cs`)
+gives the App parity with the console's `/schedule list|run` and the headless `--serve`
+scheduler, editing `Caliper:Schedules` through `IConfigWriter.LoadSchedulesAsync`/
+`SaveSchedulesAsync` — the same load-mutate-save contract every other settings page uses, so a
+failed save (an invalid cron, a duplicate name, a permissions overlay the validator rejects) shows
+its error in an `InfoBar` instead of throwing.
+
+- **List + detail**, master-detail like MCP servers: the left list shows each job's name,
+  enabled/disabled state, cron, next occurrence, and last result — mirroring the console table
+  exactly (`ScheduleCron.GetNextOccurrence` for the next-occurrence column: disabled → "—", a
+  cron that can never fire again → "never", a parse/time-zone failure → "invalid — {error}",
+  otherwise a localized time; `ScheduleJobRunner.GetLastResult` for the last-result column). The
+  right pane edits one job's full field set (name, cron, time zone, prompt, working root, model,
+  max steps, enabled) plus an optional permissions overlay — an "Override permissions" toggle
+  that, when off, saves `Permissions: null`; when on, exposes Mode/ShellAutoAllowlist/
+  AutoAllowFileRoots with inline text noting the same Mode-must-be-Auto rule
+  `CaliperOptionsValidator` enforces. Cron validity is checked live as you type (the same
+  `ScheduleCron.GetNextOccurrence` call, shown as a hint under the cron box), and Save is disabled
+  while any job is missing a required field or duplicates another job's name. Add/remove get an
+  empty state ("No schedules yet") and a confirmation dialog respectively; a `ProgressRing` covers
+  the initial load.
+- **Run now**: each job has a "Run now" button (list row and detail pane) that calls
+  `ScheduleJobRunner.RunJobAsync` on a background thread — the identical unattended path a cron
+  tick or the console's `/schedule run` takes. While running, the button disables and shows a
+  spinner; on completion an inline status line reports the finish reason, any error, the denial
+  count ("N action(s) denied (unattended policy)"), and a pointer to the new session ("Transcript
+  saved to session '[job] {name}' — open it from Chat"); `RunJobAsync`'s own overlap guard means a
+  second trigger while one is still in flight comes back `Skipped` instead of queuing. The Chat
+  page's sessions pane is refreshed (`SessionsViewModel.RefreshAsync`) right after, so the job's
+  `[job] {name}` session shows up there without a restart — opening it is still a manual step from
+  Chat in this v1 (no new cross-page navigation was added for it).
+- **In-app scheduler (opt-in)**: a "Run scheduler while the app is open" toggle starts/stops
+  `SchedulerHostedService` — the same `BackgroundService` `--serve` runs — inside this process via
+  `Scheduling/AppSchedulerController.cs`. Core deliberately never registers this service itself, so
+  the App is the one giving it a lifecycle: a fresh instance is created
+  (`ActivatorUtilities.CreateInstance`) on each start and discarded (not restarted) on each stop,
+  bounded by a ~3s shutdown timeout mirroring the MCP hub's own shutdown bound in
+  `Window_Closed`. The preference persists in `~/.caliper/app-ui.json`
+  (`AppPreferences.RunSchedulerInApp`) — host-local behavior, not a `config.json` engine setting —
+  and auto-starts on the next launch if it was on at last close. Jobs it fires are unattended, the
+  same as "Run now"; the page shows the live state ("Scheduler active — N enabled schedule(s)")
+  and the caption is explicit that this only ticks while the window stays open — headless
+  scheduling remains `--serve`.
+
 ## Approvals
 
 `ApprovalService` implements `IPermissionPrompt` as docked approval cards with keyboard
@@ -89,8 +135,14 @@ when more are waiting, and resolving the current one (approve, deny, or timeout)
 the next. A queued approval that resolves externally — timeout auto-deny, run cancellation,
 or a `PermissionResolved` event — is dropped from the queue without disturbing the current
 card. The queue survives session switches, like the single docked card always has. Subagent
-children's requests render under the child session's title so it's clear who is asking. The
-App never runs unattended specs, so it needs no routing prompt.
+children's requests render under the child session's title so it's clear who is asking.
+
+The App's `IPermissionPrompt` registration is actually a `RoutingPermissionPrompt` wrapping
+`ApprovalService` — the same split the console REPL uses. Interactive runs go straight to the
+docked approval cards above; a schedule run (a "Run now" click, or a tick of the in-app scheduler
+described below) builds its `RunSpec` with `Unattended = true`, and `RoutingPermissionPrompt` sends
+those requests to `UnattendedPermissionPrompt` instead — denied and logged, never an approval card,
+identical to the console's `--serve`/`/schedule run` behavior.
 
 If the window is inactive (not the foreground/active window), the App also raises a Windows
 notification (toast) for: a new pending approval, and a run finishing — "Run finished" for a

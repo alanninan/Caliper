@@ -9,8 +9,8 @@ The project is designed around deterministic host-side control: model output pro
 ## Features
 
 - Console-first agent loop with streaming responses, plus a WinUI 3 desktop app (`Caliper.App`)
-  with a three-pane workbench, inline tool/diff inspector, docked permission approvals, and
-  structured settings pages.
+  with a three-pane workbench, inline tool/diff inspector, docked permission approvals, structured
+  settings pages, and a Schedules page for managing and running cron jobs.
 - OpenRouter and Google Gemini provider integration through `Microsoft.Extensions.AI` (Gemini via
   its OpenAI-compatible endpoint).
 - Runtime model switching with `/model <slug>` and catalog inspection with `/models`; runtime
@@ -22,7 +22,8 @@ The project is designed around deterministic host-side control: model output pro
   permission policy — no prompt is ever silently allowed or silently dropped.
 - Cron-scheduled jobs (`Caliper.Schedules` + `--serve`), each with its own prompt, model, step
   budget, working root, and permission overlay; `/schedule list` and `/schedule run <name>` manage
-  them from the REPL.
+  them from the REPL, or use the App's Schedules page (add/edit/remove, "Run now", and an opt-in
+  toggle to run the scheduler while the app window stays open).
 - Sandboxed shell execution (`Caliper.Execution.Backend: Container`): shell commands run inside a
   disposable, network-isolated `docker` container instead of on the host; fails closed (never
   falls back to the host) when Docker is unavailable.
@@ -56,8 +57,12 @@ The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
 - API keys are stored in **Windows Credential Manager** (not `config.json`) — enter them under
   Settings → Models &amp; providers. Provider endpoint and key changes apply after a restart, which
   the app offers as a one-click "Restart Caliper" button.
-- UI preferences (theme, window placement, sessions-pane state) live in `~/.caliper/app-ui.json`;
-  runtime settings still come from `~/.caliper/config.json`.
+- UI preferences (theme, window placement, sessions-pane state, whether the in-app scheduler
+  toggle is on) live in `~/.caliper/app-ui.json`; runtime settings still come from
+  `~/.caliper/config.json`.
+- A Schedules page manages `Caliper:Schedules` jobs (add/edit/remove, enable/disable, "Run now")
+  and can optionally run `SchedulerHostedService` in-process while the window is open — jobs still
+  run unattended (permission prompts deny + report), and headless scheduling remains `--serve`.
 
 ## Prerequisites
 

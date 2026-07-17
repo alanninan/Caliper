@@ -103,6 +103,29 @@ public sealed class AppPreferencesStoreTests : IDisposable
     }
 
     [Fact]
+    public void Save_then_load_round_trips_run_scheduler_in_app()
+    {
+        var store = CreateStore();
+
+        store.Save(new AppPreferences { RunSchedulerInApp = true });
+
+        Assert.True(store.Load().RunSchedulerInApp);
+    }
+
+    [Fact]
+    public void Load_prefs_file_without_run_scheduler_key_defaults_to_false()
+    {
+        // P2: a prefs file written before the in-app scheduler toggle existed must keep loading
+        // (backward compatible) and default the opt-in flag to off.
+        var store = CreateStore();
+        File.WriteAllText(
+            Path.Combine(_directory, "app-ui.json"),
+            """{"Theme":1,"SessionsPaneCollapsed":true,"WindowX":5,"WindowY":6,"WindowWidth":800,"WindowHeight":600}""");
+
+        Assert.False(store.Load().RunSchedulerInApp);
+    }
+
+    [Fact]
     public void Load_prefs_file_without_inspector_or_width_keys_defaults_to_false_and_null_widths()
     {
         // U1/U2: a prefs file written before the inspector-collapse flag and the pane-width keys

@@ -33,13 +33,17 @@ existing working root, non-empty prompt; an overlay with allowlists but `Mode !=
 rejected (provably inert under unattended); a bare `"*"` allowlist requires the container
 backend.
 
-## The scheduler (`--serve`)
+## The scheduler (`--serve`, or the App's opt-in toggle)
 
-`SchedulerHostedService` (registered only under `--serve`) drives everything through
-`TimeProvider` — fully testable with `FakeTimeProvider`. Loop shape per tick: run whatever
-came due while sleeping → prune state for deleted/renamed jobs → recompute every enabled
-job's next occurrence **from now** → sleep until the earliest (capped at 1 day; parked
-indefinitely when idle; woken by config saves).
+`SchedulerHostedService` drives everything through `TimeProvider` — fully testable with
+`FakeTimeProvider`. Core deliberately never registers it itself; the console's `--serve` flag is
+one host that does (`Program.cs`), and the desktop App is the other — a "Run scheduler while the
+app is open" toggle on its Schedules page starts/stops the same service in-process via
+`Caliper.App.Scheduling.AppSchedulerController`
+([desktop-app.md](desktop-app.md#schedules-page)), for as long as the window stays open. Loop
+shape per tick: run whatever came due while sleeping → prune state for deleted/renamed jobs →
+recompute every enabled job's next occurrence **from now** → sleep until the earliest (capped at
+1 day; parked indefinitely when idle; woken by config saves).
 
 Policies (deliberately boring and safe):
 
@@ -67,3 +71,8 @@ ordinary session, browsable from any host; the run is journaled in the `runs` ta
 `/schedule run <name>` triggers the identical unattended path from the REPL (works on
 disabled jobs, with a notice — it's the dry-run harness for a job's allowlist). Add/edit/
 remove jobs by editing config (or via `IConfigWriter.SaveSchedulesAsync`).
+
+The desktop App's Schedules page is the same management surface with a GUI: a master-detail
+list/edit view over `IConfigWriter.LoadSchedulesAsync`/`SaveSchedulesAsync` (add, edit, remove,
+enable/disable), and a "Run now" per job that's the App's equivalent of `/schedule run` — see
+[desktop-app.md](desktop-app.md#schedules-page) for the full page walkthrough.

@@ -33,6 +33,7 @@ public sealed partial class MainPage : Page
             "Chat" => typeof(ChatPage),
             "Skills" => typeof(SkillsPage),
             "Memory" => typeof(MemoryPage),
+            "Schedules" => typeof(SchedulesPage),
             _ => (System.Type?)null,
         };
 

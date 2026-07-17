@@ -93,6 +93,24 @@ public sealed partial class SessionsViewModel : ObservableObject, IDisposable
             await SelectProgrammaticallyAsync(first, ct);
     }
 
+    /// <summary>
+    /// Re-lists sessions from the store and adds any summary not already tracked — used by the
+    /// Schedules page after a "Run now" completes so the run's "[job] {name}" session (created
+    /// directly through <c>ISessionStore</c> by <c>ScheduleJobRunner</c>, outside the chat
+    /// controller's own create path) shows up in this pane without a restart or new navigation
+    /// plumbing between the two pages. A no-op before <see cref="InitializeAsync"/> has ever run.
+    /// </summary>
+    public async Task RefreshAsync(CancellationToken ct)
+    {
+        var summaries = await _sessions.ListAsync(ct);
+        var known = new HashSet<string>(Items.Select(item => item.Id), StringComparer.Ordinal);
+        foreach (var summary in summaries)
+        {
+            if (known.Add(summary.Id))
+                Items.Add(CreateItem(summary));
+        }
+    }
+
     [RelayCommand]
     private async Task NewSessionAsync()
     {

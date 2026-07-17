@@ -16,8 +16,11 @@ namespace Caliper.Core.Permissions;
 /// <c>--serve</c> scheduler tick would use: the run itself renders live in the terminal, but its
 /// permission prompts are denied and recorded, never shown to the human. Headless modes don't
 /// need the split — <c>--serve</c> and <c>--unattended</c> register
-/// <see cref="UnattendedPermissionPrompt"/> outright — and the App keeps its own
-/// <c>ApprovalService</c> untouched (it never builds a spec with <c>Unattended = true</c>).
+/// <see cref="UnattendedPermissionPrompt"/> outright. The App registers this same
+/// <see cref="RoutingPermissionPrompt"/> (wrapping its interactive <c>ApprovalService</c>) so that
+/// a schedule job run — the App's "Run now" action, which builds a <c>RunSpec</c> with
+/// <c>Unattended = true</c> just like the console's <c>/schedule run</c> — is denied and reported
+/// instead of raising an interactive approval card.
 /// <see cref="PermissionGate"/> is unchanged: routing happens entirely at the prompt seam.
 /// </remarks>
 public sealed class RoutingPermissionPrompt(

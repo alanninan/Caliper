@@ -48,8 +48,12 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
 - `src/Caliper.Console/` — terminal host. `Program.cs` (entry + slash commands), `Rendering/`,
   `Commands/`, and `ConsolePermissionPrompt`.
 - `src/Caliper.App/` — WinUI 3 desktop host on the same engine. MVVM (`ViewModels/`, `Views/`),
-  `ApprovalService`/`IPermissionPrompt`, Windows Credential Manager store (`Security/`), and
-  app-local UI prefs in `~/.caliper/app-ui.json` (`Preferences/`). Not trimmed/AOT.
+  `ApprovalService`/`IPermissionPrompt` (wrapped in a `RoutingPermissionPrompt` so scheduled-job
+  runs deny + report instead of prompting), a Schedules page (`Views/SchedulesPage.xaml`,
+  `ViewModels/SchedulesViewModel.cs`) for managing `Caliper:Schedules` and running jobs on demand,
+  an opt-in in-app scheduler controller (`Scheduling/AppSchedulerController.cs`), Windows
+  Credential Manager store (`Security/`), and app-local UI prefs in `~/.caliper/app-ui.json`
+  (`Preferences/`). Not trimmed/AOT.
 - `tests/Caliper.Core.Tests`, `tests/Caliper.Console.Tests`, `tests/Caliper.App.Tests` — xUnit.
 - `tests/Caliper.Evals` — hermetic + model-in-the-loop eval harness (`FakeModelClient`).
 
@@ -69,11 +73,14 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
 - **Scheduling:** `Caliper:Schedules` (list; live — re-read every tick) drives
   `SchedulerHostedService`, registered only under `--serve`. Jobs run via `ScheduleJobRunner`
   with `RunSpec { Unattended = true }` — prompts deny + report (`UnattendedPermissionPrompt`;
-  in the REPL a `RoutingPermissionPrompt` routes by `PermissionRequest.Unattended`). Overlap:
-  skip; misfire: no catch-up. `/schedule list|run <name>` manages jobs interactively. A job's
-  `Permissions` overlay must set `Mode: Auto` for its allowlists to matter — enforced by
-  `CaliperOptionsValidator`, which rejects a saved overlay setting `ShellAutoAllowlist`/
-  `AutoAllowFileRoots` under any other `Mode`; the global shell denylist is always merged in.
+  in the REPL and the App a `RoutingPermissionPrompt` routes by `PermissionRequest.Unattended`).
+  Overlap: skip; misfire: no catch-up. `/schedule list|run <name>` manages jobs interactively; the
+  App's Schedules page offers the same add/edit/remove/run-now surface plus an opt-in toggle that
+  runs `SchedulerHostedService` while the window is open (`Scheduling/AppSchedulerController.cs`) —
+  headless scheduling remains `--serve`. A job's `Permissions` overlay must set `Mode: Auto` for
+  its allowlists to matter — enforced by `CaliperOptionsValidator`, which rejects a saved overlay
+  setting `ShellAutoAllowlist`/`AutoAllowFileRoots` under any other `Mode`; the global shell
+  denylist is always merged in.
 - **Durable runs:** every orchestrator-driven run (one-shot, `--unattended`, jobs, subagent
   children — not interactive REPL/App streaming) gets a `runs`-table row (`IRunStore` /
   `SqliteRunStore`): `running → completed | failed | cancelled | interrupted`, with the step
