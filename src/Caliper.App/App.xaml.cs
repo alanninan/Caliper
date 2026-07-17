@@ -33,6 +33,55 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += App_UnhandledException;
+
+#if DEBUG
+        // Crash hardening (TO_FIX.md item 2): the official docs example pattern for diagnosing
+        // "Layout cycle detected" stowed exceptions. High tracing names the looping elements in
+        // Measure/Arrange traces (visible under a native debugger) and enriches the stowed-exception
+        // data captured in crash dumps, so the next repro identifies the culprit element instead of
+        // the bare HRESULT this app has crashed with before. The break level only trips under an
+        // attached native debugger, so it's inert otherwise.
+        DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
+        DebugSettings.LayoutCycleDebugBreakLevel = LayoutCycleDebugBreakLevel.Low;
+#endif
+    }
+
+    // Crash hardening (TO_FIX.md item 2): a breadcrumb, not a recovery mechanism. Docs: this class of
+    // failure (e.g. a layout cycle) is treated as non-recoverable by the runtime — termination happens
+    // even if e.Handled is set true — and XAML may already be in an inconsistent state, so routinely
+    // handling is explicitly discouraged. Never set e.Handled here. e.Exception's type/message/stack
+    // aren't guaranteed to match the original error, but e.Message "in most cases" carries the
+    // original message — for a layout cycle that names the failing element, which is the whole point
+    // of logging this before the process dies.
+    private void App_UnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
+    {
+        // The host may not be built yet (a crash during OnLaunched, before Services is assigned).
+        if (Services is null)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"Unhandled exception before host startup: {e.Message}\n{e.Exception}");
+            return;
+        }
+
+        try
+        {
+            // CA1873: guard with IsEnabled since e.Exception/e.Message are WinRT property
+            // accesses the analyzer treats as potentially expensive to evaluate.
+            var logger = Services.GetRequiredService<ILogger<App>>();
+            if (logger.IsEnabled(LogLevel.Critical))
+            {
+                logger.LogCritical(
+                    e.Exception,
+                    "Unhandled exception reaching the application boundary: {Message}",
+                    e.Message);
+            }
+        }
+        catch
+        {
+            // A crashing DI container/logging pipeline must not mask the original crash — this
+            // handler's only job is best-effort diagnostics on the way down.
+        }
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)

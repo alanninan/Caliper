@@ -45,6 +45,134 @@ public sealed class AgentEventMapperTests
         Assert.False(mapper.FlushStreamingMessage());
     }
 
+    // Crash hardening (TO_FIX.md item 2): FlushStreamingMessage(TimeSpan) throttles the tick-driven
+    // push of streaming content into a bubble's Content, to cut the MarkdownTextBlock re-parse churn
+    // behind the layout-cycle crash. These cases drive it directly with a FakeTimeProvider, matching
+    // how ChatViewModel.FlushStreamingAsync calls it every StreamingFlushInterval tick.
+    [Fact]
+    public void FlushStreamingMessage_throttled_tick_without_boundary_does_not_push_content()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+        var minInterval = TimeSpan.FromMilliseconds(250);
+
+        mapper.Map(new AssistantMessageDelta("Hello"));
+        // A bubble's very first flush always pushes (no prior push to throttle against), so the
+        // first characters of a stream appear without an artificial initial delay.
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        var message = Assert.IsType<AssistantMessageViewModel>(Assert.Single(items));
+        Assert.Equal("Hello", message.Content);
+
+        mapper.Map(new AssistantMessageDelta(" world"));
+        timeProvider.Advance(TimeSpan.FromMilliseconds(80));
+        Assert.False(mapper.FlushStreamingMessage(minInterval));
+        Assert.Equal("Hello", message.Content);
+    }
+
+    [Fact]
+    public void FlushStreamingMessage_throttled_tick_with_newline_pushes_immediately()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+        var minInterval = TimeSpan.FromMilliseconds(250);
+
+        mapper.Map(new AssistantMessageDelta("Hello"));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        var message = Assert.IsType<AssistantMessageViewModel>(Assert.Single(items));
+
+        mapper.Map(new AssistantMessageDelta(" world\nmore"));
+        timeProvider.Advance(TimeSpan.FromMilliseconds(80));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        Assert.Equal("Hello world\nmore", message.Content);
+    }
+
+    [Fact]
+    public void FlushStreamingMessage_throttled_tick_with_code_fence_pushes_immediately()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+        var minInterval = TimeSpan.FromMilliseconds(250);
+
+        mapper.Map(new AssistantMessageDelta("Hello "));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        var message = Assert.IsType<AssistantMessageViewModel>(Assert.Single(items));
+
+        mapper.Map(new AssistantMessageDelta("```csharp"));
+        timeProvider.Advance(TimeSpan.FromMilliseconds(80));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        Assert.Equal("Hello ```csharp", message.Content);
+    }
+
+    [Fact]
+    public void FlushStreamingMessage_throttled_tick_after_min_interval_pushes_content()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+        var minInterval = TimeSpan.FromMilliseconds(250);
+
+        mapper.Map(new AssistantMessageDelta("Hello"));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        var message = Assert.IsType<AssistantMessageViewModel>(Assert.Single(items));
+
+        mapper.Map(new AssistantMessageDelta(" world"));
+        timeProvider.Advance(TimeSpan.FromMilliseconds(260));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        Assert.Equal("Hello world", message.Content);
+    }
+
+    [Fact]
+    public void FlushStreamingMessage_throttles_assistant_and_reasoning_bubbles_independently()
+    {
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+        var minInterval = TimeSpan.FromMilliseconds(250);
+
+        mapper.Map(new Caliper.Core.Events.ReasoningDelta("thinking"));
+        mapper.Map(new AssistantMessageDelta("Hello"));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        var reasoning = Assert.IsType<ReasoningViewModel>(items[0]);
+        var assistant = Assert.IsType<AssistantMessageViewModel>(items[1]);
+        Assert.Equal("thinking", reasoning.Content);
+        Assert.Equal("Hello", assistant.Content);
+
+        // Only the assistant chunk crosses a structural boundary; the reasoning bubble has its own
+        // last-push state and stays withheld within the throttle window.
+        mapper.Map(new Caliper.Core.Events.ReasoningDelta(" more"));
+        mapper.Map(new AssistantMessageDelta("\nworld"));
+        timeProvider.Advance(TimeSpan.FromMilliseconds(50));
+        Assert.True(mapper.FlushStreamingMessage(minInterval));
+        Assert.Equal("thinking", reasoning.Content);
+        Assert.Equal("Hello\nworld", assistant.Content);
+    }
+
+    [Fact]
+    public void Map_turn_started_mid_stream_forces_pending_content_flush()
+    {
+        // FinalizeStreamingMessage (invoked here via TurnStarted, and also by RunCompleted/RunFailed/
+        // ResetForRun) always uses the unconditional FlushStreamingMessage() overload — a turn/run
+        // boundary must render the complete final content even if the last chunk hasn't crossed the
+        // throttle window yet, or the tail of a streamed message would be silently dropped.
+        ObservableCollection<ChatItemViewModel> items = [];
+        var timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-07-16T09:30:00Z"));
+        var mapper = new AgentEventMapper(items, timeProvider);
+
+        mapper.Map(new AssistantMessageDelta("Hello"));
+        Assert.True(mapper.FlushStreamingMessage(TimeSpan.FromMilliseconds(250)));
+        var message = Assert.IsType<AssistantMessageViewModel>(Assert.Single(items));
+
+        mapper.Map(new AssistantMessageDelta(" world"));
+        timeProvider.Advance(TimeSpan.FromMilliseconds(50));
+
+        mapper.Map(new TurnStarted(2));
+        Assert.Equal("Hello world", message.Content);
+        Assert.False(message.IsStreaming);
+    }
+
     [Fact]
     public void Map_cancelled_completion_records_terminal_status()
     {

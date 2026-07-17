@@ -16,6 +16,16 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
     private readonly StringBuilder _streamingReasoning = new();
     private ToolActivityViewModel? _activity;
 
+    // Crash hardening (TO_FIX.md item 2): per-bubble throttle state for FlushStreamingMessage.
+    // Tracks how much of each streaming buffer has already reached the bound Content and when that
+    // last happened, so a tick can decide "not yet" without losing track of what's pending. Reset
+    // whenever a fresh bubble is created (EnsureAssistant/EnsureReasoning) — state from a prior
+    // turn's bubble must never gate a new one's first push.
+    private DateTimeOffset? _assistantPushedAt;
+    private int _assistantPushedLength;
+    private DateTimeOffset? _reasoningPushedAt;
+    private int _reasoningPushedLength;
+
     // Cumulative across the whole run (all model calls so far), not just the last call.
     public int? PromptTokens { get; private set; }
     public int? CompletionTokens { get; private set; }
@@ -134,16 +144,30 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
         }
     }
 
-    public bool FlushStreamingMessage()
+    // Unconditional flush (used by FinalizeStreamingMessage's turn/run-boundary safety net, and by
+    // ChatViewModel's post-run cleanup): every bubble's Content is brought fully up to date with its
+    // streaming buffer regardless of throttle state, since a turn/run boundary must never drop the
+    // tail of a streamed message that hasn't yet crossed the throttle window.
+    public bool FlushStreamingMessage() => FlushStreamingMessage(TimeSpan.Zero);
+
+    // Called every ChatViewModel.FlushStreamingAsync tick with minPushInterval set to
+    // MinStreamingRenderInterval: a bubble's Content is only re-pushed once minPushInterval has
+    // elapsed since its last push, OR the text appended since that push crosses a structural
+    // boundary (newline or a ``` fence, so paragraph breaks and code fences still render promptly).
+    // minPushInterval of TimeSpan.Zero (the parameterless overload above) always pushes.
+    public bool FlushStreamingMessage(TimeSpan minPushInterval)
     {
         var changed = false;
 
         if (_assistant is not null)
         {
             var content = _streamingContent.ToString();
-            if (!string.Equals(_assistant.Content, content, StringComparison.Ordinal))
+            if (!string.Equals(_assistant.Content, content, StringComparison.Ordinal) &&
+                ShouldPush(content, _assistantPushedLength, _assistantPushedAt, minPushInterval))
             {
                 _assistant.Content = content;
+                _assistantPushedAt = _timeProvider.GetUtcNow();
+                _assistantPushedLength = content.Length;
                 changed = true;
             }
         }
@@ -151,9 +175,12 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
         if (_reasoning is not null)
         {
             var content = _streamingReasoning.ToString();
-            if (!string.Equals(_reasoning.Content, content, StringComparison.Ordinal))
+            if (!string.Equals(_reasoning.Content, content, StringComparison.Ordinal) &&
+                ShouldPush(content, _reasoningPushedLength, _reasoningPushedAt, minPushInterval))
             {
                 _reasoning.Content = content;
+                _reasoningPushedAt = _timeProvider.GetUtcNow();
+                _reasoningPushedLength = content.Length;
                 changed = true;
             }
 
@@ -168,12 +195,32 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
         return changed;
     }
 
+    // A bubble with no prior push (pushedAt is null — freshly created by Ensure*) always pushes
+    // immediately, so the first characters of a stream appear without an artificial initial delay.
+    // After that, throttle to minPushInterval unless the newly appended text crosses a structural
+    // boundary.
+    private bool ShouldPush(string content, int pushedLength, DateTimeOffset? pushedAt, TimeSpan minPushInterval)
+    {
+        if (minPushInterval <= TimeSpan.Zero || pushedAt is null)
+            return true;
+
+        if (_timeProvider.GetUtcNow() - pushedAt.Value >= minPushInterval)
+            return true;
+
+        ReadOnlySpan<char> appended = pushedLength < content.Length
+            ? content.AsSpan(pushedLength)
+            : ReadOnlySpan<char>.Empty;
+        return appended.Contains('\n') || appended.Contains("```", StringComparison.Ordinal);
+    }
+
     private AssistantMessageViewModel EnsureAssistant()
     {
         if (_assistant is not null)
             return _assistant;
 
         _assistant = new AssistantMessageViewModel { Timestamp = _timeProvider.GetUtcNow() };
+        _assistantPushedAt = null;
+        _assistantPushedLength = 0;
         items.Add(_assistant);
         return _assistant;
     }
@@ -184,6 +231,8 @@ public sealed class AgentEventMapper(ObservableCollection<ChatItemViewModel> ite
             return _reasoning;
 
         _reasoning = new ReasoningViewModel { StartedAt = _timeProvider.GetUtcNow() };
+        _reasoningPushedAt = null;
+        _reasoningPushedLength = 0;
         items.Add(_reasoning);
         return _reasoning;
     }

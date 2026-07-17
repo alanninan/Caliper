@@ -31,6 +31,11 @@ stopped being sent to the model.
   Assistant bubbles render as Markdown from the first streamed token — there's no separate
   plain-text streaming state, so finishing a run no longer causes a visible reflow jump.
   Live (not reloaded) user/assistant bubbles show their send/receive time as a hover tooltip.
+  Streaming content is pushed into a bubble on a calmer cadence than the raw flush tick — throttled
+  to a minimum interval unless the newly streamed text crosses a paragraph break or code fence, so
+  a long response doesn't force a full Markdown re-parse every tick; the transcript autoscroll that
+  follows a streaming run is also unanimated and coalesced to at most one scroll per dispatcher
+  pass, keeping the `ItemsRepeater` layout stable under concurrent streaming bubbles.
 - **Transcript search** (`Ctrl+F`) reveals a search box in the workspace header; Enter/Shift+Enter
   or the next/previous buttons step through case-insensitive matches across user messages,
   assistant messages, and tool call headlines/output (a "N of M" / "No matches" indicator tracks
@@ -122,6 +127,13 @@ respond-only fallback, tokenizer fallback, MCP errors, summarization fallback, a
 own top-level "A11" resilience-boundary catches) are recorded outside a debugger. `AddDebug()`
 still runs alongside it for the Visual Studio Output window, filtered to the same Warning+
 minimum level.
+
+An `Application.UnhandledException` handler logs a Critical breadcrumb (message + exception) to
+the same log file before the process dies on an otherwise-unrecoverable XAML/WinRT crash (e.g. a
+layout cycle) — it never marks the exception handled, since the runtime treats that class of
+failure as non-recoverable regardless. DEBUG builds also turn on XAML layout-cycle tracing
+(`DebugSettings.LayoutCycleTracingLevel`), which names the looping elements in a native debugger
+or crash dump on the next repro.
 
 ## Settings pages
 

@@ -69,6 +69,15 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     // "swapped from the add-key button to the restart button," so it only steals focus on an actual
     // transition, never on every re-navigation back to an already-visible card.
     private Button? _welcomeCardFocusTarget;
+    // Crash hardening (TO_FIX.md item 2): ViewModel_TranscriptChanged fires once per streaming
+    // flush tick (up to every 80ms, per bubble) while a run is streaming. Without coalescing, a
+    // burst of events each queue their own dispatcher callback, and overlapping autoscrolls
+    // retargeting a moving extent while item sizes churn is the layout-cycle recipe that crashed
+    // the app. _autoscrollQueued gates enqueueing to one pending callback per dispatcher pass;
+    // _autoscrollPinned is OR'd across the burst so a caller that saw "pinned" isn't lost to a
+    // later caller in the same burst that (due to content growth alone) fell outside tolerance.
+    private bool _autoscrollQueued;
+    private bool _autoscrollPinned;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -391,14 +400,30 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
 
     private void ViewModel_TranscriptChanged(object? sender, EventArgs e)
     {
-        var pinned = IsPinnedToBottom();
+        _autoscrollPinned |= IsPinnedToBottom();
+        if (_autoscrollQueued)
+            return;
+
+        _autoscrollQueued = true;
         _ = DispatcherQueue.TryEnqueue(
             DispatcherQueuePriority.Low,
             () =>
             {
+                var pinned = _autoscrollPinned;
+                _autoscrollQueued = false;
+                _autoscrollPinned = false;
+
                 if (pinned)
                 {
-                    TranscriptScrollViewer.ChangeView(null, TranscriptScrollViewer.ScrollableHeight, null);
+                    // disableAnimation: an animated ChangeView retargeting a moving extent while
+                    // streaming item sizes churn is the overlapping-animation feedback loop behind
+                    // the layout-cycle crash (TO_FIX.md item 2) — this is streaming-driven autoscroll,
+                    // not the user-initiated JumpToLatest_Click, which stays animated.
+                    TranscriptScrollViewer.ChangeView(
+                        null,
+                        TranscriptScrollViewer.ScrollableHeight,
+                        null,
+                        disableAnimation: true);
                     JumpToLatestButton.Visibility = Visibility.Collapsed;
                 }
                 else

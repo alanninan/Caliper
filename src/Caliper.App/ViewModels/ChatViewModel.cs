@@ -19,6 +19,15 @@ namespace Caliper.App.ViewModels;
 public sealed partial class ChatViewModel : ObservableObject, IChatSessionController, IDisposable
 {
     private static readonly TimeSpan StreamingFlushInterval = TimeSpan.FromMilliseconds(80);
+    // Crash hardening (TO_FIX.md item 2): a MarkdownTextBlock fully re-parses and rebuilds its
+    // visual tree on every Content change (U3), so pushing on every 80ms tick during a long stream
+    // is the measure/arrange churn behind the ItemsRepeater layout-cycle crash. The tick loop below
+    // still runs every StreamingFlushInterval (other flush work — reasoning elapsed-time, etc. —
+    // keeps that cadence); this only throttles how often a bubble's Content is actually re-pushed,
+    // via AgentEventMapper.FlushStreamingMessage(TimeSpan). A chunk crossing a structural boundary
+    // (newline or a ``` fence) still pushes immediately so paragraph breaks and code fences render
+    // promptly.
+    private static readonly TimeSpan MinStreamingRenderInterval = TimeSpan.FromMilliseconds(250);
     private const int TranscriptCacheLimit = 20;
     private readonly IAgentRunner _runner;
     private readonly ISessionStore _sessions;
@@ -760,7 +769,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
         {
             while (await timer.WaitForNextTickAsync(ct))
             {
-                if (mapper.FlushStreamingMessage())
+                if (mapper.FlushStreamingMessage(MinStreamingRenderInterval))
                     NotifyTranscriptChanged(runMessages);
             }
         }
