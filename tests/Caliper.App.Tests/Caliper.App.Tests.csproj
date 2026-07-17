@@ -39,7 +39,9 @@
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\AgentBehaviorSettingsViewModel.cs" Link="ViewModels\Settings\AgentBehaviorSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ContextMemorySettingsViewModel.cs" Link="ViewModels\Settings\ContextMemorySettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ToolsSettingsViewModel.cs" Link="ViewModels\Settings\ToolsSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\SubagentsSettingsViewModel.cs" Link="ViewModels\Settings\SubagentsSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\PermissionsSettingsViewModel.cs" Link="ViewModels\Settings\PermissionsSettingsViewModel.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\ExecutionSettingsViewModel.cs" Link="ViewModels\Settings\ExecutionSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\McpServersSettingsViewModel.cs" Link="ViewModels\Settings\McpServersSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\SearchSettingsViewModel.cs" Link="ViewModels\Settings\SearchSettingsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\AdvancedSettingsViewModel.cs" Link="ViewModels\Settings\AdvancedSettingsViewModel.cs" />

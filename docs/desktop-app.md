@@ -230,10 +230,10 @@ or crash dump on the next repro.
 ## Settings pages
 
 Structured pages (General, Models & providers, Permissions, Tools, Agent behavior,
-Context & memory, MCP servers, Search, Advanced) edit typed config sections through
-`IConfigWriter`, which reports which changes are live vs restart-required. The settings
-`NavigationView` uses top (`PaneDisplayMode="Top"`) navigation, not a second left rail nested
-inside the app's root nav — items that don't fit collapse into a "More" overflow menu.
+Context & memory, Subagents, Execution, MCP servers, Search, Advanced) edit typed config
+sections through `IConfigWriter`, which reports which changes are live vs restart-required. The
+settings `NavigationView` uses top (`PaneDisplayMode="Top"`) navigation, not a second left rail
+nested inside the app's root nav — items that don't fit collapse into a "More" overflow menu.
 
 Every page follows the same restart-affordance pattern: a `RestartRequired` view-model flag, set
 from the save result (`result.Success && result.RestartRequired`, cleared at the start of the
@@ -242,10 +242,38 @@ next save — never claimed for a save that didn't happen), backs an `InfoBar.Ac
 the flag only ever goes true on Models & providers (endpoint/key changes), Tools (the enabled-tool
 set actually changed), MCP servers and Search (every save), and Advanced (both the persistence
 path and the raw-JSON escape hatch, the latter unconditionally since it bypasses `IConfigWriter`'s
-typed restart computation entirely) — General, Agent behavior, Context & memory, and Permissions
-save fields that are live seams, so `IConfigWriter` never reports true for them; the flag and
-action button are still wired identically there for uniformity. All eight non-Models pages reuse
-the same restart call via the internal `AppRestart.Restart()` helper.
+typed restart computation entirely) — General, Agent behavior, Context & memory, Permissions,
+Subagents, and Execution save fields that are live seams, so `IConfigWriter` never reports true
+for them; the flag and action button are still wired identically there for uniformity. All ten
+non-Models pages reuse the same restart call via the internal `AppRestart.Restart()` helper.
+
+**Subagents** (`ViewModels/Settings/SubagentsSettingsViewModel.cs`,
+`Views/Settings/SubagentsSettingsPage.xaml`) edits `Caliper:Subagents` — global limits
+(MaxDepth, MaxChildrenPerRun, TimeoutSeconds, DefaultProfile) plus a master-detail editor over
+the named `Profiles` dictionary, mirroring MCP servers' shape. Each profile's `EnabledTools` is a
+one-tool-per-line text box (same convention as the Schedules page's allowlist fields, not a
+checkbox grid); `Mode` is a ComboBox with an extra "(inherit)" option mapping to a null
+`SubagentProfileOptions.Mode`. Renaming the profile that is currently `DefaultProfile` carries
+the rename along (tracked by object identity, not name, so renaming some *other* profile to the
+old default name can't hijack it); removing the profile currently set as `DefaultProfile` is
+blocked with an inline message rather than allowed through to a Save that the validator would
+reject. Client-side validation (non-empty unique names, a `DefaultProfile` that exists among the
+profiles, at least one tool per profile) disables Save before it's ever attempted. The section is
+a live seam — `SubagentTool` reads it fresh per `task` call — so saved changes apply to the very
+next subagent invocation with no restart.
+
+**Execution** (`ViewModels/Settings/ExecutionSettingsViewModel.cs`,
+`Views/Settings/ExecutionSettingsPage.xaml`) edits `Caliper:Execution` (see
+[sandboxed-execution.md](sandboxed-execution.md)) — the Host/Container backend picker, plus the
+container-only knobs (Image, Network, CPUs, Memory, User), which are disabled and visually dimmed
+while Backend is Host since they're only consulted under Container. Because a bare `"*"` entry in
+a shell auto-allowlist requires the Container backend, the page proactively checks the global
+Permissions allowlist and every schedule's permissions overlay (on load and whenever the Backend
+picker changes) and shows a Warning `InfoBar` *before* Save is even clicked if switching to Host
+would make one of those wildcards invalid — rather than letting `SaveExecutionAsync`'s validator
+rejection be the first signal. A failed read of either section while computing that warning is
+treated as "no warning," never a page crash. The whole section is a live seam, so saved changes
+apply to the very next shell tool call with no restart.
 
 Advanced's raw JSON editor also validates inline as you type: each edit debounces ~500ms (via the
 injected `TimeProvider`, so it's exercised deterministically in tests with a `FakeTimeProvider`)

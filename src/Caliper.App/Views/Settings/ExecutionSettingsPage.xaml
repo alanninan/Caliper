@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="Caliper.App.Views.Settings.ExecutionSettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Caliper.App.Controls"
+    xmlns:settings="using:CommunityToolkit.WinUI.Controls">
+
+    <ScrollViewer Padding="36,28">
+        <StackPanel MaxWidth="720" Spacing="16">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Execution" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Where bash and powershell tool calls actually run — live, no restart needed." TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="DiscardExecutionButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                    <Button AutomationProperties.AutomationId="SaveExecutionButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </Grid>
+
+            <InfoBar
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
+                Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
+                Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.StatusIsError), Mode=OneWay}">
+                <InfoBar.ActionButton>
+                    <Button
+                        AutomationProperties.AutomationId="ExecutionRestartAppButton"
+                        Click="RestartApp_Click"
+                        Content="Restart Caliper"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
+                </InfoBar.ActionButton>
+            </InfoBar>
+
+            <InfoBar
+                AutomationProperties.AutomationId="WildcardWarningInfoBar"
+                IsClosable="False"
+                IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.WildcardWarningText), Mode=OneWay}"
+                Message="{x:Bind ViewModel.WildcardWarningText, Mode=OneWay}"
+                Severity="Warning" />
+
+            <settings:SettingsExpander Header="Backend" Description="Host runs shell commands directly on this machine (default, exactly as before this feature existed). Container routes them through `docker run` — Linux containers only, bash-only (a powershell call is rejected outright), and fails closed if Docker is unavailable rather than silently falling back to the host.">
+                <ComboBox AutomationProperties.AutomationId="ExecutionBackendPicker" MinWidth="200" ItemsSource="{x:Bind ViewModel.BackendOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SelectedBackend, Mode=TwoWay}" />
+            </settings:SettingsExpander>
+
+            <settings:SettingsExpander
+                Header="Container settings"
+                Description="Only consulted when Backend is Container — these are inert (and shown dimmed) under Host."
+                IsEnabled="{x:Bind ViewModel.IsContainerBackend, Mode=OneWay}"
+                Opacity="{x:Bind converters:XamlConverters.DimOpacity(ViewModel.IsHostBackend), Mode=OneWay}">
+                <settings:SettingsExpander.Items>
+                    <settings:SettingsCard Header="Image" Description="The container image `docker run` uses. Requires Docker Desktop with the WSL2/Linux containers backend — Windows containers aren't supported.">
+                        <TextBox AutomationProperties.AutomationId="ExecutionImageTextBox" MinWidth="320" Text="{x:Bind ViewModel.Image, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Network" Description="None (default) gives the container no network access — the setting that makes a broad shell allowlist safe to pair with the container backend. Bridge grants normal container networking.">
+                        <ComboBox AutomationProperties.AutomationId="ExecutionNetworkPicker" MinWidth="160" ItemsSource="{x:Bind ViewModel.NetworkOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SelectedNetwork, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="CPUs" Description="CPU limit passed to `docker run --cpus`. Fractional values are allowed.">
+                        <NumberBox AutomationProperties.AutomationId="ExecutionCpusNumberBox" Minimum="0.1" SmallChange="0.5" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.Cpus, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="Memory (MB)" Description="Memory limit in megabytes, passed to `docker run --memory {N}m`.">
+                        <NumberBox AutomationProperties.AutomationId="ExecutionMemoryNumberBox" Minimum="256" SmallChange="256" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.MemoryMb, Mode=TwoWay}" />
+                    </settings:SettingsCard>
+                    <settings:SettingsCard Header="User" Description="The `docker run --user` value. Defaults to a non-root uid so a command can't write as root onto the bind-mounted working root.">
+                        <TextBox AutomationProperties.AutomationId="ExecutionUserTextBox" MinWidth="160" Text="{x:Bind ViewModel.User, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </settings:SettingsCard>
+                </settings:SettingsExpander.Items>
+            </settings:SettingsExpander>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

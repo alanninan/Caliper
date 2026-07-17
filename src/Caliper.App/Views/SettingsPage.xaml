@@ -36,9 +36,19 @@
                     <FontIcon Glyph="&#xE90F;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItem AutomationProperties.AutomationId="SubagentsSettingsNavItem" Content="Subagents" Tag="Subagents">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE716;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
             <NavigationViewItem AutomationProperties.AutomationId="PermissionsSettingsNavItem" Content="Permissions" Tag="Permissions">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE72E;" />
+                </NavigationViewItem.Icon>
+            </NavigationViewItem>
+            <NavigationViewItem AutomationProperties.AutomationId="ExecutionSettingsNavItem" Content="Execution" Tag="Execution">
+                <NavigationViewItem.Icon>
+                    <FontIcon Glyph="&#xE756;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
             <NavigationViewItem AutomationProperties.AutomationId="McpSettingsNavItem" Content="MCP servers" Tag="Mcp">

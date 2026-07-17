@@ -67,6 +67,9 @@ The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
 - A Runs page lists durable runs (`IRunStore`) with parity to the console's `/runs` and
   `--resume <run-id>`, including a "Resume" action for runs the startup sweep left `Interrupted`
   and a launch-time banner when any exist.
+- Settings → Subagents and Settings → Execution edit `Caliper:Subagents` and `Caliper:Execution`
+  (both live seams, so changes apply to the very next `task`/shell call, no restart) — no more
+  hand-editing `config.json` for either.
 
 ## Prerequisites
 

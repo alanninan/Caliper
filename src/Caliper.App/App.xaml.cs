@@ -145,7 +145,9 @@ public partial class App : Application
         builder.Services.AddSingleton<AgentBehaviorSettingsViewModel>();
         builder.Services.AddSingleton<ContextMemorySettingsViewModel>();
         builder.Services.AddSingleton<ToolsSettingsViewModel>();
+        builder.Services.AddSingleton<SubagentsSettingsViewModel>();
         builder.Services.AddSingleton<PermissionsSettingsViewModel>();
+        builder.Services.AddSingleton<ExecutionSettingsViewModel>();
         builder.Services.AddSingleton<McpServersSettingsViewModel>();
         builder.Services.AddSingleton<SearchSettingsViewModel>();
         builder.Services.AddSingleton<AdvancedSettingsViewModel>();

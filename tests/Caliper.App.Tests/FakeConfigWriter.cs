@@ -27,6 +27,13 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public string? NextError { get; set; }
     public bool NextRestartRequired { get; set; }
 
+    // ExecutionSettingsViewModel's proactive wildcard-allowlist warning must treat a failed
+    // Permissions/Schedules read as "no warning" (A11) rather than crash the page — these let a
+    // test simulate that read failure without needing a throwing IConfigWriter subclass (this
+    // fake is sealed, matching every other settings-page fake in this file).
+    public bool ThrowOnLoadPermissions { get; set; }
+    public bool ThrowOnLoadSchedules { get; set; }
+
     public CaliperOptions? SavedCaliper { get; private set; }
     public PermissionsOptions? SavedPermissions { get; private set; }
     public ProvidersOptions? SavedProviders { get; private set; }
@@ -38,13 +45,21 @@ internal sealed class FakeConfigWriter : IConfigWriter
     public ExecutionOptions? SavedExecution { get; private set; }
 
     public Task<CaliperOptions> LoadCaliperAsync(CancellationToken ct) => Task.FromResult(Caliper);
-    public Task<PermissionsOptions> LoadPermissionsAsync(CancellationToken ct) => Task.FromResult(Permissions);
+
+    public Task<PermissionsOptions> LoadPermissionsAsync(CancellationToken ct) => ThrowOnLoadPermissions
+        ? throw new InvalidOperationException("Simulated Permissions read failure.")
+        : Task.FromResult(Permissions);
+
     public Task<ProvidersOptions> LoadProvidersAsync(CancellationToken ct) => Task.FromResult(Providers);
     public Task<McpOptions> LoadMcpAsync(CancellationToken ct) => Task.FromResult(Mcp);
     public Task<SearchOptions> LoadSearchAsync(CancellationToken ct) => Task.FromResult(Search);
     public Task<PersistenceOptions> LoadPersistenceAsync(CancellationToken ct) => Task.FromResult(Persistence);
     public Task<SubagentsOptions> LoadSubagentsAsync(CancellationToken ct) => Task.FromResult(Subagents);
-    public Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct) => Task.FromResult(Schedules);
+
+    public Task<IList<ScheduleOptions>> LoadSchedulesAsync(CancellationToken ct) => ThrowOnLoadSchedules
+        ? throw new InvalidOperationException("Simulated Schedules read failure.")
+        : Task.FromResult(Schedules);
+
     public Task<ExecutionOptions> LoadExecutionAsync(CancellationToken ct) => Task.FromResult(Execution);
 
     public Task<ConfigWriteResult> SaveCaliperAsync(CaliperOptions value, CancellationToken ct)

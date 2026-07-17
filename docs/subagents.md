@@ -37,6 +37,9 @@ applicable), truncated to `ToolOutputMaxChars`. `Success` = child completed with
 Profiles are live config — a change applies to the very next spawn. A profile may also set
 `Mode` to tighten the child's permission mode (it can never loosen; see below).
 
+The App has a dedicated Settings → Subagents page for this section (see
+[desktop-app.md](desktop-app.md#settings-pages)) — no need to hand-edit `config.json`.
+
 ## Guards
 
 - **Depth:** a run at `SubagentDepth == MaxDepth` cannot spawn; clear failure message.

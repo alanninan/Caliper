@@ -22,6 +22,9 @@ All knobs are live — `ShellTool` selects the backend per call, so flipping `Ba
 to the very next command without a restart (both backends are always-constructed singletons;
 there is no rewiring step).
 
+The App has a dedicated Settings → Execution page for this section (see
+[desktop-app.md](desktop-app.md#settings-pages)) — no need to hand-edit `config.json`.
+
 ## Backends
 
 **`HostExecutionBackend`** — the pre-existing process behavior, extracted verbatim:
