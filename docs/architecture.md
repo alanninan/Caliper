@@ -116,6 +116,56 @@ pattern. Store timestamps: legacy stores still use `DateTimeOffset.UtcNow`
 (`SqliteStoreBase.NowString`); the run store — and all new time-sensitive code — uses
 `TimeProvider`.
 
+## The tool contract
+
+```csharp
+public interface ITool
+{
+    string Name { get; }
+    string Description { get; }
+    JsonElement ParameterSchema { get; }
+    SideEffect SideEffect { get; }
+    TimeSpan? ToolTimeoutOverride => null;   // default interface member
+    Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct);
+}
+```
+
+- Tools are DI singletons, gated by `CaliperOptions.EnabledTools`, merged with MCP tools in
+  `ToolRegistry`, and further narrowed per run by `RunSpec.ToolFilter`
+  (`FilteredToolRegistry`: a filtered-out tool is absent from schemas *and* resolves as
+  unknown).
+- **Outcomes are `ToolResult` (success + output)**, not exceptions and not a generic
+  `Result<T>`. Exceptions are reserved for genuinely exceptional store/IO errors.
+- **Schemas stay flat** — no nested objects. Nested schemas degrade GBNF conversion for
+  small models. (Nested *config* is fine; the constraint is tool parameter schemas only.)
+- Tools can classify per invocation via `EffectiveSideEffect(arguments)` (e.g. `memory`
+  reads are read-only; `remember`/`forget` are writes).
+- `ToolContext` is the per-dispatch context: HTTP client factory, logger, skills root,
+  working root, outside-root permission flag, cancellation token, `SessionId`, `CallId`,
+  `SubagentDepth`, per-run `SubagentRunState`, the run's `PermissionsOverlay`, and the
+  `Emit`/`DrainEmittedEvents` channel for tools that raise `AgentEvent`s.
+
+Adding a tool:
+
+1. Implement `ITool` in `Tools/BuiltIn/` (flat schema; classify `SideEffect`; honor `ct`).
+2. Register it in `ServiceCollectionExtensions` and add its name to the `EnabledTools`
+   default if it should ship enabled.
+3. If it emits new `AgentEvent`s, wire all three consumers (see above).
+4. If it needs longer than `ToolTimeoutSeconds`, override `ToolTimeoutOverride` — don't
+   raise the global timeout.
+5. Hermetic tests in `tests/Caliper.Core.Tests/Tools/`; gate-interaction tests if the tool
+   has novel permission semantics.
+
+## AOT and JSON
+
+The console is Native AOT; reflection-based serialization is disabled
+(`JsonSerializerIsReflectionEnabledByDefault=false`). Every serialized type must be
+registered in `Protocol/CaliperJsonContext.cs`. New dependencies must be trim/AOT-safe
+(Cronos ✅, the `docker` CLI ✅; Quartz and Docker.DotNet are not acceptable). Package
+versions live centrally in `Directory.Packages.props` — never on a `<PackageReference>`.
+`AgentOptions` is legacy and unused by the native turn strategy — never add knobs to it;
+use `CaliperOptions`.
+
 ## The one blessed service-locator
 
 `ToolRegistry`'s constructor enumerates every `ITool` singleton, and the orchestrator depends

@@ -1,74 +1,52 @@
 # Durable runs and resume
 
-Caliper survives a crash or kill mid-run: every orchestrator-driven run is journaled with a
-live status, stale runs are detected at startup, and an interrupted run can be resumed from
-exactly where it died.
+If Caliper is killed mid-run — a crash, a closed terminal, a reboot — the work isn't lost.
+Long-running runs are journaled with a live status, interrupted runs are detected on the
+next start, and an interrupted run can be resumed from where it died.
 
 ## What is tracked
 
-Every run that goes through `ConversationOrchestrator` gets a row in the SQLite `runs` table:
-one-shot (`--prompt`), `--unattended`, scheduled jobs, `/schedule run`, and subagent
-children. Interactive REPL/App streaming runs (which consume `IAgentRunner` directly) are
-**not** tracked — the feature targets crash recovery for long/unattended work.
+One-shot runs (`--prompt`), unattended runs, scheduled jobs, and subagent children are
+tracked in a local runs journal. Interactive chat turns (console REPL, the app's chat) are
+**not** — you're watching those; the feature targets long or unattended work where nobody
+is.
 
-```
-run_id · session_id · job_name? · status · reason? · step · max_steps · unattended · resumed · started_at · updated_at
-```
-
-Status lifecycle: `running → completed | failed | cancelled | interrupted`. The row is
-created before the run starts (with the resolved step budget, so later resume math never
-depends on config that may have changed); `step`/`updated_at` bump on every turn; the
-terminal status maps from the run's `CompletionReason` (an error always maps to `failed`).
-Timestamps come from `TimeProvider`.
+Each tracked run records its session, originating job (if any), status
+(`running → completed | failed | cancelled | interrupted`), and step progress against its
+budget.
 
 ## Interruption
 
-A process that dies mid-run can't write a terminal status — its row stays `running`. On the
-next startup, a **sweep** (run under the store's schema-initialization gate, before any other
-run-store call) flips every `running` row to `interrupted` with an explanatory reason.
-Single-writer local model: if a row says `running` while this process is just starting, it
-isn't.
+A process that dies mid-run leaves its journal entry saying `running`. On the next start,
+Caliper sweeps those stale entries to `interrupted` — and the desktop app shows a launch
+banner when any exist ("N run(s) were interrupted — view Runs").
 
-## Resume
+## Resuming
 
 ```powershell
 dotnet run --project src/Caliper.Console -- --resume <run-id> --print
 ```
 
-`ResumeAsync` (orchestrator) accepts only `interrupted` runs (anything else is a clear
-error). The sequence:
+or the **Resume** button on an interrupted row in the app's Runs page. Only interrupted
+runs can be resumed. What resume does:
 
-1. **Heal.** The stored transcript may end with a dangling tool call (killed mid-tool).
-   `NativeToolStrategy`'s healing gives it a synthetic `[no result — run was interrupted]`
-   result before the model ever sees it — resume is "load, heal, continue", not replay.
-2. **Note.** A system-role message is appended:
-   `[run interrupted at step N; a tool call may have partially applied — verify before
-   repeating side effects]`.
-3. **Rebuild the spec** from the run row — and, for job runs, the *current* schedule config
-   (model/overlay/working root); if the job no longer exists, resume proceeds with defaults
-   and a logged warning. `Unattended` is carried over, so a resumed job still denies+reports.
-4. **Remaining budget.** The resumed run is bounded to `max_steps − step` (min 1), and the
-   row's `max_steps` is rewritten to that remainder — so the arithmetic stays correct even
-   across a second interruption. The row is marked `resumed`.
-5. **Continue.** `RunSpec.ResumeExisting` skips the normal append of the prompt as a new
-   user message — the transcript continues where it left off.
+1. If the run died mid-tool-call, the transcript is healed so the model knows that call
+   returned no result — nothing is replayed.
+2. A note is added: *"a tool call may have partially applied — verify before repeating side
+   effects."* Side-effecting actions are **never re-run automatically**; the model verifies
+   and decides. Read-only work is simply re-derived.
+3. The run continues with its **remaining** step budget (a run interrupted at step 18 of 25
+   gets 7 more), under its original settings — a resumed scheduled job picks up the job's
+   *current* configuration, and an unattended run stays unattended (deny + report).
 
-**Idempotency is coarse by design:** side-effecting tool calls are never automatically
-re-dispatched. The healed transcript plus the resume note tell the model what was in flight;
-it decides how to verify or redo. Read-only work is simply re-derived.
+The scheduler never auto-resumes an interrupted job; its next tick starts fresh. Resume is
+always an explicit human action.
 
-The scheduler **never auto-resumes** an interrupted job — its next cron tick starts fresh.
+## Inspecting runs
 
-## Inspection
-
-`/runs` lists recent runs: id prefix, session, job, status (resumed runs marked as e.g.
-`Completed (resumed)`), `step/budget`, last update. Exit codes for `--resume` match the
-unattended convention: `0` clean, `1` error, `2` completed-with-denials
-([cli.md](cli.md)).
-
-The WinUI app (`Caliper.App`) offers the same inspection and resume as a second surface: its
-Runs page lists the same rows (with each row's `Reason` shown as secondary text) and offers a
-"Resume" action on `Interrupted` rows that drives the same `ResumeAsync` path — remaining-step
-rebase, dangling-call healing, and unattended deny+report included. See
-[desktop-app.md](desktop-app.md#runs-page) for the page's own behavior (startup-sweep banner,
-outcome reporting, transcript-freshness handling).
+- **Console**: `/runs` lists recent runs — id, session, job, status (resumed runs are
+  marked, e.g. `Completed (resumed)`), step/budget, last update.
+- **Desktop app**: the Runs page shows the same list with interrupted rows highlighted and
+  resumable in place ([desktop-app.md](desktop-app.md#runs-page)).
+- Exit codes for `--resume` match the unattended convention: `0` clean, `1` error,
+  `2` completed with denials ([cli.md](cli.md)).

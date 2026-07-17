@@ -1,82 +1,74 @@
 # Permissions
 
-Every side-effecting tool call passes through `IPermissionGate.EvaluateAsync` before dispatch.
-The gate is the single enforcement point; prompts are pluggable per host.
+Nothing side-effecting runs without passing Caliper's permission gate. Reading files and
+searching are allowed freely; writing files, editing, and running shell commands are governed
+by the mode you choose.
 
 ## Modes
 
 | Mode | Behavior |
 | --- | --- |
-| `Plan` | Read-only calls allowed; every side effect denied outright. |
-| `AskAlways` | Read-only allowed; every side effect prompts. |
-| `Auto` | Allowlisted un-chained shell commands and in-working-root file writes auto-allowed; everything else prompts. |
+| `Plan` | Read-only. Every side effect is denied outright — safe for "look, don't touch". |
+| `AskAlways` | Every side effect asks you first. The default. |
+| `Auto` | Allowlisted shell commands and file writes inside the working root run without asking; everything else still asks. |
 
-Restrictiveness ordering (used by subagent inheritance): `Plan` < `AskAlways` < `Auto`.
+Set the mode in `config.json` (`Permissions:Mode`), with `/permissions <mode>` in the REPL,
+via the app's Settings → Permissions page, or per one-shot run with `--permissions`
+([cli.md](cli.md)). The REPL command and the app's header quick-switcher change the mode for
+the current session only.
 
-## Gate mechanics
+## How Auto mode decides
 
-- **Trusted read-only short-circuit:** built-in read-only calls are allowed without
-  consulting the prompt. MCP servers' self-declared read-only annotations are **untrusted**
-  (`PermissionRequest.TrustedReadOnly` is false for MCP tools) — they prompt like writes.
-- **Shell allowlist** (`ShellAutoAllowlist`, Auto mode): prefix match on the normalized
-  command, guarded against chaining metacharacters (`;`, `&&`, pipes…) so `git status; rm -rf`
-  can't ride an allowlisted prefix.
-- **Shell denylist** (`ShellDenylist`): anchored sub-command matching (no substring false
-  positives). A denylist hit always surfaces with a `[denylist]` reason, is excluded from
-  "remember approval" scope, and — with no human present — is denied.
-- **File policy** (`FileAccessPolicy`): symlink-resolving, per-OS case normalization; writes
-  inside the working root (or a configured `AutoAllowFileRoots` entry) auto-allow under Auto.
-  File tools may cross the working root only after gate approval.
-- **Per-call effect:** tools can classify per invocation via `EffectiveSideEffect(arguments)`
-  (e.g. `memory` reads are read-only; `remember`/`forget` are writes).
-- **Session approvals:** "allow for session" grants are keyed by `(SessionId, Signature)` —
-  one session's approvals never leak into another (subagent children and job runs are
-  isolated for free). `ResetSessionApprovals(sessionId?)` clears them.
+- **Shell allowlist** (`ShellAutoAllowlist`): a command runs without asking when it starts
+  with an allowlisted prefix — e.g. `"git status"` allows `git status -sb`. Chained commands
+  are not auto-allowed: `git status; rm -rf /` can't ride an allowlisted prefix past the `;`,
+  `&&`, or a pipe.
+- **File writes** inside the working root (or any configured `AutoAllowFileRoots` entry) are
+  auto-allowed. Writes outside always ask.
+- Everything else falls back to asking — Auto never silently allows something unlisted.
 
-## Prompts (per host)
+## The denylist
 
-| Prompt | Host | Behavior |
-| --- | --- | --- |
-| `ConsolePermissionPrompt` | Console REPL | Interactive selection; denies when non-interactive/redirected. |
-| `ApprovalService` | Desktop app | Docked approval cards, 5-minute auto-deny, per-request correlation. |
-| `UnattendedPermissionPrompt` | Headless | **Always denies, never grants**; logs each denial at Warning. |
-| `RoutingPermissionPrompt` | Console REPL wrapper | Routes per request on `PermissionRequest.Unattended`: unattended → deny+report, else → interactive. |
+`ShellDenylist` (defaults include `rm -rf`, `sudo`, `mkfs`, …) always wins: a matching
+command is denied in every mode, is never covered by "remember approval", and the denial
+reason says `[denylist]`. Matching is against actual sub-commands, so `firm -rfs` doesn't
+false-positive on `rm -rf`. No per-job or per-agent override can remove a global denylist
+entry — overrides can only add restrictions.
 
-A null prompt means deny. There is deliberately **no `Unattended` permission mode** — Auto
-mode *is* the unattended policy engine; unattended just swaps the "ask" fallback for
-"deny + record".
+## Approvals
 
-## The unattended contract
+When Caliper asks, you can approve once or **allow for the rest of the session**
+(`RememberApprovals`). Session approvals are scoped to that one session — they never carry
+over to other sessions, scheduled jobs, or subagent children. In the console the prompt is
+inline; in the desktop app it's a docked approval card with a 5-minute auto-deny timeout
+([desktop-app.md](desktop-app.md#approvals)).
 
-**Deny + report, never silent-allow, never silent-drop.** Under `--unattended`, `--serve`
-jobs, and `/schedule run`:
+One nuance: tools from MCP servers always ask, even if the server claims a tool is
+read-only — Caliper doesn't trust third-party read-only declarations.
 
-- Read-only + trusted ⇒ allowed (unchanged).
-- Denylist hit ⇒ denied (no human to see the prompt).
-- Anything that would prompt ⇒ denied, logged at Warning, collected into
-  `ConversationRunResult.Denials`, summarized on stderr, and reflected in the exit code
-  (`2` — see [cli.md](cli.md)).
-- `RememberApprovals` grants nothing (no approvals are ever made).
+## Unattended runs: deny + report
 
-## Overlays (per-run permissions)
+Headless runs (`--unattended`, scheduled jobs, `/schedule run`, the app's "Run now") have no
+human to ask, so anything that would have asked is **denied** — never silently allowed,
+never silently dropped. Each denial is logged, collected into the run's summary
+("N action(s) denied"), and reflected in the exit code (`2`, see [cli.md](cli.md)).
 
-`RunSpec.PermissionsOverlay` gives one run its own permission options (scheduled jobs and
-subagent children use this). Two invariants hold for every overlay:
+There is deliberately no separate "unattended mode": give an unattended run an `Auto`-mode
+allowlist for what it *should* be able to do, and the deny+report policy covers the rest.
 
-1. **The global `ShellDenylist` is always unioned in** — an overlay can tighten but can never
-   un-ban a globally denied command.
-2. **Subagent overlays are restrict-only** — child mode = `Min(parent effective mode,
-   profile mode)`; see [subagents.md](subagents.md).
+## Per-job and per-agent overrides
 
-Per-run `WorkingRoot` (`RunSpec.WorkingRoot`) scopes the file policy to the run's own root
-without touching global settings.
+Scheduled jobs and subagent profiles can carry their own permission settings
+([scheduling.md](scheduling.md), [subagents.md](subagents.md)). Two rules always hold:
 
-## Validation guardrails
+1. The global `ShellDenylist` is always merged in — an override can tighten, never un-ban.
+2. Subagent children are **restrict-only**: a child's mode is at most its parent's. A
+   Plan-mode parent's children stay Plan no matter what the profile says.
 
-- A bare `"*"` allowlist entry requires `Execution.Backend = Container`
-  ([sandboxed-execution.md](sandboxed-execution.md)) — enforced at options binding and every
-  config save path. (Today's matcher is prefix-based, so `"*"` isn't even functional as a
-  wildcard; the guard exists so a future matcher change can't silently combine with host
-  execution.)
-- A job overlay with allowlists but `Mode != Auto` is rejected as provably inert
-  ([scheduling.md](scheduling.md)).
+Caliper also rejects configurations that look permissive but can't work:
+
+- An allowlist containing a bare `"*"` requires the Docker sandbox
+  (`Execution.Backend = Container`, see [sandboxed-execution.md](sandboxed-execution.md)) —
+  an unrestricted shell grant is only accepted inside a container.
+- A job override that sets allowlists without `Mode: Auto` is rejected outright, because
+  under the unattended policy those lists would silently do nothing.

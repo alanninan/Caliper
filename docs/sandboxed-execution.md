@@ -1,9 +1,10 @@
 # Sandboxed shell execution
 
-Shell commands (`bash`/`powershell`) run through a pluggable `IExecutionBackend`. The
-container backend is what makes broad unattended shell allowlists trustworthy: the blast
-radius of an arbitrary command is a disposable, network-isolated container whose only view
-of the machine is the bind-mounted working root.
+Shell commands (`bash`/`powershell`) normally run directly on your machine. Switch the
+execution backend to `Container` and they run inside a disposable Docker container instead:
+no network by default, capped CPU and memory, and the only part of your machine it can see
+is the working root. That contained blast radius is what makes broad unattended shell
+allowlists reasonable.
 
 ## Configuration (`Caliper:Execution`)
 
@@ -14,65 +15,52 @@ of the machine is the bind-mounted working root.
   "Network": "None",                        // None (default) | Bridge
   "Cpus": 2,
   "MemoryMb": 4096,
-  "User": "1000"
+  "User": "1000"                            // non-root by default
 }
 ```
 
-All knobs are live — `ShellTool` selects the backend per call, so flipping `Backend` applies
-to the very next command without a restart (both backends are always-constructed singletons;
-there is no rewiring step).
+Everything here is live — flipping `Backend` applies to the very next shell command, no
+restart. The app has a Settings → Execution page for this section
+([desktop-app.md](desktop-app.md#settings)).
 
-The App has a dedicated Settings → Execution page for this section (see
-[desktop-app.md](desktop-app.md#settings-pages)) — no need to hand-edit `config.json`.
+## What each backend does
 
-## Backends
+**Host** — commands run as normal local processes, with guardrails: `CALIPER_*` environment
+variables (your API keys) are stripped, commands that wait for stdin fail fast instead of
+hanging, output is bounded, and cancellation kills the whole process tree.
 
-**`HostExecutionBackend`** — the pre-existing process behavior, extracted verbatim:
-`CALIPER_*` environment scrub (secrets never reach child processes), stdin closed (commands
-waiting for input fail fast), bounded output buffering, drain-after-exit, kill-process-tree
-on cancellation.
-
-**`ContainerExecutionBackend`** — drives the `docker` CLI (never Docker.DotNet; AOT):
+**Container** — commands run via `docker run` in a fresh container per call:
 
 ```
-docker run --rm --name caliper-<guid> --network none --memory 4096m --cpus 2 --user 1000
-           -v <workingRoot>:/workspace -w /workspace/<relative-cwd> <image> bash -lc <command>
+docker run --rm --network none --memory 4096m --cpus 2 --user 1000
+           -v <workingRoot>:/workspace -w /workspace <image> bash -lc <command>
 ```
 
-- Arguments always via `ArgumentList` — the command is never string-concatenated into a
-  shell-parsed argument.
-- The request cwd is mapped under `/workspace`; a cwd outside the working root is rejected.
-- Cancellation kills the local docker client **and** fires an explicit `docker kill` on the
-  named container (on a fresh short-lived token — the caller's is already cancelled).
-- Bash only in v1. A `powershell` call under the container backend fails with a clear
-  message (Windows containers are out of scope).
+The working root is mounted read-write at `/workspace` (builds and installs need writes);
+a working directory outside the working root is rejected. Cancellation kills the container
+itself, not just the local client. Container execution is **bash only** — a `powershell`
+call under the container backend fails with a clear message.
 
-## Fail-closed rules
+## Fails closed
 
-Docker availability is probed lazily via `docker info` (5s timeout), cached for 30 seconds
-(`TimeProvider`-driven, single-flighted so concurrent cold calls share one probe). If the
-probe fails, **every container-backend call returns a failed `ToolResult`** ("container
-backend unavailable: …"). There is no code path that silently falls back to host execution —
-not for interactive runs and especially not for unattended ones. Negative probe results
-self-heal within the TTL once Docker Desktop starts; positive results are re-confirmed
-periodically so a daemon that dies mid-session is noticed.
+If Docker isn't available (not installed, not running), container-backend commands **fail
+with an error** — they never silently fall back to running on your machine. Caliper probes
+Docker lazily and re-checks about every 30 seconds, so starting Docker Desktop heals the
+backend without a restart, and a daemon that dies mid-session is noticed.
 
-## Permission interplay
+## Interplay with permissions
 
-The permission gate still evaluates every call (defense in depth) — the sandbox is a second
-wall, not a replacement. The payoff is encoded as validation, not convention: a bare `"*"`
-entry in any `ShellAutoAllowlist` (global or per-job) is **rejected unless
-`Execution.Backend = Container`** — enforced at options binding and every config save path.
-(Today's allowlist matching is prefix-based, so `"*"` isn't functional as a wildcard yet;
-the guard exists so a future matcher change can't silently combine with host execution.)
+The sandbox is a second wall, not a replacement — the permission gate still evaluates every
+command ([permissions.md](permissions.md)). The one rule that ties them together: an
+unrestricted allowlist (a bare `"*"` entry) is only accepted when the backend is
+`Container`. Caliper rejects that combination with Host execution at save time, and the
+app's Execution page warns you before you even try.
 
-Scope note: v1 sandboxes the **shell only**. File tools stay host-side, confined by the
-symlink-resolving `FileAccessPolicy` (working root + auto-allow roots). The mount is
-read-write by design — most agent shell work (builds, restores, installs) needs writes; the
-blast radius is the working root itself.
+## Windows notes
 
-## Windows reality
+Requires Docker Desktop with the WSL2 (Linux containers) backend — Windows containers are
+not supported. Commands run under `bash` inside the container regardless of your host shell.
+The single working-root mount sidesteps most Windows↔Linux path translation pain.
 
-Requires Docker Desktop with WSL2 Linux containers. It's always `bash` inside the container
-regardless of host shell. Path translation is just the single working-root mount, which
-sidesteps most Windows↔Linux path pain.
+Scope: the sandbox covers the **shell tools only**. File tools (`write_file`, `edit_file`)
+always operate host-side, confined to the working root by the file permission policy.

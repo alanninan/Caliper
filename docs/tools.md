@@ -1,73 +1,62 @@
 # Tools
 
-## The `ITool` contract
-
-```csharp
-public interface ITool
-{
-    string Name { get; }
-    string Description { get; }
-    JsonElement ParameterSchema { get; }
-    SideEffect SideEffect { get; }
-    TimeSpan? ToolTimeoutOverride => null;   // default interface member
-    Task<ToolResult> InvokeAsync(JsonElement arguments, ToolContext ctx, CancellationToken ct);
-}
-```
-
-- Tools are DI singletons, gated by `CaliperOptions.EnabledTools`, merged with MCP tools in
-  `ToolRegistry`, and further narrowed per run by `RunSpec.ToolFilter`
-  (`FilteredToolRegistry`: a filtered-out tool is absent from schemas *and* resolves as
-  unknown).
-- **Outcomes are `ToolResult` (success + output)**, not exceptions and not a generic
-  `Result<T>`. Exceptions are reserved for genuinely exceptional store/IO errors.
-- **Schemas stay flat** — no nested objects. Nested schemas degrade GBNF conversion for
-  small models. (Nested *config* is fine; the constraint is tool parameter schemas only.)
-- Dispatch wraps every call in `ToolTimeoutSeconds` unless the tool sets
-  `ToolTimeoutOverride` (the subagent tool does — a child run routinely outlives the generic
-  timeout). Side-effecting tools are never retried, so a timeout can't double-apply.
-- Output is truncated to `ToolOutputMaxChars` for display; buffering is bounded upstream so a
-  runaway process can't consume unbounded memory first.
-
-## `ToolContext`
-
-Per-dispatch context handed to every tool: HTTP client factory, logger, skills root, working
-root (per-run when `RunSpec.WorkingRoot` is set), outside-root permission flag, cancellation
-token, `SessionId`, `CallId`, `SubagentDepth`, per-run `SubagentRunState`, the run's
-`PermissionsOverlay`, and the `Emit`/`DrainEmittedEvents` channel for tools that need to
-raise `AgentEvent`s (see [architecture.md](architecture.md)).
+Tools are the actions the model can take. Which ones are available is yours to control; every
+side-effecting call still passes the permission gate ([permissions.md](permissions.md)).
 
 ## Built-in tools
 
-| Tool | Side effect | Notes |
+| Tool | Kind | What it does |
 | --- | --- | --- |
-| `read_file` | Read | 1-based line-number prefixes |
-| `list_dir`, `glob`, `grep` | Read | Safe traversal (skips reparse points/inaccessible dirs); glob supports `**/`; grep has case sensitivity + path-aware glob |
-| `search` | Read | Tavily web search (`CALIPER_SEARCH_KEY`) |
-| `fetch_url` | Read | HTTP fetch |
-| `write_file`, `edit_file` | Write | In-root writes auto-allow under Auto mode |
-| `bash`, `powershell` | Execute | Via execution backends — see [sandboxed-execution.md](sandboxed-execution.md); `CALIPER_*` env scrub, stdin closed, kill-tree on cancel |
-| `memory` | Read/Write per call | `recall` is read-only; `remember`/`forget` are writes |
-| `load_skill` | Read | Special-cased in the loop (persists call/result, loads the body into the prompt); still subject to `ToolFilter` |
-| `task` | Execute | Spawns a subagent — see [subagents.md](subagents.md) |
+| `read_file` | Read | Reads a file with line numbers |
+| `list_dir`, `glob`, `grep` | Read | Directory listing, glob matching, content search (safe traversal — skips reparse points and inaccessible directories) |
+| `search` | Read | Web search via Tavily (needs `CALIPER_SEARCH_KEY`) |
+| `fetch_url` | Read | Fetches a URL |
+| `write_file`, `edit_file` | Write | Creates/edits files; in-root writes auto-allow under Auto mode |
+| `bash`, `powershell` | Execute | Runs shell commands — on the host or in a Docker sandbox ([sandboxed-execution.md](sandboxed-execution.md)) |
+| `memory` | Read/Write | Recalls, remembers, and forgets persistent facts (recall is read-only; remember/forget count as writes) |
+| `load_skill` | Read | Loads a skill's instructions into the run |
+| `task` | Execute | Delegates work to a subagent ([subagents.md](subagents.md)) |
 
-Default enabled set: all of the above.
+All of the above ship enabled.
 
-## MCP tools
+## Enabling and disabling
 
-Stdio and HTTP MCP servers are configured in the `Mcp` section; their tools merge into the
-registry alongside built-ins. Their self-declared read-only annotations are **not trusted**
-by the permission gate — an MCP "read-only" tool still prompts like a write
-([permissions.md](permissions.md)). `/mcp` and `/mcp reconnect` manage connections in the
-REPL.
+`Caliper:EnabledTools` in `config.json` (or the app's Settings → Tools page) controls the
+available set. Changing it requires a restart. Subagent profiles and one-shot Plan mode
+narrow the set further per run automatically — a tool outside the run's set is invisible to
+the model, not just refused.
 
-## Adding a tool (checklist)
+## Behavior you'll notice
 
-1. Implement `ITool` in `Tools/BuiltIn/` (flat schema; classify `SideEffect`; honor `ct`).
-2. Register it in `ServiceCollectionExtensions` and add its name to the `EnabledTools`
-   default if it should ship enabled.
-3. If it emits new `AgentEvent`s, wire all three consumers
-   ([architecture.md](architecture.md)).
-4. If it needs longer than `ToolTimeoutSeconds`, override `ToolTimeoutOverride` — don't
-   raise the global timeout.
-5. Hermetic tests in `tests/Caliper.Core.Tests/Tools/`; gate-interaction tests if the tool
-   has novel permission semantics.
+- **Timeouts**: each call is bounded by `ToolTimeoutSeconds` (default 60s). Long-running
+  tools like `task` carry their own larger bound. Side-effecting calls are never retried, so
+  a timeout can't apply a change twice.
+- **Output limits**: tool output is truncated at `ToolOutputMaxChars` (default 16,000)
+  before the model sees it, and runaway process output is bounded as it streams — a noisy
+  command can't exhaust memory.
+- **Secrets don't leak into commands**: every `CALIPER_*` environment variable is stripped
+  from shell and docker child processes.
+
+## MCP servers
+
+External tool servers plug in via the `Mcp` config section (or the app's Settings → MCP
+servers page) — stdio or HTTP:
+
+```jsonc
+"Mcp": {
+  "Servers": {
+    "github": { "Type": "http", "Url": "https://…", "BearerToken": null },
+    "local":  { "Type": "stdio", "Command": "npx", "Args": ["-y", "some-mcp-server"] }
+  }
+}
+```
+
+MCP tools appear alongside built-ins. Two things to know:
+
+- Their "read-only" self-declarations are **not trusted** — an MCP tool always asks like a
+  write ([permissions.md](permissions.md)).
+- `/mcp` shows connection status; `/mcp reconnect` retries. In the app, bearer tokens are
+  stored in Windows Credential Manager, and MCP changes are restart-required.
+
+Writing a new built-in tool is a contributor topic — see
+[architecture.md](architecture.md#the-tool-contract).
