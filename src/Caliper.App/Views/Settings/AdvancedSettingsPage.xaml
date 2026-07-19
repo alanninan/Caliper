@@ -6,18 +6,20 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:settings="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="820" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Advanced" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Storage location and the raw config file, for comments or hand edits." TextWrapping="Wrap" />
                 </StackPanel>
-                <Button Grid.Column="1" AutomationProperties.AutomationId="OpenConfigFileButton" Click="OpenConfig_Click" Content="Open config file" />
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
+                    <Button AutomationProperties.AutomationId="OpenConfigFileButton" Click="OpenConfig_Click" Content="Open config file" />
+                </StackPanel>
             </Grid>
             <InfoBar
                 IsClosable="False"
@@ -37,6 +39,7 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBox AutomationProperties.AutomationId="PersistencePathTextBox" MinWidth="320" Text="{x:Bind ViewModel.PersistencePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     <Button AutomationProperties.AutomationId="BrowsePersistencePathButton" Click="BrowsePersistencePath_Click" Content="Browse" />
+                    <Button AutomationProperties.AutomationId="RevertPersistenceButton" Command="{x:Bind ViewModel.RevertPersistenceCommand}" Content="Revert" />
                     <Button AutomationProperties.AutomationId="SavePersistenceButton" Command="{x:Bind ViewModel.SavePersistenceCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
             </settings:SettingsCard>
@@ -60,7 +63,10 @@
                     TextWrapping="Wrap"
                     Style="{StaticResource CaptionTextBlockStyle}"
                     Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasJsonError), Mode=OneWay}" />
-                <Button AutomationProperties.AutomationId="SaveRawJsonButton" Command="{x:Bind ViewModel.SaveRawCommand}" Content="Save raw JSON" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="RevertRawJsonButton" Command="{x:Bind ViewModel.RevertRawCommand}" Content="Revert" />
+                    <Button AutomationProperties.AutomationId="SaveRawJsonButton" Command="{x:Bind ViewModel.SaveRawCommand}" Content="Save raw JSON" />
+                </StackPanel>
             </StackPanel>
         </StackPanel>
     </ScrollViewer>

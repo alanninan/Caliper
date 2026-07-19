@@ -22,6 +22,8 @@ public sealed partial class ToolsSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
         }
         catch (Exception ex)

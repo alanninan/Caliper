@@ -122,25 +122,86 @@
                     Severity="{x:Bind converters:XamlConverters.StatusSeverity(RunOutcomeIsError), Mode=OneWay}" />
             </StackPanel>
         </DataTemplate>
+
+        <DataTemplate x:Key="ScheduledRunHistoryRowTemplate" x:DataType="vm:ScheduledRunItemViewModel">
+            <Grid
+                Padding="12,10"
+                AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneTime}"
+                ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="120" />
+                    <ColumnDefinition Width="2*" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="160" />
+                    <ColumnDefinition Width="184" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" Text="{x:Bind StatusText, Mode=OneTime}" TextTrimming="CharacterEllipsis" />
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{x:Bind ScheduleName, Mode=OneTime}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="{x:Bind Reason, Mode=OneTime}" TextTrimming="CharacterEllipsis" Style="{StaticResource CaptionTextBlockStyle}" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" VerticalAlignment="Center" Text="{x:Bind ProgressText, Mode=OneTime}" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{x:Bind UpdatedAtText, Mode=OneTime}" TextTrimming="CharacterEllipsis" />
+                <StackPanel Grid.Column="4" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
+                    <ProgressRing
+                        Width="16"
+                        Height="16"
+                        IsActive="{x:Bind IsResuming, Mode=OneWay}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsResuming), Mode=OneWay}" />
+                    <Button
+                        AutomationProperties.AutomationId="ResumeScheduledRunButton"
+                        Click="ResumeHistoryRun_Click"
+                        Content="{x:Bind local:SchedulesPage.ResumeHistoryButtonText(IsResuming), Mode=OneWay}"
+                        IsEnabled="{x:Bind converters:XamlConverters.InvertBool(IsResuming), Mode=OneWay}"
+                        Tag="{x:Bind}"
+                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(CanResume), Mode=OneTime}" />
+                    <Button
+                        AutomationProperties.AutomationId="OpenScheduledRunChatButton"
+                        Click="OpenHistorySession_Click"
+                        Content="Open chat"
+                        Tag="{x:Bind}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
     </Page.Resources>
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="1080" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <Grid Style="{StaticResource WidePageRootGridStyle}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Schedules" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Run agent prompts on a cron schedule, or trigger any of them on demand." TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" VerticalAlignment="Top" Orientation="Horizontal" Spacing="8">
+                <StackPanel x:Name="ScheduleActions" Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
                     <Button AutomationProperties.AutomationId="AddScheduleButton" Command="{x:Bind ViewModel.AddJobCommand}" Content="Add" />
                     <Button AutomationProperties.AutomationId="DiscardSchedulesButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
                     <Button AutomationProperties.AutomationId="SaveSchedulesButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
             </Grid>
+
+            <SelectorBar
+                x:Name="ScheduleViewSelector"
+                Grid.Row="1"
+                AutomationProperties.AutomationId="ScheduleViewSelector"
+                SelectionChanged="ScheduleViewSelector_SelectionChanged">
+                <SelectorBarItem x:Name="SchedulesSelectorItem" AutomationProperties.AutomationId="SchedulesModeItem" IsSelected="True" Text="Schedules" />
+                <SelectorBarItem x:Name="HistorySelectorItem" AutomationProperties.AutomationId="ScheduleHistoryModeItem" Text="History" />
+            </SelectorBar>
+
+            <ScrollViewer
+                x:Name="SchedulesEditorScroll"
+                Grid.Row="2"
+                HorizontalContentAlignment="Stretch"
+                HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="{StaticResource SectionSpacing}">
 
             <InfoBar
                 IsClosable="False"
@@ -228,6 +289,107 @@
                     </ScrollViewer>
                 </Border>
             </Grid>
-        </StackPanel>
-    </ScrollViewer>
+                </StackPanel>
+            </ScrollViewer>
+
+            <Grid
+                x:Name="ScheduleHistoryPanel"
+                Grid.Row="2"
+                RowSpacing="{StaticResource SectionSpacing}"
+                Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Grid Style="{StaticResource PageHeaderGridStyle}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="Scheduled run history" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind ViewModel.HistorySummaryText, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
+                        <ProgressRing
+                            Width="20"
+                            Height="20"
+                            IsActive="{x:Bind ViewModel.IsHistoryLoading, Mode=OneWay}"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsHistoryLoading), Mode=OneWay}" />
+                        <Button
+                            AutomationProperties.AutomationId="RefreshScheduleHistoryButton"
+                            Command="{x:Bind ViewModel.LoadHistoryCommand}"
+                            Content="Refresh" />
+                    </StackPanel>
+                </Grid>
+
+                <InfoBar
+                    Grid.Row="1"
+                    IsClosable="False"
+                    IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.HistoryStatusMessage), Mode=OneWay}"
+                    Message="{x:Bind ViewModel.HistoryStatusMessage, Mode=OneWay}"
+                    Severity="{x:Bind converters:XamlConverters.StatusSeverity(ViewModel.HistoryStatusIsError), Mode=OneWay}" />
+
+                <Border
+                    Grid.Row="2"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    Visibility="{x:Bind local:SchedulesPage.HistoryVisibility(ViewModel.IsHistoryLoading, ViewModel.HasRunHistory), Mode=OneWay}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <Grid Padding="12,8" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="184" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Status" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Grid.Column="1" Text="Schedule" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Grid.Column="2" Text="Progress" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Grid.Column="3" Text="Updated" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        </Grid>
+                        <ListView
+                            Grid.Row="1"
+                            AutomationProperties.AutomationId="ScheduleHistoryList"
+                            ItemContainerStyle="{StaticResource StretchListViewItemStyle}"
+                            ItemTemplate="{StaticResource ScheduledRunHistoryRowTemplate}"
+                            ItemsSource="{x:Bind ViewModel.RunHistory, Mode=OneWay}"
+                            SelectionMode="None" />
+                    </Grid>
+                </Border>
+
+                <Border
+                    Grid.Row="2"
+                    MaxWidth="{StaticResource EmptyStateWidth}"
+                    Padding="28,24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    Visibility="{x:Bind local:SchedulesPage.HistoryEmptyVisibility(ViewModel.IsHistoryLoading, ViewModel.HasRunHistory), Mode=OneWay}">
+                    <StackPanel Spacing="12">
+                        <TextBlock HorizontalAlignment="Center" Text="No scheduled runs yet" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="History appears here after a schedule runs automatically or through Run now."
+                            TextAlignment="Center"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+    </Grid>
 </Page>

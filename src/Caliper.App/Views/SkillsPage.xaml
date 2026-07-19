@@ -7,17 +7,33 @@
     xmlns:markdown="using:CommunityToolkit.WinUI.Controls"
     xmlns:vm="using:Caliper.App.ViewModels">
 
-    <Grid Padding="36,28" RowSpacing="24">
+    <Grid Style="{StaticResource WidePageRootGridStyle}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="CompactSkills" />
+                <VisualState x:Name="WideSkills">
+                    <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="1008" /></VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="SkillsListColumn.Width" Value="380" />
+                        <Setter Target="SkillsDetailColumn.Width" Value="*" />
+                        <Setter Target="SkillsListPanel.Visibility" Value="Visible" />
+                        <Setter Target="SkillsDetailPanel.Visibility" Value="Visible" />
+                        <Setter Target="SkillsDetailPanel.(Grid.Column)" Value="1" />
+                        <Setter Target="SkillsBackButton.Visibility" Value="Collapsed" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid ColumnSpacing="16">
+        <Grid Style="{StaticResource PageHeaderGridStyle}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Spacing="8">
+            <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                 <TextBlock Text="Skills" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -29,23 +45,39 @@
                     Text="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
                     Style="{StaticResource CaptionTextBlockStyle}" />
             </StackPanel>
-            <Button
-                Grid.Column="1"
-                VerticalAlignment="Top"
-                AutomationProperties.AutomationId="RefreshSkillsButton"
-                Command="{x:Bind ViewModel.RefreshCommand}">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
-                    <TextBlock Text="Refresh" />
-                </StackPanel>
-            </Button>
+            <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
+                <Button
+                    AutomationProperties.AutomationId="RefreshSkillsButton"
+                    Command="{x:Bind ViewModel.RefreshCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                        <TextBlock Text="Refresh" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
         </Grid>
-        <Grid Grid.Row="1" ColumnSpacing="16">
+        <Border Grid.Row="1" MaxWidth="{StaticResource EmptyStateWidth}" Padding="28,24"
+                HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                CornerRadius="{ThemeResource OverlayCornerRadius}"
+                Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.HasSkills), Mode=OneWay}">
+            <StackPanel Spacing="16">
+                <TextBlock HorizontalAlignment="Center" Text="No skills found" Style="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.SkillsFolder, Mode=OneWay}" TextAlignment="Center" TextWrapping="Wrap" />
+                <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="OpenSkillsFolderButton" Command="{x:Bind ViewModel.OpenSkillsFolderCommand}" Content="Open skills folder" Style="{StaticResource AccentButtonStyle}" />
+                    <Button AutomationProperties.AutomationId="RefreshSkillsEmptyButton" Command="{x:Bind ViewModel.RefreshCommand}" Content="Refresh" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+        <Grid Grid.Row="1" ColumnSpacing="16" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasSkills), Mode=OneWay}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="380" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="SkillsListColumn" Width="*" />
+                <ColumnDefinition x:Name="SkillsDetailColumn" Width="0" />
             </Grid.ColumnDefinitions>
             <Border
+                x:Name="SkillsListPanel"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
@@ -65,24 +97,23 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <InfoBar
-                        Margin="16"
-                        IsClosable="False"
-                        IsOpen="{x:Bind converters:XamlConverters.InvertBool(ViewModel.HasSkills), Mode=OneWay}"
-                        Message="No skills were discovered in the configured skills directory."
-                        Severity="Informational" />
                 </Grid>
             </Border>
             <Border
+                x:Name="SkillsDetailPanel"
                 Grid.Column="1"
                 Padding="16"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="{ThemeResource OverlayCornerRadius}">
-                <ScrollViewer>
-                    <markdown:MarkdownTextBlock IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.SkillBody, Mode=OneWay}" />
-                </ScrollViewer>
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                    <Button x:Name="SkillsBackButton" AutomationProperties.AutomationId="SkillsBackButton" Click="SkillsBack_Click" Content="Back" />
+                    <ScrollViewer Grid.Row="1">
+                        <markdown:MarkdownTextBlock IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.SkillBody, Mode=OneWay}" />
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Grid>
     </Grid>

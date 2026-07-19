@@ -58,6 +58,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     // splitter drag. Seeded from saved prefs (or the historical default) in ApplySavedPaneWidths.
     private double _lastExpandedSessionsWidth = DefaultSessionsPaneWidth;
     private double _lastExpandedInspectorWidth = DefaultInspectorPaneWidth;
+    private ChatLayoutBand _layoutBand;
+    private bool _transientSessionsOpen;
+    private bool _transientInspectorOpen;
     // U6: the previously-observed RunStatus, so a toast fires only for a genuine transition out of
     // an in-flight run (Running, or Stopping en route to a terminal status) into a terminal one —
     // never a session switch or reload that happens to touch RunStatus without a run having been
@@ -186,6 +189,66 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         ApplySavedPaneWidths();
         Sessions.PropertyChanged += Sessions_PropertyChanged;
         Unloaded += ChatPage_Unloaded;
+    }
+
+    internal static ChatLayoutBand ResolveLayoutBand(double width) =>
+        ChatResponsiveLayout.Resolve(width).Band;
+
+    private void ChatWorkspace_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var band = ResolveLayoutBand(e.NewSize.Width);
+        if (band != _layoutBand)
+        {
+            _layoutBand = band;
+            _transientSessionsOpen = false;
+            _transientInspectorOpen = false;
+        }
+        ApplyResponsivePaneLayout();
+    }
+
+    private void ToggleSessionsPane_Click(object sender, RoutedEventArgs e)
+    {
+        if (_layoutBand == ChatLayoutBand.Wide)
+            Sessions.TogglePaneCommand.Execute(null);
+        else
+        {
+            _transientSessionsOpen = !_transientSessionsOpen;
+            if (_layoutBand == ChatLayoutBand.Compact && _transientSessionsOpen)
+                _transientInspectorOpen = false;
+            ApplyResponsivePaneLayout();
+        }
+    }
+
+    private void ToggleInspectorPane_Click(object sender, RoutedEventArgs e)
+    {
+        if (_layoutBand != ChatLayoutBand.Compact)
+            ViewModel.ToggleInspectorCommand.Execute(null);
+        else
+        {
+            _transientInspectorOpen = !_transientInspectorOpen;
+            if (_transientInspectorOpen)
+                _transientSessionsOpen = false;
+            ApplyResponsivePaneLayout();
+        }
+    }
+
+    private void ApplyResponsivePaneLayout()
+    {
+        var sessionsOpen = _layoutBand == ChatLayoutBand.Wide
+            ? !Sessions.IsPaneCollapsed
+            : _transientSessionsOpen;
+        var inspectorOpen = _layoutBand switch
+        {
+            ChatLayoutBand.Wide or ChatLayoutBand.Medium => !ViewModel.IsInspectorCollapsed,
+            _ => _transientInspectorOpen,
+        };
+
+        SetColumnWidth(SessionsColumn, !sessionsOpen, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
+        SetColumnWidth(InspectorColumn, !inspectorOpen, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        SessionsSplitter.Visibility = sessionsOpen && _layoutBand == ChatLayoutBand.Wide
+            ? Visibility.Visible : Visibility.Collapsed;
+        InspectorSplitter.Visibility = inspectorOpen && _layoutBand != ChatLayoutBand.Compact
+            ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public static Visibility IsAdded(DiffLineKind kind) =>
@@ -679,8 +742,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         _lastExpandedSessionsWidth = Math.Max(preferences.SessionsPaneWidth ?? DefaultSessionsPaneWidth, SessionsPaneMinWidth);
         _lastExpandedInspectorWidth = Math.Max(preferences.InspectorPaneWidth ?? DefaultInspectorPaneWidth, InspectorPaneMinWidth);
 
-        SetColumnWidth(SessionsColumn, Sessions.IsPaneCollapsed, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
-        SetColumnWidth(InspectorColumn, ViewModel.IsInspectorCollapsed, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        ApplyResponsivePaneLayout();
     }
 
     private static void SetColumnWidth(ColumnDefinition column, bool isCollapsed, double expandedWidth, double minWidth)
@@ -708,7 +770,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         if (Sessions.IsPaneCollapsed && SessionsColumn.ActualWidth > 0)
             _lastExpandedSessionsWidth = Math.Max(SessionsColumn.ActualWidth, SessionsPaneMinWidth);
 
-        SetColumnWidth(SessionsColumn, Sessions.IsPaneCollapsed, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
+        ApplyResponsivePaneLayout();
         PersistPaneWidths();
     }
 
@@ -717,7 +779,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         if (ViewModel.IsInspectorCollapsed && InspectorColumn.ActualWidth > 0)
             _lastExpandedInspectorWidth = Math.Max(InspectorColumn.ActualWidth, InspectorPaneMinWidth);
 
-        SetColumnWidth(InspectorColumn, ViewModel.IsInspectorCollapsed, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        ApplyResponsivePaneLayout();
         PersistPaneWidths();
     }
 

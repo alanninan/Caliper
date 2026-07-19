@@ -6,18 +6,21 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:settings="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="720" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Search" Style="{StaticResource TitleTextBlockStyle}" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Backend used by the search tool." TextWrapping="Wrap" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Choose whether Caliper can search the web." TextWrapping="Wrap" />
                 </StackPanel>
-                <Button Grid.Column="1" AutomationProperties.AutomationId="SaveSearchButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                    <Button AutomationProperties.AutomationId="DiscardSearchButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                    <Button AutomationProperties.AutomationId="SaveSearchButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
             </Grid>
             <InfoBar
                 IsClosable="False"
@@ -33,19 +36,22 @@
                 </InfoBar.ActionButton>
             </InfoBar>
 
-            <settings:SettingsExpander Header="Backend" Description="Stub returns no results; Tavily requires an API key.">
-                <ComboBox AutomationProperties.AutomationId="SearchBackendPicker" MinWidth="180" ItemsSource="{x:Bind ViewModel.BackendOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.Backend, Mode=TwoWay}" />
+            <settings:SettingsExpander Header="Web search">
+                <ComboBox x:Name="SearchBackendPicker" AutomationProperties.AutomationId="SearchBackendPicker" MinWidth="220" SelectionChanged="SearchBackend_SelectionChanged">
+                    <ComboBoxItem Content="Search off" Tag="Stub" />
+                    <ComboBoxItem Content="Tavily web search" Tag="Tavily" />
+                </ComboBox>
                 <settings:SettingsExpander.Items>
-                    <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_SEARCH_KEY.">
+                    <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_SEARCH_KEY." Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsTavilySelected), Mode=OneWay}">
                         <PasswordBox AutomationProperties.AutomationId="SearchApiKeyPasswordBox" MinWidth="220" Password="{x:Bind ViewModel.ApiKey, Mode=TwoWay}" PasswordRevealMode="Peek" />
                     </settings:SettingsCard>
-                    <settings:SettingsCard Header="Search depth">
+                    <settings:SettingsCard Header="Search depth" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsTavilySelected), Mode=OneWay}">
                         <ComboBox AutomationProperties.AutomationId="SearchDepthPicker" MinWidth="160" ItemsSource="{x:Bind ViewModel.SearchDepthOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SearchDepth, Mode=TwoWay}" />
                     </settings:SettingsCard>
-                    <settings:SettingsCard Header="Topic">
+                    <settings:SettingsCard Header="Topic" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsTavilySelected), Mode=OneWay}">
                         <ComboBox AutomationProperties.AutomationId="SearchTopicPicker" MinWidth="160" ItemsSource="{x:Bind ViewModel.TopicOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.Topic, Mode=TwoWay}" />
                     </settings:SettingsCard>
-                    <settings:SettingsCard Header="Max results">
+                    <settings:SettingsCard Header="Max results" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsTavilySelected), Mode=OneWay}">
                         <NumberBox AutomationProperties.AutomationId="SearchMaxResultsNumberBox" Minimum="0" Maximum="20" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.MaxResults, Mode=TwoWay}" />
                     </settings:SettingsCard>
                 </settings:SettingsExpander.Items>

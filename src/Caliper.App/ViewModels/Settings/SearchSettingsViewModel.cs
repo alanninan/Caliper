@@ -25,6 +25,20 @@ public sealed partial class SearchSettingsViewModel(IConfigWriter configWriter, 
 
     // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired.
     [ObservableProperty] public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private Snapshot? _snapshot;
+
+    public bool IsTavilySelected => string.Equals(Backend, "Tavily", StringComparison.OrdinalIgnoreCase);
+
+    partial void OnBackendChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsTavilySelected));
+        UpdateDirty();
+    }
+    partial void OnApiKeyChanged(string value) => UpdateDirty();
+    partial void OnSearchDepthChanged(string value) => UpdateDirty();
+    partial void OnMaxResultsChanged(double value) => UpdateDirty();
+    partial void OnTopicChanged(string value) => UpdateDirty();
 
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct)
@@ -37,6 +51,8 @@ public sealed partial class SearchSettingsViewModel(IConfigWriter configWriter, 
         SearchDepth = search.SearchDepth;
         MaxResults = search.MaxResults;
         Topic = search.Topic;
+        _snapshot = Capture();
+        IsDirty = false;
     }
 
     [RelayCommand]
@@ -65,5 +81,31 @@ public sealed partial class SearchSettingsViewModel(IConfigWriter configWriter, 
                 ? "Saved. Restart Caliper for search changes to take effect."
                 : "Saved."
             : result.Error ?? "Save failed.";
+        if (result.Success)
+        {
+            _snapshot = Capture();
+            IsDirty = false;
+        }
     }
+
+    [RelayCommand]
+    private void Discard()
+    {
+        if (_snapshot is not { } value)
+            return;
+        Backend = value.Backend;
+        ApiKey = value.ApiKey;
+        SearchDepth = value.Depth;
+        MaxResults = value.MaxResults;
+        Topic = value.Topic;
+        IsDirty = false;
+    }
+
+    private Snapshot Capture() => new(Backend, ApiKey, SearchDepth, MaxResults, Topic);
+    private void UpdateDirty()
+    {
+        if (_snapshot is not null)
+            IsDirty = Capture() != _snapshot;
+    }
+    private sealed record Snapshot(string Backend, string ApiKey, string Depth, double MaxResults, string Topic);
 }

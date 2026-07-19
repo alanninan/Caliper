@@ -40,6 +40,44 @@ public sealed class ModelsProvidersSettingsViewModelTests
 
         Assert.Equal(["alpha/model", "beta/model"], viewModel.Models.Select(m => m.Id));
         Assert.True(viewModel.HasModels);
+        Assert.Equal("2 models from OpenRouter.", viewModel.CatalogSummaryText);
+        Assert.Empty(viewModel.StatusMessage);
+        Assert.False(viewModel.StatusIsError);
+    }
+
+    [Fact]
+    public async Task LoadModelsAsync_uses_staged_provider_without_changing_runtime()
+    {
+        var runtime = new TestRuntimeSettings();
+        runtime.SetProvider("OpenRouter");
+        var catalog = new FakeModelCatalog();
+        var viewModel = new ModelsProvidersSettingsViewModel(catalog, runtime, new FakeConfigWriter(), new FakeCredentialStore());
+        viewModel.SetProvider("Gemini");
+
+        await viewModel.LoadModelsCommand.ExecuteAsync(null);
+
+        Assert.Equal("Gemini", catalog.RequestedProvider);
+        Assert.Equal("OpenRouter", runtime.Caliper.Provider);
+    }
+
+    [Fact]
+    public async Task SetProvider_clears_catalog_from_previous_provider()
+    {
+        var viewModel = new ModelsProvidersSettingsViewModel(
+            new FakeModelCatalog(new ModelCatalogEntry(
+                "openrouter/model",
+                new ModelCapabilities(true, false, false, 1000))),
+            new TestRuntimeSettings(),
+            new FakeConfigWriter(),
+            new FakeCredentialStore());
+        await viewModel.LoadModelsCommand.ExecuteAsync(null);
+
+        viewModel.SetProvider("Gemini");
+
+        Assert.Empty(viewModel.Models);
+        Assert.Empty(viewModel.FilteredModels);
+        Assert.Empty(viewModel.CatalogSummaryText);
+        Assert.False(viewModel.HasModels);
     }
 
     [Fact]
@@ -110,7 +148,15 @@ public sealed class ModelsProvidersSettingsViewModelTests
 
     private sealed class FakeModelCatalog(params ModelCatalogEntry[] entries) : IModelCatalog
     {
+        public string? RequestedProvider { get; private set; }
+
         public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<ModelCatalogEntry>>(entries);
+
+        public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(string provider, CancellationToken ct)
+        {
+            RequestedProvider = provider;
+            return ListAsync(ct);
+        }
     }
 }

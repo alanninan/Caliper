@@ -42,4 +42,11 @@ public interface IRunStore
 
     /// <summary>Most recently updated runs first.</summary>
     Task<IReadOnlyList<RunRecord>> ListRecentAsync(int limit, CancellationToken ct);
+
+    /// <summary>
+    /// Most recently updated scheduled runs first. A scheduled run is identified by its non-null
+    /// originating job name; filtering happens in the store so unrelated one-shot and subagent
+    /// rows cannot consume the requested history limit.
+    /// </summary>
+    Task<IReadOnlyList<RunRecord>> ListRecentScheduledAsync(int limit, CancellationToken ct);
 }

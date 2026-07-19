@@ -3,10 +3,13 @@
 // See the LICENSE file in the project root for full license information.
 using System.Collections.ObjectModel;
 using System.Globalization;
+using Caliper.App.Navigation;
 using Caliper.App.Preferences;
 using Caliper.App.Scheduling;
 using Caliper.Core.Abstractions;
+using Caliper.Core.Agents;
 using Caliper.Core.Configuration;
+using Caliper.Core.Models;
 using Caliper.Core.Scheduling;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -26,9 +29,16 @@ public sealed partial class SchedulesViewModel(
     TimeProvider timeProvider,
     IAppPreferencesStore preferencesStore,
     AppSchedulerController schedulerController,
-    SessionsViewModel sessions) : ObservableObject
+    SessionsViewModel sessions,
+    IRunStore runStore,
+    IConversationOrchestrator orchestrator,
+    IChatSessionController chatSessionController,
+    AppNavigationService? navigation = null) : ObservableObject
 {
+    private const int RecentHistoryLimit = 20;
+
     public ObservableCollection<ScheduleItemViewModel> Jobs { get; } = [];
+    public ObservableCollection<ScheduledRunItemViewModel> RunHistory { get; } = [];
 
     [ObservableProperty]
     public partial ScheduleItemViewModel? SelectedJob { get; set; }
@@ -54,7 +64,27 @@ public sealed partial class SchedulesViewModel(
     [ObservableProperty]
     public partial string SchedulerStatusText { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial bool IsHistoryLoading { get; set; }
+
+    [ObservableProperty]
+    public partial string HistoryStatusMessage { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool HistoryStatusIsError { get; set; }
+
     public bool HasJobs => Jobs.Count > 0;
+    public bool HasRunHistory => RunHistory.Count > 0;
+    public string HistorySummaryText
+    {
+        get
+        {
+            var interrupted = RunHistory.Count(run => run.CanResume);
+            return interrupted == 0
+                ? $"{RunHistory.Count:N0} recent scheduled run{(RunHistory.Count == 1 ? "" : "s")}."
+                : $"{RunHistory.Count:N0} recent scheduled runs · {interrupted:N0} interrupted.";
+        }
+    }
 
     partial void OnRunSchedulerEnabledChanged(bool value) => _ = ApplySchedulerToggleAsync(value);
 
@@ -83,10 +113,36 @@ public sealed partial class SchedulesViewModel(
             // identical re-save-on-seed pattern for IsPaneCollapsed/ShowSubagentRuns.
             RunSchedulerEnabled = preferencesStore.Load().RunSchedulerInApp;
             RefreshSchedulerStatus();
+            await LoadHistoryAsync(ct);
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task LoadHistoryAsync(CancellationToken ct)
+    {
+        if (IsHistoryLoading)
+            return;
+
+        IsHistoryLoading = true;
+        try
+        {
+            var records = await runStore.ListRecentScheduledAsync(RecentHistoryLimit, ct);
+            RunHistory.Clear();
+            foreach (var record in records)
+                RunHistory.Add(new ScheduledRunItemViewModel(record));
+
+            HistoryStatusIsError = false;
+            HistoryStatusMessage = string.Empty;
+            OnPropertyChanged(nameof(HasRunHistory));
+            OnPropertyChanged(nameof(HistorySummaryText));
+        }
+        finally
+        {
+            IsHistoryLoading = false;
         }
     }
 
@@ -181,6 +237,46 @@ public sealed partial class SchedulesViewModel(
             job.IsRunning = false;
             RecomputeJob(job);
             await sessions.RefreshAsync(CancellationToken.None);
+            await LoadHistoryAsync(CancellationToken.None);
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenHistorySessionAsync(ScheduledRunItemViewModel? run)
+    {
+        if (run is null)
+            return;
+
+        await chatSessionController.SelectSessionAsync(run.SessionId, CancellationToken.None);
+        navigation?.Navigate(AppRoute.Chat);
+    }
+
+    [RelayCommand]
+    private async Task ResumeHistoryRunAsync(ScheduledRunItemViewModel? run)
+    {
+        if (run is null || run.IsResuming || !run.CanResume)
+            return;
+
+        run.IsResuming = true;
+        HistoryStatusIsError = false;
+        HistoryStatusMessage = $"Resuming {run.ScheduleName}…";
+        ConversationRunResult? result = null;
+        try
+        {
+            result = await Task.Run(
+                () => orchestrator.ResumeAsync(run.RunId, onEvent: null, CancellationToken.None));
+            await sessions.RefreshAsync(CancellationToken.None);
+        }
+        finally
+        {
+            run.IsResuming = false;
+            await LoadHistoryAsync(CancellationToken.None);
+        }
+
+        if (result is not null)
+        {
+            HistoryStatusIsError = result.Error is not null;
+            HistoryStatusMessage = FormatResumeOutcome(run.ScheduleName, result);
         }
     }
 
@@ -200,6 +296,20 @@ public sealed partial class SchedulesViewModel(
         if (outcome.DenialCount > 0)
             parts.Add($"{outcome.DenialCount} action(s) denied (unattended policy).");
         parts.Add($"Transcript saved to session '[job] {jobName}' — open it from Chat.");
+        return string.Join(" ", parts);
+    }
+
+    internal static string FormatResumeOutcome(string jobName, ConversationRunResult result)
+    {
+        var parts = new List<string>
+        {
+            result.Error is { } error
+                ? $"Could not resume {jobName}: {error}"
+                : $"{jobName} finished: {result.Reason?.ToString() ?? "unknown reason"}.",
+        };
+        if (result.Denials.Count > 0)
+            parts.Add($"{result.Denials.Count} action(s) denied (unattended policy).");
+        parts.Add("Open its chat to review the transcript.");
         return string.Join(" ", parts);
     }
 
@@ -287,6 +397,38 @@ public sealed partial class SchedulesViewModel(
 
     private bool IsDuplicateName(ScheduleItemViewModel job) =>
         Jobs.Count(other => string.Equals(other.Name.Trim(), job.Name.Trim(), StringComparison.OrdinalIgnoreCase)) > 1;
+}
+
+public sealed partial class ScheduledRunItemViewModel : ObservableObject
+{
+    public ScheduledRunItemViewModel(RunRecord record)
+    {
+        RunId = record.RunId;
+        SessionId = record.SessionId;
+        ScheduleName = record.JobName
+            ?? throw new ArgumentException("Scheduled history rows require a job name.", nameof(record));
+        Status = record.Status;
+        StatusText = record.Resumed ? $"{record.Status} (resumed)" : record.Status.ToString();
+        ProgressText = $"{record.Step} of {record.MaxSteps} steps";
+        UpdatedAtText = record.UpdatedAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+        Reason = record.Reason ?? string.Empty;
+        CanResume = record.Status == RunStatus.Interrupted;
+        AccessibleName = $"{StatusText} run for {ScheduleName}, {ProgressText}, updated {UpdatedAtText}";
+    }
+
+    public string RunId { get; }
+    public string SessionId { get; }
+    public string ScheduleName { get; }
+    public RunStatus Status { get; }
+    public string StatusText { get; }
+    public string ProgressText { get; }
+    public string UpdatedAtText { get; }
+    public string Reason { get; }
+    public bool CanResume { get; }
+    public string AccessibleName { get; }
+
+    [ObservableProperty]
+    public partial bool IsResuming { get; set; }
 }
 
 /// <summary>

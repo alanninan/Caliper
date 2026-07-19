@@ -40,7 +40,8 @@ public sealed class MemoryViewModelTests
         await viewModel.RefreshMemoryCommand.ExecuteAsync(null);
 
         Assert.False(viewModel.HasMemories);
-        Assert.Equal("No project memory document was found.", viewModel.ProjectDocument);
+        Assert.Equal(string.Empty, viewModel.ProjectDocument);
+        Assert.False(viewModel.HasProjectDocument);
     }
 
     [Fact]

@@ -8,6 +8,9 @@ namespace Caliper.Core.Abstractions;
 public interface IModelCatalog
 {
     Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct);
+
+    Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(string provider, CancellationToken ct) =>
+        ListAsync(ct);
 }
 
 public sealed record ModelCatalogEntry(string Id, ModelCapabilities Capabilities);

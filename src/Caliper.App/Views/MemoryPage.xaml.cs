@@ -34,6 +34,20 @@ public sealed partial class MemoryPage : Page
         AddMemoryExpander.IsExpanded = true;
     }
 
+    private void RememberFactEmpty_Click(object sender, RoutedEventArgs e)
+    {
+        AddMemoryExpander.IsExpanded = true;
+        MemoryKeyBox.Focus(FocusState.Programmatic);
+    }
+
+    private void MemorySelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        var showEntries = ReferenceEquals(sender.SelectedItem, EntriesSelectorItem);
+        EntriesPanel.Visibility = showEntries ? Visibility.Visible : Visibility.Collapsed;
+        ProjectPanel.Visibility = showEntries ? Visibility.Collapsed : Visibility.Visible;
+        Grid.SetColumn(ProjectPanel, 0);
+    }
+
     // U10: the row's Forget button opens an inline confirmation Flyout (not an immediate delete);
     // this handles the confirm button inside that Flyout. The confirm button isn't the element
     // that owns the Flyout, so there's no direct FlyoutBase reference to Hide() — walking up the

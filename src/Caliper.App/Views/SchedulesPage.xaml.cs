@@ -25,7 +25,14 @@ public sealed partial class SchedulesPage : Page
     public static Visibility MasterDetailVisibility(bool isLoading, bool hasJobs) =>
         !isLoading && hasJobs ? Visibility.Visible : Visibility.Collapsed;
 
+    public static Visibility HistoryVisibility(bool isLoading, bool hasHistory) =>
+        !isLoading && hasHistory ? Visibility.Visible : Visibility.Collapsed;
+
+    public static Visibility HistoryEmptyVisibility(bool isLoading, bool hasHistory) =>
+        !isLoading && !hasHistory ? Visibility.Visible : Visibility.Collapsed;
+
     public static string RunButtonText(bool isRunning) => isRunning ? "Running…" : "Run now";
+    public static string ResumeHistoryButtonText(bool isResuming) => isResuming ? "Resuming…" : "Resume";
 
     protected override async void OnNavigatedTo(NavigationEventArgs e)
     {
@@ -50,6 +57,31 @@ public sealed partial class SchedulesPage : Page
     {
         if (sender is FrameworkElement { Tag: ScheduleItemViewModel job })
             ViewModel.RunNowCommand.Execute(job);
+    }
+
+    private void ResumeHistoryRun_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: ScheduledRunItemViewModel run })
+            ViewModel.ResumeHistoryRunCommand.Execute(run);
+    }
+
+    private void OpenHistorySession_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: ScheduledRunItemViewModel run })
+            ViewModel.OpenHistorySessionCommand.Execute(run);
+    }
+
+    private void ScheduleViewSelector_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        if (SchedulesEditorScroll is null || ScheduleHistoryPanel is null || ScheduleActions is null)
+            return;
+
+        var showHistory = ReferenceEquals(sender.SelectedItem, HistorySelectorItem);
+        SchedulesEditorScroll.Visibility = showHistory ? Visibility.Collapsed : Visibility.Visible;
+        ScheduleHistoryPanel.Visibility = showHistory ? Visibility.Visible : Visibility.Collapsed;
+        ScheduleActions.Visibility = showHistory ? Visibility.Collapsed : Visibility.Visible;
+        if (showHistory)
+            ViewModel.LoadHistoryCommand.Execute(null);
     }
 
     private async void RemoveSelectedJob_Click(object sender, RoutedEventArgs e)

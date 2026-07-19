@@ -12,6 +12,12 @@ Lowest to highest:
 The desktop app's Settings pages and the console both read and write the same file, so a
 change made in one is picked up by the other.
 
+The desktop app stages configuration edits. Save validates and writes the whole affected
+section; Discard restores the loaded snapshot. Unsaved edits survive navigation between app
+pages but are not written on exit. Theme is an app-local preference and applies immediately.
+The Chat header's model and permission quick switchers are session-only and do not write this
+file.
+
 ## What applies immediately vs after restart
 
 Most settings are **live** — they apply to the next run, tool call, or scheduler tick

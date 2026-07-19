@@ -9,12 +9,17 @@ namespace Caliper.App.Views;
 
 public sealed partial class SettingsPage : Page
 {
+    private static string selectedTag = "General";
+
     public SettingsPage() => InitializeComponent();
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        SettingsNav.SelectedItem = SettingsNav.MenuItems[0];
-        SettingsFrame.Navigate(typeof(GeneralSettingsPage));
+        var selected = SettingsNav.MenuItems
+            .OfType<NavigationViewItem>()
+            .FirstOrDefault(item => string.Equals(item.Tag as string, selectedTag, StringComparison.Ordinal))
+            ?? SettingsNav.MenuItems.OfType<NavigationViewItem>().First();
+        SettingsNav.SelectedItem = selected;
     }
 
     private void SettingsNav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -22,6 +27,7 @@ public sealed partial class SettingsPage : Page
         if (args.SelectedItem is not NavigationViewItem { Tag: string tag })
             return;
 
+        selectedTag = tag;
         var pageType = tag switch
         {
             "General" => typeof(GeneralSettingsPage),

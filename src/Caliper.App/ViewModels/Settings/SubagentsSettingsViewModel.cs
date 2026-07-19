@@ -18,7 +18,9 @@ namespace Caliper.App.ViewModels.Settings;
 /// a live seam — <c>SubagentTool</c> reads it fresh per <c>task</c> call — so saves here never
 /// need a restart.
 /// </summary>
-public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWriter) : ObservableObject
+public sealed partial class SubagentsSettingsViewModel(
+    IConfigWriter configWriter,
+    IToolRegistry? toolRegistry = null) : ObservableObject
 {
     public ObservableCollection<SubagentProfileItemViewModel> Profiles { get; } = [];
 
@@ -33,6 +35,8 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
     [ObservableProperty] public partial string StatusMessage { get; set; } = string.Empty;
     [ObservableProperty] public partial bool StatusIsError { get; set; }
     [ObservableProperty] public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private string _loadedSnapshot = string.Empty;
 
     public bool HasProfiles => Profiles.Count > 0;
 
@@ -53,7 +57,8 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
 
         Profiles.Clear();
         foreach (var (name, profile) in subagents.Profiles)
-            Profiles.Add(SubagentProfileItemViewModel.FromOptions(name, profile, OnProfileChanged));
+            Profiles.Add(SubagentProfileItemViewModel.FromOptions(
+                name, profile, OnProfileChanged, toolRegistry?.All.Select(static tool => tool.Name)));
 
         RefreshProfileNameOptions();
         DefaultProfile = subagents.DefaultProfile;
@@ -65,22 +70,27 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
 
         OnPropertyChanged(nameof(HasProfiles));
         SaveCommand.NotifyCanExecuteChanged();
+        _loadedSnapshot = CaptureSnapshot();
+        IsDirty = false;
     }
 
     [RelayCommand]
     private void AddProfile()
     {
-        var profile = new SubagentProfileItemViewModel(OnProfileChanged)
+        var profile = new SubagentProfileItemViewModel(
+            OnProfileChanged, toolRegistry?.All.Select(static tool => tool.Name))
         {
             Name = NextDefaultName(),
             EnabledToolsText = "read_file",
         };
+        profile.InitializeToolChoices();
         Profiles.Add(profile);
         RefreshProfileNameOptions();
         SelectedProfile = profile;
         RecomputeProfile(profile);
         OnPropertyChanged(nameof(HasProfiles));
         SaveCommand.NotifyCanExecuteChanged();
+        UpdateDirty();
     }
 
     /// <summary>Called by the page after the user confirms a delete dialog — never directly from XAML.</summary>
@@ -95,6 +105,7 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
         SelectedProfile = Profiles.FirstOrDefault();
         OnPropertyChanged(nameof(HasProfiles));
         SaveCommand.NotifyCanExecuteChanged();
+        UpdateDirty();
     }
 
     public bool CanRemoveSelected => SelectedProfile is { } profile && !IsDefaultProfile(profile);
@@ -116,6 +127,11 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
         StatusMessage = result.Success
             ? "Saved. Changes apply to the next task tool call."
             : result.Error ?? "Save failed.";
+        if (result.Success)
+        {
+            _loadedSnapshot = CaptureSnapshot();
+            IsDirty = false;
+        }
     }
 
     [RelayCommand]
@@ -148,9 +164,9 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
         return !string.IsNullOrWhiteSpace(DefaultProfile) && names.Contains(DefaultProfile.Trim());
     }
 
-    partial void OnMaxDepthChanged(double value) => SaveCommand.NotifyCanExecuteChanged();
-    partial void OnMaxChildrenPerRunChanged(double value) => SaveCommand.NotifyCanExecuteChanged();
-    partial void OnTimeoutSecondsChanged(double value) => SaveCommand.NotifyCanExecuteChanged();
+    partial void OnMaxDepthChanged(double value) { SaveCommand.NotifyCanExecuteChanged(); UpdateDirty(); }
+    partial void OnMaxChildrenPerRunChanged(double value) { SaveCommand.NotifyCanExecuteChanged(); UpdateDirty(); }
+    partial void OnTimeoutSecondsChanged(double value) { SaveCommand.NotifyCanExecuteChanged(); UpdateDirty(); }
 
     partial void OnDefaultProfileChanged(string value)
     {
@@ -162,6 +178,7 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
             _defaultProfileItem = FindProfile(value);
         NotifyRemoveGuardChanged();
         SaveCommand.NotifyCanExecuteChanged();
+        UpdateDirty();
     }
 
     partial void OnSelectedProfileChanged(SubagentProfileItemViewModel? value) => NotifyRemoveGuardChanged();
@@ -210,6 +227,7 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
 
         NotifyRemoveGuardChanged();
         SaveCommand.NotifyCanExecuteChanged();
+        UpdateDirty();
     }
 
     private void RecomputeProfile(SubagentProfileItemViewModel profile)
@@ -269,6 +287,20 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
 
         return candidate;
     }
+
+    private string CaptureSnapshot()
+    {
+        var profileText = string.Join("|", Profiles
+            .OrderBy(static profile => profile.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(profile => $"{profile.Name}\u001f{profile.EnabledToolsText}\u001f{profile.MaxSteps}\u001f{profile.ModeText}"));
+        return $"{MaxDepth}\u001e{MaxChildrenPerRun}\u001e{TimeoutSeconds}\u001e{DefaultProfile}\u001e{profileText}";
+    }
+
+    private void UpdateDirty()
+    {
+        if (!string.IsNullOrEmpty(_loadedSnapshot))
+            IsDirty = !string.Equals(CaptureSnapshot(), _loadedSnapshot, StringComparison.Ordinal);
+    }
 }
 
 /// <summary>
@@ -278,12 +310,18 @@ public sealed partial class SubagentsSettingsViewModel(IConfigWriter configWrite
 /// one tool name per line — same convention as <c>ScheduleItemViewModel.ShellAutoAllowlistText</c>
 /// and <c>McpServerSettingViewModel.ArgsText</c> — rather than inventing a checkbox grid.
 /// </summary>
-public sealed partial class SubagentProfileItemViewModel(Action<SubagentProfileItemViewModel> onChanged) : ObservableObject
+public sealed partial class SubagentProfileItemViewModel(
+    Action<SubagentProfileItemViewModel> onChanged,
+    IEnumerable<string>? availableToolNames = null) : ObservableObject
 {
-    public const string InheritModeText = "(inherit)";
+    public const string InheritModeText = "Inherit parent";
+    public const string AskModeText = "Ask before actions";
+    public const string AutoModeText = "Allow safe and approved actions";
+    public const string PlanModeText = "Planning only";
 
     [ObservableProperty] public partial string Name { get; set; } = string.Empty;
     [ObservableProperty] public partial string EnabledToolsText { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ToolSearchText { get; set; } = string.Empty;
     [ObservableProperty] public partial double MaxSteps { get; set; } = 15;
     [ObservableProperty] public partial string ModeText { get; set; } = InheritModeText;
     [ObservableProperty] public partial string ValidationMessage { get; set; } = string.Empty;
@@ -291,6 +329,30 @@ public sealed partial class SubagentProfileItemViewModel(Action<SubagentProfileI
     public bool HasValidationMessage => !string.IsNullOrWhiteSpace(ValidationMessage);
 
     public IReadOnlyList<string> EnabledToolsList => ParseLines(EnabledToolsText);
+    public ObservableCollection<SubagentToolChoiceViewModel> ToolChoices { get; } = [];
+    public ObservableCollection<SubagentToolChoiceViewModel> FilteredToolChoices { get; } = [];
+
+    public void InitializeToolChoices()
+    {
+        ToolChoices.Clear();
+        foreach (var toolName in (availableToolNames ?? EnabledToolsList)
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .Order(StringComparer.OrdinalIgnoreCase))
+        {
+            var choice = new SubagentToolChoiceViewModel(toolName)
+            {
+                IsEnabled = EnabledToolsList.Contains(toolName, StringComparer.OrdinalIgnoreCase),
+            };
+            choice.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName == nameof(SubagentToolChoiceViewModel.IsEnabled))
+                    EnabledToolsText = string.Join(Environment.NewLine,
+                        ToolChoices.Where(static item => item.IsEnabled).Select(static item => item.Name));
+            };
+            ToolChoices.Add(choice);
+        }
+        FilterTools();
+    }
 
     public string SummaryCaption
     {
@@ -310,6 +372,8 @@ public sealed partial class SubagentProfileItemViewModel(Action<SubagentProfileI
         onChanged(this);
     }
 
+    partial void OnToolSearchTextChanged(string value) => FilterTools();
+
     partial void OnMaxStepsChanged(double value)
     {
         OnPropertyChanged(nameof(SummaryCaption));
@@ -326,19 +390,53 @@ public sealed partial class SubagentProfileItemViewModel(Action<SubagentProfileI
         MaxSteps = (int)MaxSteps,
         Mode = string.Equals(ModeText, InheritModeText, StringComparison.Ordinal)
             ? null
-            : Enum.TryParse<PermissionMode>(ModeText, out var mode) ? mode : null,
+            : ModeText switch
+            {
+                AskModeText => PermissionMode.AskAlways,
+                AutoModeText => PermissionMode.Auto,
+                PlanModeText => PermissionMode.Plan,
+                _ => Enum.TryParse<PermissionMode>(ModeText, out var mode) ? mode : null,
+            },
     };
 
     public static SubagentProfileItemViewModel FromOptions(
-        string name, SubagentProfileOptions options, Action<SubagentProfileItemViewModel> onChanged) =>
-        new(onChanged)
+        string name, SubagentProfileOptions options, Action<SubagentProfileItemViewModel> onChanged,
+        IEnumerable<string>? availableToolNames = null)
+    {
+        var item = new SubagentProfileItemViewModel(onChanged, availableToolNames)
         {
             Name = name,
             EnabledToolsText = string.Join(Environment.NewLine, options.EnabledTools),
             MaxSteps = options.MaxSteps,
-            ModeText = options.Mode?.ToString() ?? InheritModeText,
+            ModeText = options.Mode switch
+            {
+                PermissionMode.AskAlways => AskModeText,
+                PermissionMode.Auto => AutoModeText,
+                PermissionMode.Plan => PlanModeText,
+                _ => InheritModeText,
+            },
         };
+        item.InitializeToolChoices();
+        return item;
+    }
+
+    private void FilterTools()
+    {
+        FilteredToolChoices.Clear();
+        foreach (var choice in ToolChoices.Where(item =>
+                     string.IsNullOrWhiteSpace(ToolSearchText) ||
+                     item.Name.Contains(ToolSearchText, StringComparison.OrdinalIgnoreCase)))
+            FilteredToolChoices.Add(choice);
+    }
 
     private static string[] ParseLines(string value) =>
         value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+
+public sealed partial class SubagentToolChoiceViewModel(string name) : ObservableObject
+{
+    public string Name { get; } = name;
+
+    [ObservableProperty]
+    public partial bool IsEnabled { get; set; }
 }

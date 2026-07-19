@@ -6,18 +6,21 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:settings="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="720" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Context &amp; memory" Style="{StaticResource TitleTextBlockStyle}" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Compaction thresholds and persistent memory locations." TextWrapping="Wrap" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Control long conversations and the facts Caliper can remember." TextWrapping="Wrap" />
                 </StackPanel>
-                <Button Grid.Column="1" AutomationProperties.AutomationId="SaveContextMemoryButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                    <Button AutomationProperties.AutomationId="DiscardContextMemoryButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                    <Button AutomationProperties.AutomationId="SaveContextMemoryButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
             </Grid>
             <InfoBar
                 IsClosable="False"
@@ -33,20 +36,25 @@
                 </InfoBar.ActionButton>
             </InfoBar>
 
-            <settings:SettingsExpander Header="Context compaction" Description="Keeps the conversation inside the model's context window.">
+            <settings:SettingsExpander Header="Manage long conversations" Description="Summarize older messages before the model runs out of room.">
                 <ToggleSwitch AutomationProperties.AutomationId="AutoCompactSwitch" IsOn="{x:Bind ViewModel.AutoCompact, Mode=TwoWay}" />
                 <settings:SettingsExpander.Items>
-                    <settings:SettingsCard Header="Compact at fraction" Description="Fraction of the context window that triggers compaction.">
-                        <NumberBox AutomationProperties.AutomationId="CompactFractionNumberBox" Minimum="0.1" Maximum="0.99" SmallChange="0.05" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.CompactAtFraction, Mode=TwoWay}" />
+                    <settings:SettingsCard Header="Start summarizing at" Description="Percentage of the model's conversation capacity.">
+                        <NumberBox AutomationProperties.AutomationId="CompactFractionNumberBox" Minimum="10" Maximum="99" SmallChange="5" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.CompactAtPercent, Mode=TwoWay}" />
                     </settings:SettingsCard>
-                    <settings:SettingsCard Header="Keep recent turns">
+                    <settings:SettingsCard Header="Keep recent turns" Description="For example, 4 keeps the last four user-and-assistant exchanges unchanged.">
                         <NumberBox AutomationProperties.AutomationId="KeepTurnsNumberBox" Minimum="1" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.KeepRecentTurns, Mode=TwoWay}" />
                     </settings:SettingsCard>
-                    <settings:SettingsCard Header="Reserved output tokens">
+                    <settings:SettingsCard Header="Reserved output tokens" Visibility="Collapsed">
                         <NumberBox AutomationProperties.AutomationId="ReservedTokensNumberBox" Minimum="1" SmallChange="512" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.ReservedOutputTokens, Mode=TwoWay}" />
                     </settings:SettingsCard>
                 </settings:SettingsExpander.Items>
             </settings:SettingsExpander>
+            <Expander Header="Advanced">
+                <settings:SettingsCard Header="Reserved output tokens" Description="Conversation capacity kept available for the model's reply.">
+                    <NumberBox AutomationProperties.AutomationId="ReservedTokensAdvancedNumberBox" Minimum="1" SmallChange="512" SpinButtonPlacementMode="Compact" Value="{x:Bind ViewModel.ReservedOutputTokens, Mode=TwoWay}" />
+                </settings:SettingsCard>
+            </Expander>
 
             <settings:SettingsExpander Header="Memory" Description="Persistent memory locations and the project document name.">
                 <ToggleSwitch AutomationProperties.AutomationId="MemoryEnabledSwitch" IsOn="{x:Bind ViewModel.MemoryEnabled, Mode=TwoWay}" />

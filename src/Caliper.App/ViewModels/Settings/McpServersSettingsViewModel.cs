@@ -57,8 +57,11 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
     // U5: mirrors ModelsProvidersSettingsViewModel.RestartRequired.
     [ObservableProperty]
     public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private string _loadedSnapshot = string.Empty;
 
     public bool HasMcpServers => McpServers.Count > 0;
+    public bool HasConfiguredServers => Servers.Count > 0;
     public string ServerCountText => $"{Servers.Count:N0}";
     public string ToolCountText => $"{McpServers.Sum(static s => s.ToolCount):N0} tools";
     public string HealthText => McpServers.Count == 0
@@ -75,12 +78,16 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
             var item = McpServerSettingViewModel.FromOptions(name, server);
             if (_credentials.TryRead(CredentialTargets.McpBearerToken(name), out var token))
                 item.BearerToken = token;
+            item.PropertyChanged += (_, _) => UpdateDirty();
             Servers.Add(item);
         }
 
         _loadedServerNames = new HashSet<string>(options.Servers.Keys, StringComparer.OrdinalIgnoreCase);
         SelectedServer = Servers.FirstOrDefault();
         OnPropertyChanged(nameof(ServerCountText));
+        OnPropertyChanged(nameof(HasConfiguredServers));
+        _loadedSnapshot = CaptureSnapshot();
+        IsDirty = false;
     }
 
     [RelayCommand]
@@ -110,12 +117,23 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
 
     [RelayCommand]
     private void AddServer()
+        => AddServerWithTransport("stdio");
+
+    [RelayCommand]
+    private void AddServerWithTransport(string? transport)
     {
         var index = Servers.Count + 1;
-        var server = new McpServerSettingViewModel { Name = $"server-{index}", Type = "stdio" };
+        var server = new McpServerSettingViewModel
+        {
+            Name = $"server-{index}",
+            Type = string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase) ? "http" : "stdio",
+        };
+        server.PropertyChanged += (_, _) => UpdateDirty();
         Servers.Add(server);
         SelectedServer = server;
         OnPropertyChanged(nameof(ServerCountText));
+        OnPropertyChanged(nameof(HasConfiguredServers));
+        UpdateDirty();
     }
 
     [RelayCommand]
@@ -131,6 +149,8 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
         Servers.Remove(SelectedServer);
         SelectedServer = Servers.FirstOrDefault();
         OnPropertyChanged(nameof(ServerCountText));
+        OnPropertyChanged(nameof(HasConfiguredServers));
+        UpdateDirty();
     }
 
     [RelayCommand]
@@ -175,6 +195,8 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
                     _credentials.Delete(CredentialTargets.McpBearerToken(removedName));
             }
             _loadedServerNames = savedNames;
+            _loadedSnapshot = CaptureSnapshot();
+            IsDirty = false;
         }
 
         StatusIsError = !result.Success;
@@ -184,6 +206,22 @@ public sealed partial class McpServersSettingsViewModel : ObservableObject, IDis
                 ? "Saved. Restart Caliper for server changes to take effect."
                 : "Saved."
             : result.Error ?? "Save failed.";
+    }
+
+    [RelayCommand]
+    private async Task DiscardAsync(CancellationToken ct)
+    {
+        StatusMessage = string.Empty;
+        await LoadAsync(ct);
+    }
+
+    private string CaptureSnapshot() => string.Join("\u001e", Servers.Select(server =>
+        $"{server.Name}\u001f{server.Type}\u001f{server.Url}\u001f{server.Command}\u001f{server.ArgsText}\u001f{server.BearerToken}\u001f{server.HeadersText}"));
+
+    private void UpdateDirty()
+    {
+        if (!string.IsNullOrEmpty(_loadedSnapshot) || Servers.Count > 0)
+            IsDirty = !string.Equals(CaptureSnapshot(), _loadedSnapshot, StringComparison.Ordinal);
     }
 
     private static string[] ParseLines(string value) =>

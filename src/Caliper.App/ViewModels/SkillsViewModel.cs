@@ -4,12 +4,16 @@
 using System.Collections.ObjectModel;
 using Caliper.Core.Abstractions;
 using Caliper.Core.Models;
+using Caliper.App.Navigation;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace Caliper.App.ViewModels;
 
-public sealed partial class SkillsViewModel(ISkillStore skillStore) : ObservableObject
+public sealed partial class SkillsViewModel(
+    ISkillStore skillStore,
+    IRuntimeSettings? runtimeSettings = null,
+    IPathLauncher? pathLauncher = null) : ObservableObject
 {
     public ObservableCollection<SkillItemViewModel> Skills { get; } = [];
 
@@ -23,6 +27,14 @@ public sealed partial class SkillsViewModel(ISkillStore skillStore) : Observable
     public partial string StatusMessage { get; set; } = string.Empty;
 
     public bool HasSkills => Skills.Count > 0;
+    public string SkillsFolder => runtimeSettings?.Caliper.SkillsDirectory ?? string.Empty;
+
+    [RelayCommand]
+    private void OpenSkillsFolder()
+    {
+        if (pathLauncher?.OpenExisting(SkillsFolder) != true)
+            StatusMessage = "The configured skills folder does not exist yet.";
+    }
 
     // U9: re-lists from the store (picks up skills added/removed on disk since the page loaded).
     // PITFALL: SelectedSkill/SkillBody must survive a refresh sensibly — if the previously selected

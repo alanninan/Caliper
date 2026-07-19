@@ -40,6 +40,8 @@ public sealed partial class MemoryViewModel(
     public partial string MemoryValue { get; set; } = string.Empty;
 
     public bool HasMemories => Memories.Count > 0;
+    public bool HasProjectDocument => !string.IsNullOrWhiteSpace(ProjectDocumentPath) &&
+        !string.IsNullOrWhiteSpace(ProjectDocument);
     public string MemoryCountText => $"{Memories.Count:N0}";
 
     [RelayCommand]
@@ -141,6 +143,32 @@ public sealed partial class MemoryViewModel(
         MemoryValue = item.Value;
     }
 
+    [RelayCommand]
+    private async Task CreateProjectDocumentAsync()
+    {
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        try
+        {
+            var options = runtimeSettings.Caliper;
+            var document = await caliperMdProvider.CreateIfMissingAsync(options.WorkingRoot, CancellationToken.None);
+            ProjectDocumentPath = document.Path;
+            ProjectDocument = document.Content;
+            StatusMessage = "Project memory is ready.";
+            OnPropertyChanged(nameof(HasProjectDocument));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            StatusMessage = ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     // Shared by RefreshMemoryAsync, ForgetAsync, and RememberAsync — each manages its own IsBusy
     // guard/finally and catch around this core reload so the busy state and error surface stay
     // consistent no matter which command triggered it.
@@ -157,10 +185,11 @@ public sealed partial class MemoryViewModel(
         var document = await caliperMdProvider.ReadAsync(options.WorkingRoot, CancellationToken.None);
         ProjectDocumentPath = document.Path;
         ProjectDocument = string.IsNullOrWhiteSpace(document.Content)
-            ? "No project memory document was found."
+            ? string.Empty
             : document.Content + (document.Truncated ? "\n\n[Preview truncated]" : string.Empty);
         OnPropertyChanged(nameof(HasMemories));
         OnPropertyChanged(nameof(MemoryCountText));
+        OnPropertyChanged(nameof(HasProjectDocument));
     }
 }
 

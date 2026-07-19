@@ -27,7 +27,7 @@ public sealed class SchedulesViewModelTests
         FakeConversationOrchestrator Orchestrator,
         FakeSessionStore Sessions,
         SessionsViewModel SessionsViewModel)
-        Create()
+        Create(FakeRunStore? runStore = null, FakeChatSessionController? chatController = null)
     {
         var configWriter = new FakeConfigWriter();
         var sessionStore = new FakeSessionStore();
@@ -38,9 +38,19 @@ public sealed class SchedulesViewModelTests
         var controller = new AppSchedulerController(
             new ServiceCollection().BuildServiceProvider(),
             NullLogger<AppSchedulerController>.Instance);
-        var chat = new FakeChatSessionController();
+        var chat = chatController ?? new FakeChatSessionController();
         var sessions = new SessionsViewModel(sessionStore, chat, preferences, timeProvider);
-        var viewModel = new SchedulesViewModel(configWriter, runner, timeProvider, preferences, controller, sessions);
+        runStore ??= new FakeRunStore();
+        var viewModel = new SchedulesViewModel(
+            configWriter,
+            runner,
+            timeProvider,
+            preferences,
+            controller,
+            sessions,
+            runStore,
+            orchestrator,
+            chat);
         return (viewModel, configWriter, orchestrator, sessionStore, sessions);
     }
 
@@ -344,11 +354,83 @@ public sealed class SchedulesViewModelTests
         Assert.Contains("Transcript saved to session '[job] nightly'", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task LoadAsync_populates_only_scheduled_run_history()
+    {
+        var runStore = new FakeRunStore
+        {
+            Records =
+            [
+                MakeRun("scheduled", "session-job", "nightly", RunStatus.Completed),
+                MakeRun("other", "session-other", null, RunStatus.Completed),
+            ],
+        };
+        var (viewModel, _, _, _, _) = Create(runStore);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        var history = Assert.Single(viewModel.RunHistory);
+        Assert.Equal("nightly", history.ScheduleName);
+        Assert.Equal("scheduled", history.RunId);
+        Assert.True(viewModel.HasRunHistory);
+    }
+
+    [Fact]
+    public async Task OpenHistorySession_selects_the_scheduled_run_chat()
+    {
+        var runStore = new FakeRunStore
+        {
+            Records = [MakeRun("scheduled", "session-job", "nightly", RunStatus.Completed)],
+        };
+        var chat = new FakeChatSessionController();
+        var (viewModel, _, _, _, _) = Create(runStore, chat);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.OpenHistorySessionCommand.ExecuteAsync(viewModel.RunHistory.Single());
+
+        Assert.Equal("session-job", chat.CurrentSessionId);
+    }
+
+    [Fact]
+    public async Task ResumeHistoryRun_resumes_only_interrupted_scheduled_runs()
+    {
+        var runStore = new FakeRunStore
+        {
+            Records = [MakeRun("scheduled", "session-job", "nightly", RunStatus.Interrupted)],
+        };
+        var (viewModel, _, orchestrator, _, _) = Create(runStore);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.ResumeHistoryRunCommand.ExecuteAsync(viewModel.RunHistory.Single());
+
+        Assert.Equal(1, orchestrator.ResumeCallCount);
+        Assert.Contains("nightly finished", viewModel.HistoryStatusMessage, StringComparison.Ordinal);
+    }
+
+    private static RunRecord MakeRun(
+        string runId,
+        string sessionId,
+        string? jobName,
+        RunStatus status) =>
+        new(
+            runId,
+            sessionId,
+            jobName,
+            status,
+            "Completed",
+            2,
+            10,
+            true,
+            Now.AddMinutes(-5),
+            Now,
+            false);
+
     // ── Fakes (per-file convention, matching ChatViewModelTests/SessionsViewModelTests) ────────
 
     private sealed class FakeConversationOrchestrator : IConversationOrchestrator
     {
         public ConversationRunResult NextResult { get; set; } = new(null, null, CompletionReason.Completed, []);
+        public int ResumeCallCount { get; private set; }
 
         public Task<ConversationRunResult> RunToCompletionAsync(
             string sessionId, string prompt, Func<AgentEvent, CancellationToken, ValueTask>? onEvent, CancellationToken ct) =>
@@ -360,6 +442,39 @@ public sealed class SchedulesViewModelTests
 
         public Task<ContextFit> ForceCompactAsync(string sessionId, CancellationToken ct) =>
             Task.FromResult(new ContextFit([], Compacted: false, BeforeTokens: null, AfterTokens: null, EstimatedPromptTokens: null));
+
+        public Task<ConversationRunResult> ResumeAsync(
+            string runId,
+            Func<AgentEvent, CancellationToken, ValueTask>? onEvent,
+            CancellationToken ct)
+        {
+            ResumeCallCount++;
+            return Task.FromResult(NextResult);
+        }
+    }
+
+    private sealed class FakeRunStore : IRunStore
+    {
+        public IReadOnlyList<RunRecord> Records { get; set; } = [];
+
+        public Task<string> StartAsync(string sessionId, string? jobName, int maxSteps, bool unattended, CancellationToken ct) =>
+            Task.FromResult(Guid.NewGuid().ToString("N"));
+
+        public Task UpdateStepAsync(string runId, int stepNumber, CancellationToken ct) => Task.CompletedTask;
+
+        public Task CompleteAsync(string runId, RunStatus status, string? reason, CancellationToken ct) => Task.CompletedTask;
+
+        public Task MarkResumedAsync(string runId, int maxSteps, CancellationToken ct) => Task.CompletedTask;
+
+        public Task<RunRecord?> GetAsync(string runId, CancellationToken ct) =>
+            Task.FromResult(Records.FirstOrDefault(record => record.RunId == runId));
+
+        public Task<IReadOnlyList<RunRecord>> ListRecentAsync(int limit, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<RunRecord>>([.. Records.Take(limit)]);
+
+        public Task<IReadOnlyList<RunRecord>> ListRecentScheduledAsync(int limit, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<RunRecord>>(
+                [.. Records.Where(record => record.JobName is not null).Take(limit)]);
     }
 
     private sealed class FakeSessionStore : ISessionStore

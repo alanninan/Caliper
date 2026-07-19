@@ -6,18 +6,18 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:settings="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="720" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Execution" Style="{StaticResource TitleTextBlockStyle}" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Where bash and powershell tool calls actually run — live, no restart needed." TextWrapping="Wrap" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Choose where commands run. Changes apply to the next command." TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
                     <Button AutomationProperties.AutomationId="DiscardExecutionButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
                     <Button AutomationProperties.AutomationId="SaveExecutionButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
                 </StackPanel>
@@ -44,15 +44,18 @@
                 Message="{x:Bind ViewModel.WildcardWarningText, Mode=OneWay}"
                 Severity="Warning" />
 
-            <settings:SettingsExpander Header="Backend" Description="Host runs shell commands directly on this machine (default, exactly as before this feature existed). Container routes them through `docker run` — Linux containers only, bash-only (a powershell call is rejected outright), and fails closed if Docker is unavailable rather than silently falling back to the host.">
-                <ComboBox AutomationProperties.AutomationId="ExecutionBackendPicker" MinWidth="200" ItemsSource="{x:Bind ViewModel.BackendOptions, Mode=OneWay}" SelectedItem="{x:Bind ViewModel.SelectedBackend, Mode=TwoWay}" />
-            </settings:SettingsExpander>
+            <StackPanel Spacing="8">
+                <TextBlock Text="Where should commands run?" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <RadioButton x:Name="ExecutionHostChoice" AutomationProperties.AutomationId="ExecutionHostChoice" Content="Run directly on this PC" Tag="Host" Checked="BackendChoice_Checked" />
+                <TextBlock Margin="32,0,0,4" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Uses your normal Windows environment. Commands can access everything your account can access." TextWrapping="Wrap" />
+                <RadioButton x:Name="ExecutionContainerChoice" AutomationProperties.AutomationId="ExecutionContainerChoice" Content="Run in a Docker sandbox" Tag="Container" Checked="BackendChoice_Checked" />
+                <TextBlock Margin="32,0,0,4" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Runs bash in an isolated Linux container with explicit resource and network limits." TextWrapping="Wrap" />
+            </StackPanel>
 
             <settings:SettingsExpander
-                Header="Container settings"
-                Description="Only consulted when Backend is Container — these are inert (and shown dimmed) under Host."
-                IsEnabled="{x:Bind ViewModel.IsContainerBackend, Mode=OneWay}"
-                Opacity="{x:Bind converters:XamlConverters.DimOpacity(ViewModel.IsHostBackend), Mode=OneWay}">
+                Header="Docker sandbox settings"
+                Description="These settings are used only when the Docker sandbox is selected."
+                Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsContainerBackend), Mode=OneWay}">
                 <settings:SettingsExpander.Items>
                     <settings:SettingsCard Header="Image" Description="The container image `docker run` uses. Requires Docker Desktop with the WSL2/Linux containers backend — Windows containers aren't supported.">
                         <TextBox AutomationProperties.AutomationId="ExecutionImageTextBox" MinWidth="320" Text="{x:Bind ViewModel.Image, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

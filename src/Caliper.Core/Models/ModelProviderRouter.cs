@@ -29,6 +29,11 @@ internal sealed class ModelProviderRouter(
     public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct) =>
         IsGemini() ? geminiCapabilities.ListAsync(ct) : openRouterCapabilities.ListAsync(ct);
 
+    public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(string provider, CancellationToken ct) =>
+        string.Equals(provider, "Gemini", StringComparison.OrdinalIgnoreCase)
+            ? geminiCapabilities.ListAsync(ct)
+            : openRouterCapabilities.ListAsync(ct);
+
     // Unrecognized or unset provider values fall through to OpenRouter, preserving today's only
     // behavior for existing configs.
     private bool IsGemini() =>

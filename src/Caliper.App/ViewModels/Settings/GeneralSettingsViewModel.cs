@@ -33,6 +33,11 @@ public sealed partial class GeneralSettingsViewModel(
     // page rather than special-cased away.
     [ObservableProperty]
     public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private string _loadedWorkingRoot = runtimeSettings.Caliper.WorkingRoot;
+
+    partial void OnWorkingRootChanged(string value) =>
+        IsDirty = !string.Equals(value, _loadedWorkingRoot, StringComparison.Ordinal);
 
     partial void OnSelectedThemeChanged(AppThemePreference value) =>
         preferencesStore.Save(preferencesStore.Load() with { Theme = value });
@@ -42,6 +47,8 @@ public sealed partial class GeneralSettingsViewModel(
     {
         var current = await configWriter.LoadCaliperAsync(ct);
         WorkingRoot = current.WorkingRoot;
+        _loadedWorkingRoot = WorkingRoot;
+        IsDirty = false;
     }
 
     [RelayCommand]
@@ -57,5 +64,18 @@ public sealed partial class GeneralSettingsViewModel(
         StatusMessage = result.Success
             ? "Saved."
             : result.Error ?? "Save failed.";
+        if (result.Success)
+        {
+            _loadedWorkingRoot = WorkingRoot;
+            IsDirty = false;
+        }
+    }
+
+    [RelayCommand]
+    private void Discard()
+    {
+        WorkingRoot = _loadedWorkingRoot;
+        IsDirty = false;
+        StatusMessage = "Changes discarded.";
     }
 }

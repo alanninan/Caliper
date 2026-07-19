@@ -160,6 +160,20 @@ public sealed class SqliteRunStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ListRecentScheduledAsync_filters_before_applying_the_limit()
+    {
+        var store = Build(NewDbPath());
+        _ = await store.StartAsync("session-other-1", null, 10, true, CancellationToken.None);
+        _ = await store.StartAsync("session-other-2", null, 10, true, CancellationToken.None);
+        var scheduled = await store.StartAsync("session-job", "nightly", 10, true, CancellationToken.None);
+
+        var recent = await store.ListRecentScheduledAsync(1, CancellationToken.None);
+
+        Assert.Equal(scheduled, Assert.Single(recent).RunId);
+        Assert.Equal("nightly", recent[0].JobName);
+    }
+
+    [Fact]
     public async Task Persists_across_store_instances()
     {
         var path = NewDbPath();

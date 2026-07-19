@@ -24,7 +24,12 @@ public sealed partial class PermissionsSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
+            PermissionAskChoice.IsChecked = ViewModel.SelectedPermissionMode == Caliper.Core.Configuration.PermissionMode.AskAlways;
+            PermissionAutoChoice.IsChecked = ViewModel.SelectedPermissionMode == Caliper.Core.Configuration.PermissionMode.Auto;
+            PermissionPlanChoice.IsChecked = ViewModel.SelectedPermissionMode == Caliper.Core.Configuration.PermissionMode.Plan;
         }
         catch (Exception ex)
         {
@@ -53,6 +58,13 @@ public sealed partial class PermissionsSettingsPage : Page
     private void RemoveDenylistEntry_Click(object sender, RoutedEventArgs e) => RemoveEntry(ViewModel.ShellDenylist, sender);
     private void RemoveFileRootEntry_Click(object sender, RoutedEventArgs e) => RemoveEntry(ViewModel.AutoAllowFileRoots, sender);
 
+    private void PermissionChoice_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string value } &&
+            Enum.TryParse<Caliper.Core.Configuration.PermissionMode>(value, out var mode))
+            ViewModel.SelectedPermissionMode = mode;
+    }
+
     private static void AddEntry(System.Collections.ObjectModel.ObservableCollection<string> target, TextBox source)
     {
         var value = source.Text.Trim();
@@ -61,11 +73,15 @@ public sealed partial class PermissionsSettingsPage : Page
 
         target.Add(value);
         source.Text = string.Empty;
+        App.Services.GetRequiredService<PermissionsSettingsViewModel>().MarkDirty();
     }
 
     private static void RemoveEntry(System.Collections.ObjectModel.ObservableCollection<string> target, object sender)
     {
         if (sender is FrameworkElement { Tag: string value })
+        {
             target.Remove(value);
+            App.Services.GetRequiredService<PermissionsSettingsViewModel>().MarkDirty();
+        }
     }
 }

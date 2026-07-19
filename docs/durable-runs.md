@@ -18,8 +18,9 @@ budget.
 ## Interruption
 
 A process that dies mid-run leaves its journal entry saying `running`. On the next start,
-Caliper sweeps those stale entries to `interrupted` — and the desktop app shows a launch
-banner when any exist ("N run(s) were interrupted — view Runs").
+Caliper sweeps those stale entries to `interrupted`. Interrupted scheduled runs appear in
+the desktop Schedules page's History mode; all interrupted run types remain visible through
+the console's `/runs` command.
 
 ## Resuming
 
@@ -27,8 +28,8 @@ banner when any exist ("N run(s) were interrupted — view Runs").
 dotnet run --project src/Caliper.Console -- --resume <run-id> --print
 ```
 
-or the **Resume** button on an interrupted row in the app's Runs page. Only interrupted
-runs can be resumed. What resume does:
+For a scheduled run, the desktop Schedules page's History mode also provides **Resume**.
+Only interrupted runs can be resumed. What resume does:
 
 1. If the run died mid-tool-call, the transcript is healed so the model knows that call
    returned no result — nothing is replayed.
@@ -46,7 +47,10 @@ always an explicit human action.
 
 - **Console**: `/runs` lists recent runs — id, session, job, status (resumed runs are
   marked, e.g. `Completed (resumed)`), step/budget, last update.
-- **Desktop app**: the Runs page shows the same list with interrupted rows highlighted and
-  resumable in place ([desktop-app.md](desktop-app.md#runs-page)).
+- **Desktop app**: Schedules → History shows the 20 most recent scheduled runs. It includes
+  status, originating schedule, step progress, update time, completion/failure reason,
+  **Open chat**, and **Resume** for interrupted rows
+  ([desktop-app.md](desktop-app.md#schedules-page)). Subagent sessions remain in Chat behind
+  the "Show subagent runs" toggle; one-shot and unattended CLI records are console-only.
 - Exit codes for `--resume` match the unattended convention: `0` clean, `1` error,
   `2` completed with denials ([cli.md](cli.md)).

@@ -8,24 +8,50 @@
     xmlns:settings="using:CommunityToolkit.WinUI.Controls"
     xmlns:vm="using:Caliper.App.ViewModels">
 
-    <Grid Padding="36,28" RowSpacing="24">
+    <Grid Style="{StaticResource WidePageRootGridStyle}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid ColumnSpacing="16">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup>
+                <VisualState x:Name="CompactMemory">
+                    <VisualState.Setters>
+                        <Setter Target="MemorySecondaryColumn.Width" Value="0" />
+                        <Setter Target="MemorySelector.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="WideMemory">
+                    <VisualState.StateTriggers>
+                        <AdaptiveTrigger MinWindowWidth="1008" />
+                    </VisualState.StateTriggers>
+                    <VisualState.Setters>
+                        <Setter Target="MemoryPrimaryColumn.Width" Value="420" />
+                        <Setter Target="MemorySecondaryColumn.Width" Value="*" />
+                        <Setter Target="MemorySelector.Visibility" Value="Collapsed" />
+                        <Setter Target="EntriesPanel.Visibility" Value="Visible" />
+                        <Setter Target="ProjectPanel.Visibility" Value="Visible" />
+                        <Setter Target="ProjectPanel.(Grid.Column)" Value="1" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid Style="{StaticResource PageHeaderGridStyle}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Spacing="8">
+            <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                 <TextBlock Text="Memory" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Global/project memory and the project document that can be surfaced into prompts." TextWrapping="Wrap" />
             </StackPanel>
-            <Button Grid.Column="1" AutomationProperties.AutomationId="MemoryRefreshButton" Command="{x:Bind ViewModel.RefreshMemoryCommand}" Content="Refresh memory" />
+            <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
+                <Button AutomationProperties.AutomationId="MemoryRefreshButton" Command="{x:Bind ViewModel.RefreshMemoryCommand}" Content="Refresh memory" />
+            </StackPanel>
         </Grid>
         <InfoBar
             Grid.Row="1"
@@ -59,6 +85,7 @@
                     <ComboBoxItem Content="Project" />
                 </ComboBox>
                 <TextBox
+                    x:Name="MemoryKeyBox"
                     AutomationProperties.AutomationId="MemoryKeyBox"
                     Header="Key"
                     PlaceholderText="e.g. code-style"
@@ -78,12 +105,16 @@
                     Style="{StaticResource AccentButtonStyle}" />
             </StackPanel>
         </Expander>
-        <Grid Grid.Row="4" ColumnSpacing="16">
+        <SelectorBar x:Name="MemorySelector" Grid.Row="4" SelectionChanged="MemorySelector_SelectionChanged">
+            <SelectorBarItem x:Name="EntriesSelectorItem" Text="Entries" IsSelected="True" />
+            <SelectorBarItem Text="Project document" />
+        </SelectorBar>
+        <Grid Grid.Row="5" ColumnSpacing="16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="420" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="MemoryPrimaryColumn" Width="*" />
+                <ColumnDefinition x:Name="MemorySecondaryColumn" Width="0" />
             </Grid.ColumnDefinitions>
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+            <Border x:Name="EntriesPanel" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
                 <Grid>
                     <ListView AutomationProperties.AutomationId="MemoryList" ItemsSource="{x:Bind ViewModel.Memories, Mode=OneWay}">
                         <ListView.ItemTemplate>
@@ -135,10 +166,14 @@
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>
-                    <InfoBar Margin="16" IsClosable="False" IsOpen="{x:Bind converters:XamlConverters.InvertBool(ViewModel.HasMemories), Mode=OneWay}" Message="No remembered facts are stored for the current scopes." Severity="Informational" />
+                    <StackPanel Margin="24" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.HasMemories), Mode=OneWay}">
+                        <TextBlock Text="Nothing remembered yet" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Add a fact Caliper should remember across conversations." TextAlignment="Center" TextWrapping="Wrap" />
+                        <Button HorizontalAlignment="Center" AutomationProperties.AutomationId="RememberFactEmptyButton" Click="RememberFactEmpty_Click" Content="Remember a fact" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
                 </Grid>
             </Border>
-            <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+            <Border x:Name="ProjectPanel" Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}" Visibility="Collapsed">
                 <Grid RowSpacing="12">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -151,6 +186,11 @@
                     <ScrollViewer Grid.Row="1">
                         <markdown:MarkdownTextBlock IsTextSelectionEnabled="True" Text="{x:Bind ViewModel.ProjectDocument, Mode=OneWay}" />
                     </ScrollViewer>
+                    <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8" Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.HasProjectDocument), Mode=OneWay}">
+                        <TextBlock Text="No project memory file" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Create the configured file without replacing anything that already exists." TextAlignment="Center" TextWrapping="Wrap" />
+                        <Button AutomationProperties.AutomationId="CreateProjectMemoryButton" Command="{x:Bind ViewModel.CreateProjectDocumentCommand}" Content="Create project file" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>

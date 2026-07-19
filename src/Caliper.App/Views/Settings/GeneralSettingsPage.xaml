@@ -6,12 +6,22 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:settings="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="720" Spacing="16">
-            <StackPanel Spacing="8">
-                <TextBlock Text="General" Style="{StaticResource TitleTextBlockStyle}" />
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Theme and workspace root." TextWrapping="Wrap" />
-            </StackPanel>
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
+                    <TextBlock Text="General" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Theme and workspace root." TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                    <Button AutomationProperties.AutomationId="DiscardGeneralSettingsButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                    <Button AutomationProperties.AutomationId="SaveGeneralSettingsButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
+            </Grid>
             <InfoBar
                 IsClosable="False"
                 IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
@@ -25,7 +35,7 @@
                         Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
                 </InfoBar.ActionButton>
             </InfoBar>
-            <settings:SettingsCard Header="Theme" Description="High Contrast follows Windows automatically.">
+            <settings:SettingsCard Header="Theme" Description="Applies immediately. High Contrast follows Windows automatically.">
                 <ComboBox
                     x:Name="ThemePicker"
                     AutomationProperties.AutomationId="ThemePicker"
@@ -43,11 +53,6 @@
                     <Button AutomationProperties.AutomationId="BrowseWorkingRootButton" Click="BrowseWorkingRoot_Click" Content="Browse" />
                 </StackPanel>
             </settings:SettingsCard>
-            <Button
-                AutomationProperties.AutomationId="SaveGeneralSettingsButton"
-                Command="{x:Bind ViewModel.SaveCommand}"
-                Content="Save"
-                Style="{StaticResource AccentButtonStyle}" />
         </StackPanel>
     </ScrollViewer>
 </Page>

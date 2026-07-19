@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for full license information.
 using System.Text.Json;
 using Caliper.App.Permissions;
+using Caliper.App.Navigation;
 using Caliper.App.Preferences;
 using Caliper.App.Scheduling;
 using Caliper.App.Security;
@@ -132,6 +133,8 @@ public partial class App : Application
             services.GetRequiredService<ApprovalService>(),
             services.GetRequiredService<UnattendedPermissionPrompt>()));
         builder.Services.AddSingleton<AppSchedulerController>();
+        builder.Services.AddSingleton<AppNavigationService>();
+        builder.Services.AddSingleton<IPathLauncher, PathLauncher>();
         builder.Services.AddSingleton<ChatViewModel>();
         builder.Services.AddSingleton<IChatSessionController>(services =>
             services.GetRequiredService<ChatViewModel>());
@@ -139,7 +142,6 @@ public partial class App : Application
         builder.Services.AddSingleton<SkillsViewModel>();
         builder.Services.AddSingleton<MemoryViewModel>();
         builder.Services.AddSingleton<SchedulesViewModel>();
-        builder.Services.AddSingleton<RunsViewModel>();
         builder.Services.AddSingleton<GeneralSettingsViewModel>();
         builder.Services.AddSingleton<ModelsProvidersSettingsViewModel>();
         builder.Services.AddSingleton<AgentBehaviorSettingsViewModel>();

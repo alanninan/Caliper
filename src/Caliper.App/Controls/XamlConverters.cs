@@ -22,6 +22,9 @@ public static class XamlConverters
 
     public static bool HasText(string value) => !string.IsNullOrWhiteSpace(value);
 
+    public static Visibility HasTextToVisibility(string value) =>
+        string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+
     public static InfoBarSeverity StatusSeverity(bool isError) =>
         isError ? InfoBarSeverity.Error : InfoBarSeverity.Informational;
 

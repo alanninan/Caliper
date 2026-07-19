@@ -585,7 +585,7 @@
         <KeyboardAccelerator Key="F1" Invoked="ShowShortcutsAccelerator_Invoked" />
     </Page.KeyboardAccelerators>
 
-    <Grid x:Name="ChatWorkspace">
+    <Grid x:Name="ChatWorkspace" SizeChanged="ChatWorkspace_SizeChanged">
         <Grid.ColumnDefinitions>
             <!--
                 Width/MinWidth for SessionsColumn and InspectorColumn are managed entirely in
@@ -669,6 +669,7 @@
         </Border>
 
         <toolkit:GridSplitter
+            x:Name="SessionsSplitter"
             Grid.Column="1"
             AutomationProperties.AutomationId="SessionsGridSplitter"
             AutomationProperties.Name="Resize sessions and workspace panes"
@@ -696,10 +697,12 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Spacing="4">
                     <TextBlock Text="Workspace" Style="{StaticResource TitleTextBlockStyle}" />
-                    <StackPanel Orientation="Horizontal" Spacing="4">
+                </StackPanel>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
                         <!--
                             U4: session-scoped quick-switchers. Both write only the live
                             IRuntimeSettings clone (never config.json) — Settings → Models &amp;
@@ -761,7 +764,6 @@
                             </DropDownButton.Flyout>
                         </DropDownButton>
                     </StackPanel>
-                </StackPanel>
                 <CommandBar
                     Grid.Row="0"
                     Grid.Column="1"
@@ -769,7 +771,7 @@
                     DefaultLabelPosition="Right">
                     <AppBarButton
                         AutomationProperties.AutomationId="ToggleSessionsPaneButton"
-                        Command="{x:Bind Sessions.TogglePaneCommand}"
+                        Click="ToggleSessionsPane_Click"
                         Icon="List"
                         Label="Sessions">
                         <AppBarButton.KeyboardAccelerators>
@@ -779,29 +781,11 @@
                     <AppBarButton
                         AutomationProperties.AutomationId="InspectorToggleButton"
                         AutomationProperties.Name="Toggle inspector pane"
-                        Command="{x:Bind ViewModel.ToggleInspectorCommand}"
+                        Click="ToggleInspectorPane_Click"
                         Icon="DockRight"
                         Label="Inspector">
                         <AppBarButton.KeyboardAccelerators>
                             <KeyboardAccelerator Key="B" Modifiers="Control,Shift" />
-                        </AppBarButton.KeyboardAccelerators>
-                    </AppBarButton>
-                    <AppBarButton
-                        AutomationProperties.AutomationId="CompactToolbarButton"
-                        Command="{x:Bind ViewModel.CompactCommand}"
-                        Icon="Refresh"
-                        Label="Compact">
-                        <AppBarButton.KeyboardAccelerators>
-                            <KeyboardAccelerator Key="K" Modifiers="Control,Shift" />
-                        </AppBarButton.KeyboardAccelerators>
-                    </AppBarButton>
-                    <AppBarButton
-                        AutomationProperties.AutomationId="ClearContextToolbarButton"
-                        Command="{x:Bind ViewModel.ClearContextCommand}"
-                        Icon="Clear"
-                        Label="Clear">
-                        <AppBarButton.KeyboardAccelerators>
-                            <KeyboardAccelerator Key="Delete" Modifiers="Control,Shift" />
                         </AppBarButton.KeyboardAccelerators>
                     </AppBarButton>
                     <AppBarButton
@@ -813,19 +797,39 @@
                             <KeyboardAccelerator Key="Escape" Invoked="StopAccelerator_Invoked" />
                         </AppBarButton.KeyboardAccelerators>
                     </AppBarButton>
-                    <AppBarButton
-                        AutomationProperties.AutomationId="CopyTranscriptButton"
-                        Click="CopyTranscript_Click"
-                        Icon="Copy"
-                        Label="Copy conversation" />
-                    <AppBarButton
-                        AutomationProperties.AutomationId="ShortcutsToolbarButton"
-                        Click="ShortcutsButton_Click"
-                        Icon="Help"
-                        Label="Shortcuts" />
+                    <CommandBar.SecondaryCommands>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="CompactToolbarButton"
+                            Command="{x:Bind ViewModel.CompactCommand}"
+                            Icon="Refresh"
+                            Label="Compact">
+                            <AppBarButton.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="K" Modifiers="Control,Shift" />
+                            </AppBarButton.KeyboardAccelerators>
+                        </AppBarButton>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="ClearContextToolbarButton"
+                            Command="{x:Bind ViewModel.ClearContextCommand}"
+                            Icon="Clear"
+                            Label="Clear">
+                            <AppBarButton.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="Delete" Modifiers="Control,Shift" />
+                            </AppBarButton.KeyboardAccelerators>
+                        </AppBarButton>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="CopyTranscriptButton"
+                            Click="CopyTranscript_Click"
+                            Icon="Copy"
+                            Label="Copy conversation" />
+                        <AppBarButton
+                            AutomationProperties.AutomationId="ShortcutsToolbarButton"
+                            Click="ShortcutsButton_Click"
+                            Icon="Help"
+                            Label="Shortcuts" />
+                    </CommandBar.SecondaryCommands>
                 </CommandBar>
                 <Grid
-                    Grid.Row="1"
+                    Grid.Row="2"
                     Grid.ColumnSpan="2"
                     Margin="0,8,0,0"
                     ColumnSpacing="8"
@@ -1103,6 +1107,7 @@
         </Grid>
 
         <toolkit:GridSplitter
+            x:Name="InspectorSplitter"
             Grid.Column="3"
             AutomationProperties.AutomationId="DetailsGridSplitter"
             AutomationProperties.Name="Resize workspace and inspector panes"

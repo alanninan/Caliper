@@ -24,6 +24,8 @@ public sealed partial class AgentBehaviorSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
         }
         catch (Exception ex)

@@ -6,22 +6,26 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:vm="using:Caliper.App.ViewModels.Settings">
 
-    <Grid Padding="36,28" RowSpacing="16">
+    <Grid Style="{StaticResource WidePageRootGridStyle}">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <Grid ColumnSpacing="16">
+        <Grid Style="{StaticResource PageHeaderGridStyle}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Spacing="8">
+            <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                 <TextBlock Text="Tools" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.EnabledCountText, Mode=OneWay}" TextWrapping="Wrap" />
             </StackPanel>
-            <Button Grid.Column="1" AutomationProperties.AutomationId="SaveToolsButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+            <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                <Button AutomationProperties.AutomationId="DiscardToolsButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                <Button AutomationProperties.AutomationId="SaveToolsButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
         </Grid>
         <InfoBar
             Grid.Row="1"
@@ -37,8 +41,23 @@
                     Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.RestartRequired), Mode=OneWay}" />
             </InfoBar.ActionButton>
         </InfoBar>
-        <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
-            <ListView AutomationProperties.AutomationId="ToolsList" ItemsSource="{x:Bind ViewModel.Tools, Mode=OneWay}">
+        <Grid Grid.Row="2" Padding="16,8" ColumnSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="220" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="120" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Enabled" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock Grid.Column="1" Text="Tool" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock Grid.Column="2" Text="Description" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock Grid.Column="3" Text="Risk" Style="{StaticResource BodyStrongTextBlockStyle}" />
+        </Grid>
+        <Border Grid.Row="3" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+            <ListView
+                AutomationProperties.AutomationId="ToolsList"
+                ItemContainerStyle="{StaticResource StretchListViewItemStyle}"
+                ItemsSource="{x:Bind ViewModel.Tools, Mode=OneWay}">
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ToolToggleViewModel">
                         <Grid Padding="16" ColumnSpacing="16">

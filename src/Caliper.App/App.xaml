@@ -6,6 +6,43 @@
     <Application.Resources>
         <ResourceDictionary>
             <FontFamily x:Key="CodeFontFamily">Cascadia Mono, Consolas</FontFamily>
+            <Thickness x:Key="PagePadding">32,24</Thickness>
+            <x:Double x:Key="SectionSpacing">16</x:Double>
+            <x:Double x:Key="ControlSpacing">8</x:Double>
+            <x:Double x:Key="WidePageWidth">1200</x:Double>
+            <x:Double x:Key="EmptyStateWidth">480</x:Double>
+            <Style x:Key="WidePageRootGridStyle" TargetType="Grid">
+                <Setter Property="MaxWidth" Value="{StaticResource WidePageWidth}" />
+                <Setter Property="Padding" Value="{StaticResource PagePadding}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="RowSpacing" Value="{StaticResource SectionSpacing}" />
+            </Style>
+            <Style x:Key="PageScrollViewerStyle" TargetType="ScrollViewer">
+                <Setter Property="Padding" Value="{StaticResource PagePadding}" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+            </Style>
+            <Style x:Key="WidePageShellStyle" TargetType="StackPanel">
+                <Setter Property="MaxWidth" Value="{StaticResource WidePageWidth}" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="Spacing" Value="{StaticResource SectionSpacing}" />
+            </Style>
+            <Style x:Key="PageHeaderGridStyle" TargetType="Grid">
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="ColumnSpacing" Value="{StaticResource SectionSpacing}" />
+            </Style>
+            <Style x:Key="PageHeaderTextStyle" TargetType="StackPanel">
+                <Setter Property="Spacing" Value="{StaticResource ControlSpacing}" />
+            </Style>
+            <Style x:Key="PageHeaderActionsStyle" TargetType="StackPanel">
+                <Setter Property="VerticalAlignment" Value="Top" />
+                <Setter Property="Orientation" Value="Horizontal" />
+                <Setter Property="Spacing" Value="{StaticResource ControlSpacing}" />
+            </Style>
+            <Style x:Key="StretchListViewItemStyle" TargetType="ListViewItem">
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <StaticResource x:Key="DiffAddedBackgroundBrush" ResourceKey="SystemFillColorSuccessBackgroundBrush" />

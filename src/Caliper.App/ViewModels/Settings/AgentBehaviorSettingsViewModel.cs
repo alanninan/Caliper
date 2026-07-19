@@ -33,6 +33,19 @@ public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configW
     // never reports RestartRequired: true here — kept for uniformity with every other settings
     // page rather than special-cased away.
     [ObservableProperty] public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private Snapshot? _snapshot;
+
+    partial void OnSelectedTurnStrategyChanged(TurnStrategyKind value) => UpdateDirty();
+    partial void OnMaxStepsChanged(double value) => UpdateDirty();
+    partial void OnDuplicateCallLimitChanged(double value) => UpdateDirty();
+    partial void OnToolTimeoutSecondsChanged(double value) => UpdateDirty();
+    partial void OnToolMaxRetriesChanged(double value) => UpdateDirty();
+    partial void OnToolOutputMaxCharsChanged(double value) => UpdateDirty();
+    partial void OnTemperatureChanged(double value) => UpdateDirty();
+    partial void OnSeedTextChanged(string value) => UpdateDirty();
+    partial void OnReasoningEffortChanged(string value) => UpdateDirty();
+    partial void OnExcludeReasoningChanged(bool value) => UpdateDirty();
 
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct)
@@ -48,6 +61,8 @@ public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configW
         SeedText = caliper.Seed?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
         ReasoningEffort = caliper.Reasoning.Effort;
         ExcludeReasoning = caliper.Reasoning.Exclude;
+        _snapshot = Capture();
+        IsDirty = false;
     }
 
     [RelayCommand]
@@ -82,5 +97,40 @@ public sealed partial class AgentBehaviorSettingsViewModel(IConfigWriter configW
         StatusIsError = !result.Success;
         RestartRequired = result.Success && result.RestartRequired;
         StatusMessage = result.Success ? "Saved. Changes apply to the next message you send." : result.Error ?? "Save failed.";
+        if (result.Success)
+        {
+            _snapshot = Capture();
+            IsDirty = false;
+        }
     }
+
+    [RelayCommand]
+    private void Discard()
+    {
+        if (_snapshot is not { } value)
+            return;
+        SelectedTurnStrategy = value.Strategy;
+        MaxSteps = value.MaxSteps;
+        DuplicateCallLimit = value.DuplicateLimit;
+        ToolTimeoutSeconds = value.Timeout;
+        ToolMaxRetries = value.Retries;
+        ToolOutputMaxChars = value.OutputChars;
+        Temperature = value.Temperature;
+        SeedText = value.Seed;
+        ReasoningEffort = value.Effort;
+        ExcludeReasoning = value.Exclude;
+        IsDirty = false;
+    }
+
+    private Snapshot Capture() => new(SelectedTurnStrategy, MaxSteps, DuplicateCallLimit,
+        ToolTimeoutSeconds, ToolMaxRetries, ToolOutputMaxChars, Temperature, SeedText,
+        ReasoningEffort, ExcludeReasoning);
+    private void UpdateDirty()
+    {
+        if (_snapshot is not null)
+            IsDirty = Capture() != _snapshot;
+    }
+    private sealed record Snapshot(TurnStrategyKind Strategy, double MaxSteps, double DuplicateLimit,
+        double Timeout, double Retries, double OutputChars, double Temperature, string Seed,
+        string Effort, bool Exclude);
 }
