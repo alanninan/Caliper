@@ -54,7 +54,6 @@ public sealed class OpenRouterCapabilityProviderTests
         var factory = new StaticHttpClientFactory(new StaticJsonHandler(json));
         return new OpenRouterCapabilityProvider(
             factory,
-            Options.Create(new CaliperOptions { Provider = "OpenRouter" }),
             Options.Create(new ProvidersOptions
             {
                 OpenRouter = new OpenRouterOptions { Endpoint = "https://openrouter.ai/api/v1" },

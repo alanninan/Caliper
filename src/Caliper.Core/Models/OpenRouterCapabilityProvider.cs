@@ -12,7 +12,6 @@ namespace Caliper.Core.Models;
 
 internal sealed class OpenRouterCapabilityProvider(
     IHttpClientFactory httpClientFactory,
-    IOptions<CaliperOptions> caliperOptions,
     IOptions<ProvidersOptions> providerOptions,
     ILogger<OpenRouterCapabilityProvider> logger) : IModelCapabilityProvider, IModelCatalog, IDisposable
 {
@@ -23,9 +22,6 @@ internal sealed class OpenRouterCapabilityProvider(
 
     public async Task<ModelCapabilities> GetAsync(string modelSlug, CancellationToken ct)
     {
-        if (!string.Equals(caliperOptions.Value.Provider, "OpenRouter", StringComparison.OrdinalIgnoreCase))
-            return Fallback();
-
         try
         {
             var cache = await GetCacheAsync(ct).ConfigureAwait(false);
@@ -44,9 +40,6 @@ internal sealed class OpenRouterCapabilityProvider(
 
     public async Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct)
     {
-        if (!string.Equals(caliperOptions.Value.Provider, "OpenRouter", StringComparison.OrdinalIgnoreCase))
-            return [];
-
         var cache = await GetCacheAsync(ct).ConfigureAwait(false);
         return cache
             .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)

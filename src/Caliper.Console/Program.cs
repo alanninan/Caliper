@@ -140,6 +140,9 @@ var caliperMdProvider = host.Services.GetRequiredService<ICaliperMdProvider>();
 var contextManager = host.Services.GetRequiredService<IContextManager>();
 var capabilityProvider = host.Services.GetRequiredService<IModelCapabilityProvider>();
 var modelCatalog = host.Services.GetRequiredService<IModelCatalog>();
+var providerStatus = host.Services.GetRequiredService<IProviderStatusService>();
+var providerCredentials = host.Services.GetRequiredService<IProviderCredentialStore>();
+var codexAuth = host.Services.GetRequiredService<IOpenAICodexAuthService>();
 var runtimeSettings = host.Services.GetRequiredService<IRuntimeSettings>();
 var permissionGate = host.Services.GetRequiredService<IPermissionGate>();
 var configWriter = host.Services.GetRequiredService<IConfigWriter>();
@@ -200,6 +203,11 @@ RenderMcpStatus(mcpHub, showEmpty: false);
 
 if (!string.IsNullOrWhiteSpace(resumeRunId))
 {
+    if (!await EnsureActiveProviderReadyAsync(providerStatus, runtimeSettings, setExitCode: true, ct: appCts.Token))
+    {
+        await mcpHub.DisposeAllAsync();
+        return;
+    }
     var resumeLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Caliper.Console.Resume");
     await RunResumeAsync(conversations, resumeRunId, oneShotPrint, footer, resumeLogger, appCts.Token);
     await mcpHub.DisposeAllAsync();
@@ -208,6 +216,11 @@ if (!string.IsNullOrWhiteSpace(resumeRunId))
 
 if (!string.IsNullOrWhiteSpace(oneShotPrompt))
 {
+    if (!await EnsureActiveProviderReadyAsync(providerStatus, runtimeSettings, setExitCode: true, ct: appCts.Token))
+    {
+        await mcpHub.DisposeAllAsync();
+        return;
+    }
     var oneShotSessionId = await sessions.CreateAsync(SessionTitle(oneShotPrompt), appCts.Token);
     var oneShotLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Caliper.Console.OneShot");
     await RunOneShotAsync(conversations, oneShotSessionId, oneShotPrompt, oneShotPrint, unattended, footer, oneShotLogger, appCts.Token);
@@ -239,9 +252,12 @@ while (!appCts.Token.IsCancellationRequested)
 
     if (input.StartsWith('/'))
     {
-        sessionId = await HandleSlashCommandAsync(input, sessionId, sessions, skillStore, tools, mcpHub, memoryStore, caliperMdProvider, contextManager, capabilityProvider, modelCatalog, runtimeSettings, permissionGate, configWriter, conversations, scheduleRunner, timeProvider, runStore, footer, appCts.Token);
+        sessionId = await HandleSlashCommandAsync(input, sessionId, sessions, skillStore, tools, mcpHub, memoryStore, caliperMdProvider, contextManager, capabilityProvider, modelCatalog, providerStatus, providerCredentials, codexAuth, runtimeSettings, permissionGate, configWriter, conversations, scheduleRunner, timeProvider, runStore, footer, appCts.Token);
         continue;
     }
+
+    if (!await EnsureActiveProviderReadyAsync(providerStatus, runtimeSettings, setExitCode: false, ct: appCts.Token))
+        continue;
 
     if (string.IsNullOrEmpty(sessionId))
         sessionId = await sessions.CreateAsync(SessionTitle(input), appCts.Token);
@@ -287,6 +303,9 @@ static async Task<string> HandleSlashCommandAsync(
     IContextManager contextManager,
     IModelCapabilityProvider capabilityProvider,
     IModelCatalog modelCatalog,
+    IProviderStatusService providerStatus,
+    IProviderCredentialStore providerCredentials,
+    IOpenAICodexAuthService codexAuth,
     IRuntimeSettings runtimeSettings,
     IPermissionGate permissionGate,
     IConfigWriter configWriter,
@@ -505,7 +524,19 @@ static async Task<string> HandleSlashCommandAsync(
 
         case SlashCommandKind.Models:
         {
-            await RenderModelsAsync(modelCatalog, ct);
+            await RenderModelsAsync(modelCatalog, parsed.Argument, ct);
+            return currentSessionId ?? "";
+        }
+
+        case SlashCommandKind.Providers:
+        {
+            await RenderProvidersAsync(providerStatus, runtimeSettings, ct);
+            return currentSessionId ?? "";
+        }
+
+        case SlashCommandKind.Auth:
+        {
+            await HandleAuthAsync(parsed.Argument, providerStatus, providerCredentials, codexAuth, ct);
             return currentSessionId ?? "";
         }
 
@@ -679,7 +710,7 @@ static async Task<bool> SwitchModelAsync(
     {
         models = await modelCatalog.ListAsync(ct);
     }
-    catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+    catch (Exception ex) when (ex is not OperationCanceledException)
     {
         AnsiConsole.MarkupLine($"[yellow]Could not validate model catalog: {Markup.Escape(ex.Message)}[/]");
     }
@@ -699,14 +730,16 @@ static async Task<bool> SwitchModelAsync(
     return true;
 }
 
-static async Task RenderModelsAsync(IModelCatalog modelCatalog, CancellationToken ct)
+static async Task RenderModelsAsync(IModelCatalog modelCatalog, string provider, CancellationToken ct)
 {
     IReadOnlyList<ModelCatalogEntry> models;
     try
     {
-        models = await modelCatalog.ListAsync(ct);
+        models = string.IsNullOrWhiteSpace(provider)
+            ? await modelCatalog.ListAsync(ct)
+            : await modelCatalog.ListAsync(provider, ct);
     }
-    catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+    catch (Exception ex) when (ex is not OperationCanceledException)
     {
         AnsiConsole.MarkupLine($"[red]Could not load models:[/] {Markup.Escape(ex.Message)}");
         return;
@@ -737,6 +770,218 @@ static async Task RenderModelsAsync(IModelCatalog modelCatalog, CancellationToke
     AnsiConsole.Write(table);
     if (models.Count > 80)
         AnsiConsole.MarkupLine($"[dim]Showing 80 of {models.Count} models.[/]");
+}
+
+static async Task RenderProvidersAsync(
+    IProviderStatusService providerStatus,
+    IRuntimeSettings runtimeSettings,
+    CancellationToken ct)
+{
+    var statuses = await providerStatus.ListAsync(ct);
+    var table = new Table()
+        .RoundedBorder()
+        .AddColumn("Provider")
+        .AddColumn("Authentication")
+        .AddColumn("Status")
+        .AddColumn("Account")
+        .AddColumn("Active");
+
+    foreach (var status in statuses)
+    {
+        table.AddRow(
+            Markup.Escape(status.DisplayName),
+            status.AuthenticationKind == ProviderAuthenticationKind.OAuth ? "OAuth" : "API key",
+            status.IsReady
+                ? $"[green]{Markup.Escape(status.Status)}[/]"
+                : $"[yellow]{Markup.Escape(status.Status)}[/]",
+            Markup.Escape(status.Account ?? ""),
+            string.Equals(status.Id, runtimeSettings.Caliper.Provider, StringComparison.OrdinalIgnoreCase)
+                ? "yes"
+                : "");
+    }
+
+    AnsiConsole.Write(table);
+}
+
+static async Task HandleAuthAsync(
+    string argument,
+    IProviderStatusService providerStatus,
+    IProviderCredentialStore credentials,
+    IOpenAICodexAuthService codexAuth,
+    CancellationToken ct)
+{
+    var args = argument.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+    var command = args.Length > 0 ? args[0].ToLowerInvariant() : "status";
+
+    try
+    {
+        switch (command)
+        {
+            case "status":
+            {
+                if (args.Length == 1)
+                {
+                    var statuses = await providerStatus.ListAsync(ct);
+                    foreach (var status in statuses)
+                        RenderProviderStatus(status);
+                    return;
+                }
+
+                var provider = ResolveProviderId(args[1]);
+                if (provider is null)
+                {
+                    RenderAuthUsage();
+                    return;
+                }
+
+                RenderProviderStatus(await providerStatus.GetAsync(provider, ct));
+                return;
+            }
+
+            case "login" when args.Length >= 2 &&
+                string.Equals(ResolveProviderId(args[1]), ProviderIds.OpenAICodex, StringComparison.Ordinal):
+            {
+                if (args.Any(value => string.Equals(value, "--device-code", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var code = await codexAuth.RequestDeviceCodeAsync(ct);
+                    AnsiConsole.MarkupLine($"Open [link={Markup.Escape(code.VerificationUrl)}]{Markup.Escape(code.VerificationUrl)}[/]");
+                    AnsiConsole.MarkupLine($"Enter code: [bold cyan]{Markup.Escape(code.UserCode)}[/]");
+                    AnsiConsole.MarkupLine("[dim]Waiting for authorization…[/]");
+                    RenderProviderStatus(ToProviderStatus(await codexAuth.CompleteDeviceCodeAsync(code, ct)));
+                }
+                else
+                {
+                    AnsiConsole.MarkupLine("[dim]Opening OpenAI sign-in in your browser…[/]");
+                    RenderProviderStatus(ToProviderStatus(await codexAuth.LoginWithBrowserAsync(ct)));
+                }
+
+                return;
+            }
+
+            case "logout" when args.Length == 2 &&
+                string.Equals(ResolveProviderId(args[1]), ProviderIds.OpenAICodex, StringComparison.Ordinal):
+                await codexAuth.LogoutAsync(ct);
+                AnsiConsole.MarkupLine("[green]Signed out of OpenAI Codex.[/]");
+                return;
+
+            case "set-key" when args.Length == 2:
+            {
+                var provider = ResolveProviderId(args[1]);
+                var target = provider is null ? null : ApiKeyTarget(provider);
+                if (target is null)
+                {
+                    RenderAuthUsage();
+                    return;
+                }
+
+                var key = AnsiConsole.Prompt(
+                    new TextPrompt<string>($"API key for [cyan]{Markup.Escape(provider!)}[/]:")
+                        .Secret());
+                credentials.Save(target, key);
+                AnsiConsole.MarkupLine($"[green]{Markup.Escape(provider!)} API key saved.[/]");
+                return;
+            }
+
+            case "clear-key" when args.Length == 2:
+            {
+                var provider = ResolveProviderId(args[1]);
+                var target = provider is null ? null : ApiKeyTarget(provider);
+                if (target is null)
+                {
+                    RenderAuthUsage();
+                    return;
+                }
+
+                credentials.Delete(target);
+                AnsiConsole.MarkupLine($"[green]{Markup.Escape(provider!)} API key removed.[/]");
+                return;
+            }
+
+            default:
+                RenderAuthUsage();
+                return;
+        }
+    }
+    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+    {
+        AnsiConsole.MarkupLine("[yellow]Authentication cancelled.[/]");
+    }
+    catch (Exception ex)
+    {
+        AnsiConsole.MarkupLine($"[red]Authentication failed:[/] {Markup.Escape(ex.Message)}");
+    }
+}
+
+static void RenderProviderStatus(ProviderStatus status)
+{
+    var state = status.IsReady ? "[green]ready[/]" : "[yellow]not ready[/]";
+    var account = string.IsNullOrWhiteSpace(status.Account)
+        ? ""
+        : $" · {Markup.Escape(status.Account)}";
+    AnsiConsole.MarkupLine(
+        $"[cyan]{Markup.Escape(status.DisplayName)}[/]: {state} · {Markup.Escape(status.Status)}{account}");
+}
+
+static ProviderStatus ToProviderStatus(OpenAICodexAuthStatus status) =>
+    new(
+        ProviderIds.OpenAICodex,
+        "OpenAI Codex",
+        ProviderAuthenticationKind.OAuth,
+        status.IsAuthenticated,
+        status.Status,
+        status.Account);
+
+static string? ResolveProviderId(string value) =>
+    ProviderIds.All.FirstOrDefault(provider =>
+        string.Equals(provider, value, StringComparison.OrdinalIgnoreCase)) ??
+    (string.Equals(value, "codex", StringComparison.OrdinalIgnoreCase)
+        ? ProviderIds.OpenAICodex
+        : null);
+
+static string? ApiKeyTarget(string provider) => provider switch
+{
+    ProviderIds.OpenRouter => ProviderCredentialTargets.OpenRouterApiKey,
+    ProviderIds.Gemini => ProviderCredentialTargets.GeminiApiKey,
+    ProviderIds.OpenAI => ProviderCredentialTargets.OpenAIApiKey,
+    _ => null,
+};
+
+static void RenderAuthUsage() =>
+    AnsiConsole.MarkupLine(
+        "[yellow]Usage: /auth status [provider] | /auth login OpenAICodex [--device-code] | " +
+        "/auth logout OpenAICodex | /auth set-key <OpenRouter|Gemini|OpenAI> | " +
+        "/auth clear-key <OpenRouter|Gemini|OpenAI>[/]");
+
+static async Task<bool> EnsureActiveProviderReadyAsync(
+    IProviderStatusService providerStatus,
+    IRuntimeSettings runtimeSettings,
+    bool setExitCode,
+    CancellationToken ct)
+{
+    ProviderStatus status;
+    try
+    {
+        status = await providerStatus.GetAsync(runtimeSettings.Caliper.Provider, ct);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        AnsiConsole.MarkupLine($"[red]Could not inspect provider status:[/] {Markup.Escape(ex.Message)}");
+        if (setExitCode)
+            Environment.ExitCode = 1;
+        return false;
+    }
+    if (status.IsReady)
+        return true;
+
+    var instruction = status.AuthenticationKind == ProviderAuthenticationKind.OAuth
+        ? $"/auth login {status.Id}"
+        : $"/auth set-key {status.Id}";
+    AnsiConsole.MarkupLine(
+        $"[yellow]{Markup.Escape(status.DisplayName)} is not ready:[/] " +
+        $"{Markup.Escape(status.Status)}. Run [cyan]{Markup.Escape(instruction)}[/].");
+    if (setExitCode)
+        Environment.ExitCode = 1;
+    return false;
 }
 
 static void RenderScheduleList(

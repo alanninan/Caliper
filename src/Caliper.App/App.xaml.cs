@@ -116,13 +116,14 @@ public partial class App : Application
         if (secrets.Count > 0)
             builder.Configuration.AddInMemoryCollection(secrets);
 
+        builder.Services.AddSingleton<ICredentialStore>(credentialStore);
+        builder.Services.AddSingleton<IProviderCredentialStore>(credentialStore);
         builder.Services.AddCaliperCore(builder.Configuration);
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddSingleton(DispatcherQueue.GetForCurrentThread());
         builder.Services.AddSingleton<IUiDispatcher, DispatcherQueueAdapter>();
         builder.Services.AddSingleton<IAppPreferencesStore, AppPreferencesStore>();
         builder.Services.AddSingleton<ISessionUsageStore, SessionUsageStore>();
-        builder.Services.AddSingleton<ICredentialStore>(credentialStore);
         builder.Services.AddSingleton<ApprovalService>();
         // P1b: schedule job runs (both the headless --serve tick and this App's own "Run now")
         // build a RunSpec with Unattended = true, so prompts must be routed to the deny+report
@@ -184,6 +185,8 @@ public partial class App : Application
             secrets["Providers:OpenRouter:ApiKey"] = openRouterKey;
         if (credentialStore.TryRead(CredentialTargets.GeminiApiKey, out var geminiKey))
             secrets["Providers:Gemini:ApiKey"] = geminiKey;
+        if (credentialStore.TryRead(CredentialTargets.OpenAIApiKey, out var openAIKey))
+            secrets["Providers:OpenAI:ApiKey"] = openAIKey;
         if (credentialStore.TryRead(CredentialTargets.SearchApiKey, out var searchKey))
             secrets["Search:ApiKey"] = searchKey;
 

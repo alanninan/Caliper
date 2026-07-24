@@ -8,7 +8,7 @@ actually runs** — every side effect passes a permission gate you configure.
 ## Quick start
 
 ```powershell
-$env:CALIPER_OPENROUTER_KEY = "<key>"          # required for model runs
+$env:CALIPER_OPENROUTER_KEY = "<key>"          # or use /auth set-key
 dotnet run --project src/Caliper.Console       # interactive REPL
 dotnet run --project src/Caliper.App           # desktop app (Windows)
 ```
@@ -23,6 +23,7 @@ one-shot, unattended, scheduler, and resume entry points.
 | [cli.md](cli.md) | Console flags, slash commands, exit codes |
 | [desktop-app.md](desktop-app.md) | The desktop app: chat workspace, approvals, schedules, runs, settings |
 | [configuration.md](configuration.md) | `config.json` sections, precedence, what applies live vs after restart |
+| [provider-authentication.md](provider-authentication.md) | Four providers, credentials, OAuth, and the manual acceptance pass |
 | [permissions.md](permissions.md) | Permission modes, allow/deny lists, approvals, the unattended policy |
 | [tools.md](tools.md) | What each built-in tool does, enabling/disabling, MCP servers |
 | [subagents.md](subagents.md) | Delegating work to child agents, profiles, safety limits |

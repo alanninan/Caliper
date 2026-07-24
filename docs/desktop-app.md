@@ -117,11 +117,13 @@ Structured pages — General, Models & providers, Permissions, Tools, Agent beha
 Context & memory, Subagents, Execution, MCP servers, Search, Advanced — edit the same
 `~/.caliper/config.json` the console reads. Each page tells you whether a saved change
 applies immediately or needs a restart, and offers a one-click **Restart Caliper** when it
-does. Most sections are live; endpoints/keys, the enabled-tool set, MCP servers, and search
+does. Most sections are live; endpoints, the enabled-tool set, MCP servers, and search
 need a restart.
 
-- **Models & providers** stores API keys in **Windows Credential Manager**, never in
-  `config.json`.
+- **Models & providers** exposes all four providers. OpenRouter, Gemini, and OpenAI Platform use
+  API keys; OpenAI Codex has browser sign-in/sign-out for a ChatGPT account. Keys and OAuth
+  tokens are stored in **Windows Credential Manager**, never in `config.json`, and credential
+  changes apply immediately.
 - **Subagents** edits delegation profiles ([subagents.md](subagents.md)): global limits, a
   per-profile tool list (one per line), step budget, and permission mode with an
   "(inherit)" option. Renaming the default profile follows it; removing it is blocked until

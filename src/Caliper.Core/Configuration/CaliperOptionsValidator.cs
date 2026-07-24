@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for full license information.
 using Microsoft.Extensions.Options;
+using Caliper.Core.Abstractions;
 
 namespace Caliper.Core.Configuration;
 
@@ -16,6 +17,9 @@ internal sealed class CaliperOptionsValidator : IValidateOptions<CaliperOptions>
 
         if (string.IsNullOrWhiteSpace(options.Provider))
             failures.Add($"{nameof(CaliperOptions.Provider)} must not be empty.");
+        else if (!ProviderIds.All.Contains(options.Provider, StringComparer.OrdinalIgnoreCase))
+            failures.Add(
+                $"{nameof(CaliperOptions.Provider)} must be one of: {string.Join(", ", ProviderIds.All)}.");
 
         if (options.Temperature is < 0 or > 2)
             failures.Add($"{nameof(CaliperOptions.Temperature)} must be between 0 and 2 (was {options.Temperature}).");

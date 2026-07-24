@@ -22,6 +22,32 @@ public sealed class RuntimeSettingsTests
         Assert.Equal("new-model", settings.Caliper.Model);
     }
 
+    [Theory]
+    [InlineData("OpenRouter")]
+    [InlineData("Gemini")]
+    [InlineData("OpenAI")]
+    [InlineData("OpenAICodex")]
+    public void TrySet_provider_accepts_each_registered_provider(string provider)
+    {
+        var settings = Build();
+
+        var result = settings.TrySet("provider", provider.ToLowerInvariant(), out var message);
+
+        Assert.True(result, message);
+        Assert.Equal(provider, settings.Caliper.Provider);
+    }
+
+    [Fact]
+    public void TrySet_provider_rejects_unknown_provider()
+    {
+        var settings = Build();
+
+        var result = settings.TrySet("provider", "Other", out var message);
+
+        Assert.False(result);
+        Assert.Contains("OpenAICodex", message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Caliper_getter_returns_defensive_clone()
     {

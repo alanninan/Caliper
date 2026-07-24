@@ -12,6 +12,7 @@ using Caliper.Core.Models;
 using Caliper.Core.Permissions;
 using Caliper.Core.Persistence;
 using Caliper.Core.Scheduling;
+using Caliper.Core.Security;
 using Caliper.Core.Skills;
 using Caliper.Core.Tools;
 using Caliper.Core.Tools.BuiltIn;
@@ -51,6 +52,8 @@ public static class ServiceCollectionExtensions
                 options.OpenRouter.ApiKey = Environment.GetEnvironmentVariable("CALIPER_OPENROUTER_KEY");
             if (string.IsNullOrWhiteSpace(options.Gemini.ApiKey))
                 options.Gemini.ApiKey = Environment.GetEnvironmentVariable("CALIPER_GEMINI_KEY");
+            if (string.IsNullOrWhiteSpace(options.OpenAI.ApiKey))
+                options.OpenAI.ApiKey = Environment.GetEnvironmentVariable("CALIPER_OPENAI_KEY");
         });
         services.PostConfigure<SearchOptions>(options =>
         {
@@ -60,6 +63,7 @@ public static class ServiceCollectionExtensions
 
         // Validation — triggers eagerly on first resolution
         services.AddSingleton<IValidateOptions<CaliperOptions>, CaliperOptionsValidator>();
+        services.AddSingleton<IValidateOptions<ProvidersOptions>, ProvidersOptionsValidator>();
         services.AddSingleton<IValidateOptions<SearchOptions>, SearchOptionsValidator>();
         // Cross-section: the global Permissions.ShellAutoAllowlist is subject to the same
         // wildcard-requires-container rule as a per-schedule overlay (roadmap §3.3) — see
@@ -69,6 +73,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRuntimeSettings, RuntimeSettings>();
         services.AddSingleton<IConfigFileStore, ConfigFileStore>();
         services.AddSingleton<IConfigWriter, ConfigWriter>();
+        services.TryAddSingleton<IProviderCredentialStore, FileProviderCredentialStore>();
 
         // HTTP clients
         services.AddHttpClient();
@@ -95,13 +100,35 @@ public static class ServiceCollectionExtensions
         // Named client resolved per request via IHttpClientFactory so the singleton provider
         // doesn't pin a handler with stale DNS for the process lifetime.
         services.AddHttpClient(OpenRouterCapabilityProvider.HttpClientName);
+        services.AddHttpClient(OpenAIProvider.HttpClientName);
+        services.AddHttpClient(OpenAICodexProvider.HttpClientName);
+        services.AddHttpClient(OpenAICodexAuthService.HttpClientName);
         services.AddSingleton<OpenRouterCapabilityProvider>();
         services.AddSingleton<OpenRouterChatClientProvider>();
         services.AddSingleton<GeminiCapabilityProvider>();
         services.AddSingleton<GeminiChatClientProvider>();
-        // ModelProviderRouter dispatches to the OpenRouter or Gemini concretes above based on
-        // CaliperOptions.Provider, re-checked per call so a runtime provider switch takes effect
-        // immediately rather than requiring a restart.
+        services.AddSingleton<OpenAIProvider>();
+        services.AddSingleton<OpenAICodexAuthService>();
+        services.AddSingleton<IOpenAICodexAuthService>(sp =>
+            sp.GetRequiredService<OpenAICodexAuthService>());
+        services.AddSingleton<OpenAICodexProvider>();
+        services.AddSingleton<IModelProvider>(sp => new CompositeModelProvider(
+            ProviderIds.OpenRouter,
+            "OpenRouter",
+            ProviderAuthenticationKind.ApiKey,
+            sp.GetRequiredService<OpenRouterChatClientProvider>(),
+            sp.GetRequiredService<OpenRouterCapabilityProvider>(),
+            sp.GetRequiredService<OpenRouterCapabilityProvider>()));
+        services.AddSingleton<IModelProvider>(sp => new CompositeModelProvider(
+            ProviderIds.Gemini,
+            "Google Gemini",
+            ProviderAuthenticationKind.ApiKey,
+            sp.GetRequiredService<GeminiChatClientProvider>(),
+            sp.GetRequiredService<GeminiCapabilityProvider>(),
+            sp.GetRequiredService<GeminiCapabilityProvider>()));
+        services.AddSingleton<IModelProvider>(sp => sp.GetRequiredService<OpenAIProvider>());
+        services.AddSingleton<IModelProvider>(sp => sp.GetRequiredService<OpenAICodexProvider>());
+        // ModelProviderRouter resolves one of the four explicit registrations above on every call.
         services.AddSingleton<ModelProviderRouter>();
         services.AddSingleton<IChatClientProvider>(sp =>
             sp.GetRequiredService<ModelProviderRouter>());
@@ -109,6 +136,7 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<ModelProviderRouter>());
         services.AddSingleton<IModelCatalog>(sp =>
             sp.GetRequiredService<ModelProviderRouter>());
+        services.AddSingleton<IProviderStatusService, ProviderStatusService>();
 
         // Turn strategy.
         services.AddSingleton<NativeToolStrategy>();

@@ -15,11 +15,18 @@ public sealed partial class ModelsProvidersSettingsViewModel(
     IModelCatalog modelCatalog,
     IRuntimeSettings runtimeSettings,
     IConfigWriter configWriter,
-    ICredentialStore credentials) : ObservableObject
+    ICredentialStore credentials,
+    IOpenAICodexAuthService codexAuthService) : ObservableObject
 {
     public ObservableCollection<ModelItemViewModel> Models { get; } = [];
     public ObservableCollection<ModelItemViewModel> FilteredModels { get; } = [];
-    public IReadOnlyList<string> ProviderOptions { get; } = ["OpenRouter", "Gemini"];
+    public IReadOnlyList<ProviderOptionViewModel> ProviderOptions { get; } =
+    [
+        new(ProviderIds.OpenRouter, "OpenRouter"),
+        new(ProviderIds.Gemini, "Google Gemini"),
+        new(ProviderIds.OpenAI, "OpenAI"),
+        new(ProviderIds.OpenAICodex, "OpenAI Codex"),
+    ];
 
     [ObservableProperty]
     public partial string CurrentProvider { get; set; } = runtimeSettings.Caliper.Provider;
@@ -49,6 +56,33 @@ public sealed partial class ModelsProvidersSettingsViewModel(
     public partial string GeminiApiKey { get; set; } = string.Empty;
 
     [ObservableProperty]
+    public partial string OpenAIEndpoint { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string OpenAIOrganization { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string OpenAIProject { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string OpenAIApiKey { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string OpenAICodexEndpoint { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsOpenAICodexSignedOut))]
+    public partial bool IsOpenAICodexAuthenticated { get; set; }
+
+    public bool IsOpenAICodexSignedOut => !IsOpenAICodexAuthenticated;
+
+    [ObservableProperty]
+    public partial string OpenAICodexAccount { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string OpenAICodexStatus { get; set; } = "Not signed in";
+
+    [ObservableProperty]
     public partial string StatusMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -65,11 +99,6 @@ public sealed partial class ModelsProvidersSettingsViewModel(
     [ObservableProperty]
     public partial bool RestartRequired { get; set; }
 
-    // The API keys live in Credential Manager, not config.json, so ConfigWriter can't see whether
-    // they changed. Remember what LoadAsync read so SaveAsync can tell if a key was edited and fold
-    // that into the restart decision (bound provider clients only pick up a new key on restart).
-    private string _loadedOpenRouterApiKey = string.Empty;
-    private string _loadedGeminiApiKey = string.Empty;
     private string? _catalogProvider;
     private Snapshot? _snapshot;
 
@@ -99,6 +128,11 @@ public sealed partial class ModelsProvidersSettingsViewModel(
     partial void OnOpenRouterApiKeyChanged(string value) => UpdateDirty();
     partial void OnGeminiEndpointChanged(string value) => UpdateDirty();
     partial void OnGeminiApiKeyChanged(string value) => UpdateDirty();
+    partial void OnOpenAIEndpointChanged(string value) => UpdateDirty();
+    partial void OnOpenAIOrganizationChanged(string value) => UpdateDirty();
+    partial void OnOpenAIProjectChanged(string value) => UpdateDirty();
+    partial void OnOpenAIApiKeyChanged(string value) => UpdateDirty();
+    partial void OnOpenAICodexEndpointChanged(string value) => UpdateDirty();
 
     partial void OnIsBusyChanged(bool value) => OnPropertyChanged(nameof(CanSave));
     partial void OnIsDirtyChanged(bool value) => OnPropertyChanged(nameof(CanSave));
@@ -117,11 +151,56 @@ public sealed partial class ModelsProvidersSettingsViewModel(
         GeminiApiKey = credentials.TryRead(CredentialTargets.GeminiApiKey, out var geminiKey)
             ? geminiKey
             : providers.Gemini.ApiKey ?? string.Empty;
-        _loadedOpenRouterApiKey = OpenRouterApiKey;
-        _loadedGeminiApiKey = GeminiApiKey;
+        OpenAIEndpoint = providers.OpenAI.Endpoint;
+        OpenAIOrganization = providers.OpenAI.Organization ?? string.Empty;
+        OpenAIProject = providers.OpenAI.Project ?? string.Empty;
+        OpenAIApiKey = credentials.TryRead(CredentialTargets.OpenAIApiKey, out var openAIKey)
+            ? openAIKey
+            : providers.OpenAI.ApiKey ?? string.Empty;
+        OpenAICodexEndpoint = providers.OpenAICodex.Endpoint;
+        await RefreshOpenAICodexStatusAsync(ct);
         RestartRequired = false;
         _snapshot = Capture();
         IsDirty = false;
+    }
+
+    [RelayCommand]
+    private async Task SignInOpenAICodexAsync(CancellationToken ct)
+    {
+        if (IsBusy)
+            return;
+
+        IsBusy = true;
+        StatusIsError = false;
+        OpenAICodexStatus = "Opening your browser…";
+        try
+        {
+            ApplyOpenAICodexStatus(await codexAuthService.LoginWithBrowserAsync(ct));
+            StatusMessage = "OpenAI Codex sign-in completed.";
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            OpenAICodexStatus = "Sign-in cancelled";
+        }
+        catch (Exception ex)
+        {
+            StatusIsError = true;
+            StatusMessage = ex.Message;
+            OpenAICodexStatus = "Sign-in failed";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SignOutOpenAICodexAsync(CancellationToken ct)
+    {
+        await codexAuthService.LogoutAsync(ct);
+        ApplyOpenAICodexStatus(await codexAuthService.GetStatusAsync(ct));
+        StatusIsError = false;
+        StatusMessage = "Signed out of OpenAI Codex.";
     }
 
     [RelayCommand]
@@ -148,7 +227,7 @@ public sealed partial class ModelsProvidersSettingsViewModel(
         catch (Exception ex)
         {
             // A11: modelCatalog.ListAsync hits a live, provider-selected network endpoint
-            // (OpenRouter/Gemini) — the realistic failure set (HTTP, TLS, DNS, malformed JSON
+            // — the realistic failure set (HTTP, TLS, DNS, malformed JSON
             // response, provider-specific errors) spans multiple implementations and isn't safely
             // enumerable from here.
             StatusIsError = true;
@@ -218,11 +297,7 @@ public sealed partial class ModelsProvidersSettingsViewModel(
 
         SaveOrDeleteSecret(CredentialTargets.OpenRouterApiKey, OpenRouterApiKey);
         SaveOrDeleteSecret(CredentialTargets.GeminiApiKey, GeminiApiKey);
-        var apiKeyChanged =
-            !string.Equals(OpenRouterApiKey, _loadedOpenRouterApiKey, StringComparison.Ordinal) ||
-            !string.Equals(GeminiApiKey, _loadedGeminiApiKey, StringComparison.Ordinal);
-        _loadedOpenRouterApiKey = OpenRouterApiKey;
-        _loadedGeminiApiKey = GeminiApiKey;
+        SaveOrDeleteSecret(CredentialTargets.OpenAIApiKey, OpenAIApiKey);
 
         var providers = new ProvidersOptions
         {
@@ -238,13 +313,24 @@ public sealed partial class ModelsProvidersSettingsViewModel(
                 Endpoint = GeminiEndpoint,
                 ApiKey = null,
             },
+            OpenAI = new OpenAIOptions
+            {
+                Endpoint = OpenAIEndpoint,
+                Organization = string.IsNullOrWhiteSpace(OpenAIOrganization) ? null : OpenAIOrganization,
+                Project = string.IsNullOrWhiteSpace(OpenAIProject) ? null : OpenAIProject,
+                ApiKey = null,
+            },
+            OpenAICodex = new OpenAICodexOptions
+            {
+                Endpoint = OpenAICodexEndpoint,
+            },
         };
         var providersResult = await configWriter.SaveProvidersAsync(providers, CancellationToken.None);
         StatusIsError = !providersResult.Success;
-        RestartRequired = providersResult.Success && (providersResult.RestartRequired || apiKeyChanged);
+        RestartRequired = providersResult.Success && providersResult.RestartRequired;
         StatusMessage = providersResult.Success
             ? RestartRequired
-                ? "Saved. Provider/model changes are live; provider endpoint and key changes apply after restart."
+                ? "Saved. Provider/model changes are live; endpoint changes apply after restart."
                 : "Saved."
             : providersResult.Error ?? "Save failed.";
         if (providersResult.Success)
@@ -271,6 +357,11 @@ public sealed partial class ModelsProvidersSettingsViewModel(
         OpenRouterApiKey = snapshot.OpenRouterKey;
         GeminiEndpoint = snapshot.GeminiEndpoint;
         GeminiApiKey = snapshot.GeminiKey;
+        OpenAIEndpoint = snapshot.OpenAIEndpoint;
+        OpenAIOrganization = snapshot.OpenAIOrganization;
+        OpenAIProject = snapshot.OpenAIProject;
+        OpenAIApiKey = snapshot.OpenAIKey;
+        OpenAICodexEndpoint = snapshot.OpenAICodexEndpoint;
         IsDirty = false;
         StatusMessage = "Changes discarded.";
     }
@@ -279,7 +370,8 @@ public sealed partial class ModelsProvidersSettingsViewModel(
 
     private Snapshot Capture() => new(
         CurrentProvider, CurrentModel, SummarizerModel, OpenRouterEndpoint, OpenRouterAppTitle,
-        OpenRouterAppReferer, OpenRouterApiKey, GeminiEndpoint, GeminiApiKey);
+        OpenRouterAppReferer, OpenRouterApiKey, GeminiEndpoint, GeminiApiKey, OpenAIEndpoint,
+        OpenAIOrganization, OpenAIProject, OpenAIApiKey, OpenAICodexEndpoint);
 
     private void UpdateDirty()
     {
@@ -290,7 +382,19 @@ public sealed partial class ModelsProvidersSettingsViewModel(
     private sealed record Snapshot(
         string Provider, string Model, string Summarizer, string OpenRouterEndpoint,
         string OpenRouterTitle, string OpenRouterReferer, string OpenRouterKey,
-        string GeminiEndpoint, string GeminiKey);
+        string GeminiEndpoint, string GeminiKey, string OpenAIEndpoint,
+        string OpenAIOrganization, string OpenAIProject, string OpenAIKey,
+        string OpenAICodexEndpoint);
+
+    private async Task RefreshOpenAICodexStatusAsync(CancellationToken ct) =>
+        ApplyOpenAICodexStatus(await codexAuthService.GetStatusAsync(ct));
+
+    private void ApplyOpenAICodexStatus(OpenAICodexAuthStatus status)
+    {
+        IsOpenAICodexAuthenticated = status.IsAuthenticated;
+        OpenAICodexAccount = status.Account ?? string.Empty;
+        OpenAICodexStatus = status.Status;
+    }
 }
 
 public sealed class ModelItemViewModel(
@@ -315,3 +419,5 @@ public sealed class ModelItemViewModel(
     public string DefaultText { get; } =
         string.Equals(entry.Id, currentModel, StringComparison.OrdinalIgnoreCase) ? "Default" : string.Empty;
 }
+
+public sealed record ProviderOptionViewModel(string Id, string DisplayName);
