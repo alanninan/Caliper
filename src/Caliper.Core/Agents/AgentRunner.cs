@@ -115,7 +115,13 @@ public sealed class AgentRunner(
             var memoryBlock = memoryEnabled
                 ? ConversationOrchestrator.BuildMemoryBlock(cachedMemoryRender ?? string.Empty, projectDocument)
                 : string.Empty;
-            var system = PromptBuilder.Build(opts, skillMenu, loadedBodies, memoryBlock, spec.Prompt);
+            var system = PromptBuilder.Build(
+                opts,
+                skillMenu,
+                loadedBodies,
+                memoryBlock,
+                spec.Prompt,
+                effectiveModel);
             var capabilities = await capabilityProvider.GetAsync(effectiveModel, ct).ConfigureAwait(false);
             var fit = await FitHistoryAsync(history, system, capabilities, opts, effectiveToolRegistry, ct).ConfigureAwait(false);
             fit = fit with { ActiveStartIndex = active.StartIndex };

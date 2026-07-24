@@ -432,4 +432,8 @@ file sealed class InMemoryRunStore : IRunStore
 
     public Task<IReadOnlyList<RunRecord>> ListRecentAsync(int limit, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<RunRecord>>([.. _runs.Values.Take(limit)]);
+
+    public Task<IReadOnlyList<RunRecord>> ListRecentScheduledAsync(int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<RunRecord>>(
+            [.. _runs.Values.Where(run => run.JobName is not null).Take(limit)]);
 }

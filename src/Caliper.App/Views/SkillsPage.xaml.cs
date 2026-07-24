@@ -24,7 +24,14 @@ public sealed partial class SkillsPage : Page
     {
         try
         {
-            await ViewModel.SelectSkillAsync(SkillList.SelectedItem as SkillItemViewModel);
+        await ViewModel.SelectSkillAsync(SkillList.SelectedItem as SkillItemViewModel);
+        if (ActualWidth < 1008 && ViewModel.SelectedSkill is not null)
+        {
+            SkillsListPanel.Visibility = Visibility.Collapsed;
+            SkillsDetailPanel.Visibility = Visibility.Visible;
+            Grid.SetColumn(SkillsDetailPanel, 0);
+            SkillsBackButton.Visibility = Visibility.Visible;
+        }
         }
         catch (Exception ex)
         {
@@ -33,5 +40,12 @@ public sealed partial class SkillsPage : Page
             // isn't safely enumerable.
             _logger.LogError(ex, "Unhandled exception in {Handler}.", nameof(SkillList_SelectionChanged));
         }
+    }
+
+    private void SkillsBack_Click(object sender, RoutedEventArgs e)
+    {
+        SkillsDetailPanel.Visibility = Visibility.Collapsed;
+        SkillsListPanel.Visibility = Visibility.Visible;
+        SkillList.Focus(FocusState.Programmatic);
     }
 }

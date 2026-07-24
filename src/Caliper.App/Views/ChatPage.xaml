@@ -35,28 +35,24 @@
 
         <DataTemplate x:Key="UserMessageTemplate" x:DataType="vm:UserMessageViewModel">
             <Grid
-                Margin="64,8,8,8"
+                Margin="96,12,8,16"
                 GettingFocus="MessageBubble_GettingFocus"
                 LosingFocus="MessageBubble_LosingFocus"
                 PointerEntered="MessageBubble_PointerEntered"
                 PointerExited="MessageBubble_PointerExited">
                 <Border
-                    MaxWidth="760"
-                    Padding="16,16,16,12"
+                    MaxWidth="680"
+                    Padding="12,8"
                     HorizontalAlignment="Right"
-                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    Background="{ThemeResource ControlFillColorDefaultBrush}"
                     CornerRadius="{ThemeResource OverlayCornerRadius}"
                     ToolTipService.ToolTip="{x:Bind converters:XamlConverters.TimestampToolTip(Timestamp), Mode=OneWay}">
                     <TextBlock
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                         IsTextSelectionEnabled="True"
                         Text="{x:Bind Content}"
                         TextWrapping="Wrap" />
                 </Border>
-                <!-- D2: previously used a negative top margin (top offset -6) that overlapped
-                     the bubble's top edge. The bubble's top padding grew 12->16 to reserve the
-                     same visual room, so the button now sits flush (Margin top 0) without a
-                     negative offset. -->
                 <Button
                     x:Name="CopyButton"
                     Margin="0,0,8,0"
@@ -74,23 +70,24 @@
 
         <DataTemplate x:Key="ReasoningTemplate" x:DataType="vm:ReasoningViewModel">
             <Expander
-                Margin="48,8,64,8"
+                Margin="8,16,8,4"
                 HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
                 IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}"
                 Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasContent), Mode=OneWay}">
                 <Expander.Header>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon
-                            VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Glyph="&#xE945;" />
+                    <StackPanel Spacing="8">
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{x:Bind DurationText, Mode=OneWay}"
                             Style="{StaticResource CaptionTextBlockStyle}" />
+                        <Border
+                            Height="1"
+                            Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
                     </StackPanel>
                 </Expander.Header>
                 <TextBlock
+                    Margin="24,8,0,8"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     IsTextSelectionEnabled="True"
                     Text="{x:Bind Content, Mode=OneWay}"
@@ -100,57 +97,26 @@
 
         <DataTemplate x:Key="AssistantMessageTemplate" x:DataType="vm:AssistantMessageViewModel">
             <Grid
-                Margin="8,8,64,8"
+                Margin="8,4,8,20"
+                Padding="0,0,36,0"
                 GettingFocus="MessageBubble_GettingFocus"
                 LosingFocus="MessageBubble_LosingFocus"
                 PointerEntered="MessageBubble_PointerEntered"
                 PointerExited="MessageBubble_PointerExited"
+                ToolTipService.ToolTip="{x:Bind converters:XamlConverters.TimestampToolTip(Timestamp), Mode=OneWay}"
                 Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasContent), Mode=OneWay}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="40" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-                <Border
-                    Width="32"
-                    Height="32"
-                    VerticalAlignment="Top"
-                    Background="{ThemeResource ControlFillColorSecondaryBrush}"
-                    BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{ThemeResource ControlCornerRadius}">
-                    <FontIcon
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Glyph="&#xE8BD;" />
-                </Border>
-                <Border
-                    Grid.Column="1"
-                    MaxWidth="820"
-                    Padding="16,16,16,12"
+                <!--
+                    Assistant output is the transcript's primary document surface, not a chat
+                    card. Keeping it unframed reduces nested-card noise and matches the reading
+                    hierarchy used by coding-agent workspaces such as Codex.
+                -->
+                <markdown:MarkdownTextBlock
+                    MaxWidth="880"
                     HorizontalAlignment="Left"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="{ThemeResource OverlayCornerRadius}"
-                    ToolTipService.ToolTip="{x:Bind converters:XamlConverters.TimestampToolTip(Timestamp), Mode=OneWay}">
-                    <!--
-                        U3: a single MarkdownTextBlock bound unconditionally to Content — the prior
-                        streaming-vs-final TextBlock/MarkdownTextBlock swap caused a visible reflow
-                        jump the instant a run finished. Content is never null (defaults to
-                        string.Empty), and mid-stream markdown (e.g. an unclosed ``` fence) is
-                        transiently unbalanced but self-corrects on the next streaming flush tick.
-                    -->
-                    <markdown:MarkdownTextBlock
-                        IsTextSelectionEnabled="True"
-                        Text="{x:Bind Content, Mode=OneWay}" />
-                </Border>
-                <!-- D2: previously used a negative top margin (top offset -6) that overlapped
-                     the bubble's top edge. The bubble's top padding grew 12->16 to reserve the
-                     same visual room, so the button now sits flush (Margin top 0) without a
-                     negative offset. -->
+                    IsTextSelectionEnabled="True"
+                    Text="{x:Bind Content, Mode=OneWay}" />
                 <Button
                     x:Name="CopyButton"
-                    Grid.Column="1"
-                    Margin="0,0,8,0"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Top"
                     AutomationProperties.Name="Copy message"
@@ -165,81 +131,70 @@
 
         <DataTemplate x:Key="ToolTemplate" x:DataType="vm:ToolCallViewModel">
             <Grid
-                Margin="0,0,0,4"
-                Padding="12,8"
+                MinHeight="28"
+                Padding="4,2"
                 HorizontalAlignment="Stretch"
-                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                ColumnSpacing="12"
-                CornerRadius="{ThemeResource ControlCornerRadius}">
+                ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <FontIcon
                     VerticalAlignment="Center"
-                    FontSize="16"
+                    FontSize="12"
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Glyph="&#xE90F;" />
-                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock
-                        Text="{x:Bind ToolName}"
-                        TextTrimming="CharacterEllipsis"
-                        Style="{StaticResource BodyStrongTextBlockStyle}" />
-                    <TextBlock
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind Headline}"
-                        TextTrimming="CharacterEllipsis"
-                        Style="{StaticResource CaptionTextBlockStyle}" />
-                </StackPanel>
-                <StackPanel
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Text="{x:Bind ToolName}"
+                    TextTrimming="CharacterEllipsis"
+                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock
                     Grid.Column="2"
                     VerticalAlignment="Center"
-                    Orientation="Horizontal"
-                    Spacing="8">
-                    <!-- D3: Padding 6,1 -> 8,2 (horizontal snaps to the 4px grid; vertical uses
-                         the 2px compact-chip exception rather than 4, which would visibly
-                         inflate this small status marker). -->
-                    <Border
-                        Padding="8,2"
-                        VerticalAlignment="Center"
-                        Background="{ThemeResource ControlFillColorDefaultBrush}"
-                        CornerRadius="{ThemeResource ControlCornerRadius}"
-                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasDiff), Mode=OneWay}">
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="Diff"
-                            Style="{StaticResource CaptionTextBlockStyle}" />
-                    </Border>
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind Status, Mode=OneWay}"
-                        Style="{StaticResource CaptionTextBlockStyle}" />
-                </StackPanel>
-                <Button
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind Headline}"
+                    TextTrimming="CharacterEllipsis"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+                <TextBlock
                     Grid.Column="3"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Diff"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(HasDiff), Mode=OneWay}" />
+                <TextBlock
+                    Grid.Column="4"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind Status, Mode=OneWay}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+                <Button
+                    Grid.Column="5"
                     VerticalAlignment="Center"
                     AutomationProperties.AutomationId="{x:Bind InspectAutomationId}"
                     AutomationProperties.Name="Inspect tool details"
                     Click="InspectTool_Click"
+                    Style="{StaticResource CopyButtonStyle}"
                     Tag="{x:Bind}">
-                    <FontIcon FontSize="14" Glyph="&#xE946;" />
+                    <FontIcon FontSize="12" Glyph="&#xE946;" />
                 </Button>
             </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="ToolActivityTemplate" x:DataType="vm:ToolActivityViewModel">
             <Expander
-                Margin="48,8,64,8"
+                Margin="8,8,8,12"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 IsExpanded="{x:Bind IsExpanded, Mode=TwoWay}">
                 <Expander.Header>
-                    <Grid ColumnSpacing="12">
+                    <Grid ColumnSpacing="8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -260,21 +215,21 @@
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Glyph="&#xE90F;"
                             Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsRunning), Mode=OneWay}" />
-                        <StackPanel Grid.Column="1" Spacing="2">
-                            <TextBlock
-                                Text="Tool activity"
-                                Style="{StaticResource BodyStrongTextBlockStyle}" />
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                Text="{x:Bind Summary, Mode=OneWay}"
-                                TextTrimming="CharacterEllipsis"
-                                Style="{StaticResource CaptionTextBlockStyle}" />
-                        </StackPanel>
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind Summary, Mode=OneWay}"
+                            TextTrimming="CharacterEllipsis"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
                     </Grid>
                 </Expander.Header>
-                <ItemsRepeater ItemTemplate="{StaticResource ToolTemplate}" ItemsSource="{x:Bind Calls}">
+                <ItemsRepeater
+                    Margin="24,4,0,0"
+                    ItemTemplate="{StaticResource ToolTemplate}"
+                    ItemsSource="{x:Bind Calls}">
                     <ItemsRepeater.Layout>
-                        <StackLayout Spacing="4" />
+                        <StackLayout />
                     </ItemsRepeater.Layout>
                 </ItemsRepeater>
             </Expander>
@@ -282,7 +237,7 @@
 
         <DataTemplate x:Key="StatusTemplate" x:DataType="vm:RunStatusViewModel">
             <InfoBar
-                Margin="48,8,64,8"
+                Margin="8,8,8,12"
                 IsClosable="False"
                 IsOpen="True"
                 Message="{x:Bind Message, Mode=OneWay}"
@@ -291,7 +246,7 @@
         </DataTemplate>
 
         <DataTemplate x:Key="CompactionMarkerTemplate" x:DataType="vm:CompactionMarkerViewModel">
-            <StackPanel Margin="48,16,64,16" Spacing="8">
+            <StackPanel Margin="8,16" Spacing="8">
                 <Grid ColumnSpacing="12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -351,73 +306,115 @@
         </DataTemplate>
 
         <DataTemplate x:Key="ApprovalTemplate" x:DataType="vm:ApprovalViewModel">
-            <InfoBar
-                IsClosable="False"
-                IsOpen="True"
-                Message="{x:Bind Status, Mode=OneWay}"
-                Severity="{x:Bind local:ChatPage.ApprovalSeverity(IsResolved, IsDenied), Mode=OneWay}"
-                Title="{x:Bind Title, Mode=OneWay}">
-                <Grid RowSpacing="8">
+            <Border
+                Padding="12,8"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <Grid RowSpacing="4">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <!--
-                        A1: this is the docked approval card's line announcing what approval is
-                        being requested (the request's Reason, e.g. "This tool requires your
-                        approval before it can continue.") — Assertive because an approval prompt
-                        blocks the run and needs to interrupt, unlike the Polite status/countdown
-                        lines elsewhere on this page. x:Name lets ChatPage.xaml.cs reach it (it's
-                        inside a DataTemplate, so it isn't a page-level field) to raise
-                        LiveRegionChanged after a new approval's Reason text is in place — WinUI
-                        doesn't raise that automatically on a Text change (verified against
-                        Microsoft Learn's live-region guidance).
-                    -->
-                    <TextBlock
-                        x:Name="ApprovalReasonText"
-                        AutomationProperties.LiveSetting="Assertive"
-                        Text="{x:Bind Reason}"
-                        TextWrapping="Wrap" />
-                    <TextBlock
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <FontIcon
+                            VerticalAlignment="Center"
+                            FontSize="14"
+                            Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                            Glyph="&#xE72E;" />
+                        <StackPanel Grid.Column="1" Spacing="2">
+                            <TextBlock
+                                Text="{x:Bind Title, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis"
+                                Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <!--
+                                Assertive because a fresh approval blocks the run. The full reason
+                                remains available as a tooltip when the compact line is truncated.
+                            -->
+                            <TextBlock
+                                x:Name="ApprovalReasonText"
+                                AutomationProperties.LiveSetting="Assertive"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind Reason}"
+                                TextTrimming="CharacterEllipsis"
+                                ToolTipService.ToolTip="{x:Bind Reason}"
+                                Style="{StaticResource CaptionTextBlockStyle}" />
+                        </StackPanel>
+                        <StackPanel
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="4"
+                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsPending), Mode=OneWay}">
+                            <Button
+                                AutomationProperties.AutomationId="ApprovalDenyButton"
+                                Command="{x:Bind DenyCommand}"
+                                Content="Deny" />
+                            <Button
+                                AutomationProperties.AutomationId="ApprovalAllowButton"
+                                Command="{x:Bind AllowCommand}"
+                                Content="Allow"
+                                Style="{StaticResource AccentButtonStyle}" />
+                            <DropDownButton
+                                AutomationProperties.AutomationId="ApprovalMoreOptionsButton"
+                                AutomationProperties.Name="More approval options"
+                                Padding="6">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem
+                                            AutomationProperties.AutomationId="ApprovalAllowSessionButton"
+                                            Command="{x:Bind AllowForSessionCommand}"
+                                            Text="Allow for session"
+                                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(CanRememberApproval), Mode=OneTime}" />
+                                    </MenuFlyout>
+                                </DropDownButton.Flyout>
+                                <FontIcon FontSize="12" Glyph="&#xE712;" />
+                            </DropDownButton>
+                        </StackPanel>
+                        <TextBlock
+                            Grid.Column="2"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind Status, Mode=OneWay}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(IsPending), Mode=OneWay}" />
+                    </Grid>
+                    <Expander
                         Grid.Row="1"
-                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                        Text="{x:Bind Effect}"
-                        Style="{StaticResource CaptionTextBlockStyle}" />
-                    <TextBlock
-                        Grid.Row="2"
-                        FontFamily="{StaticResource CodeFontFamily}"
-                        IsTextSelectionEnabled="True"
-                        Text="{x:Bind Arguments}"
-                        TextWrapping="Wrap" />
-                    <StackPanel
-                        Grid.Row="3"
-                        Orientation="Horizontal"
-                        Spacing="8"
-                        Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(IsPending), Mode=OneWay}">
-                        <Button
-                            AutomationProperties.AutomationId="ApprovalAllowButton"
-                            Command="{x:Bind AllowCommand}"
-                            Content="Allow"
-                            Style="{StaticResource AccentButtonStyle}" />
-                        <Button
-                            AutomationProperties.AutomationId="ApprovalAllowSessionButton"
-                            Command="{x:Bind AllowForSessionCommand}"
-                            Content="Allow for session"
-                            Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(CanRememberApproval), Mode=OneTime}" />
-                        <Button
-                            AutomationProperties.AutomationId="ApprovalDenyButton"
-                            Command="{x:Bind DenyCommand}"
-                            Content="Deny" />
-                    </StackPanel>
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch">
+                        <Expander.Header>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind Effect}"
+                                    Style="{StaticResource CaptionTextBlockStyle}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                    Text="details"
+                                    Style="{StaticResource CaptionTextBlockStyle}" />
+                            </StackPanel>
+                        </Expander.Header>
+                        <TextBlock
+                            Margin="24,4,0,4"
+                            FontFamily="{StaticResource CodeFontFamily}"
+                            IsTextSelectionEnabled="True"
+                            Text="{x:Bind Arguments}"
+                            TextWrapping="Wrap" />
+                    </Expander>
                 </Grid>
-            </InfoBar>
+            </Border>
         </DataTemplate>
 
         <DataTemplate x:Key="ApprovalTranscriptTemplate" x:DataType="vm:ApprovalViewModel">
             <ContentControl
-                Margin="48,8,64,8"
+                Margin="8,8,8,12"
                 HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch"
                 Content="{x:Bind}"
@@ -585,7 +582,7 @@
         <KeyboardAccelerator Key="F1" Invoked="ShowShortcutsAccelerator_Invoked" />
     </Page.KeyboardAccelerators>
 
-    <Grid x:Name="ChatWorkspace">
+    <Grid x:Name="ChatWorkspace" SizeChanged="ChatWorkspace_SizeChanged">
         <Grid.ColumnDefinitions>
             <!--
                 Width/MinWidth for SessionsColumn and InspectorColumn are managed entirely in
@@ -669,6 +666,7 @@
         </Border>
 
         <toolkit:GridSplitter
+            x:Name="SessionsSplitter"
             Grid.Column="1"
             AutomationProperties.AutomationId="SessionsGridSplitter"
             AutomationProperties.Name="Resize sessions and workspace panes"
@@ -696,10 +694,12 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Spacing="4">
                     <TextBlock Text="Workspace" Style="{StaticResource TitleTextBlockStyle}" />
-                    <StackPanel Orientation="Horizontal" Spacing="4">
+                </StackPanel>
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="4">
                         <!--
                             U4: session-scoped quick-switchers. Both write only the live
                             IRuntimeSettings clone (never config.json) — Settings → Models &amp;
@@ -761,7 +761,6 @@
                             </DropDownButton.Flyout>
                         </DropDownButton>
                     </StackPanel>
-                </StackPanel>
                 <CommandBar
                     Grid.Row="0"
                     Grid.Column="1"
@@ -769,7 +768,7 @@
                     DefaultLabelPosition="Right">
                     <AppBarButton
                         AutomationProperties.AutomationId="ToggleSessionsPaneButton"
-                        Command="{x:Bind Sessions.TogglePaneCommand}"
+                        Click="ToggleSessionsPane_Click"
                         Icon="List"
                         Label="Sessions">
                         <AppBarButton.KeyboardAccelerators>
@@ -779,29 +778,11 @@
                     <AppBarButton
                         AutomationProperties.AutomationId="InspectorToggleButton"
                         AutomationProperties.Name="Toggle inspector pane"
-                        Command="{x:Bind ViewModel.ToggleInspectorCommand}"
+                        Click="ToggleInspectorPane_Click"
                         Icon="DockRight"
                         Label="Inspector">
                         <AppBarButton.KeyboardAccelerators>
                             <KeyboardAccelerator Key="B" Modifiers="Control,Shift" />
-                        </AppBarButton.KeyboardAccelerators>
-                    </AppBarButton>
-                    <AppBarButton
-                        AutomationProperties.AutomationId="CompactToolbarButton"
-                        Command="{x:Bind ViewModel.CompactCommand}"
-                        Icon="Refresh"
-                        Label="Compact">
-                        <AppBarButton.KeyboardAccelerators>
-                            <KeyboardAccelerator Key="K" Modifiers="Control,Shift" />
-                        </AppBarButton.KeyboardAccelerators>
-                    </AppBarButton>
-                    <AppBarButton
-                        AutomationProperties.AutomationId="ClearContextToolbarButton"
-                        Command="{x:Bind ViewModel.ClearContextCommand}"
-                        Icon="Clear"
-                        Label="Clear">
-                        <AppBarButton.KeyboardAccelerators>
-                            <KeyboardAccelerator Key="Delete" Modifiers="Control,Shift" />
                         </AppBarButton.KeyboardAccelerators>
                     </AppBarButton>
                     <AppBarButton
@@ -813,19 +794,39 @@
                             <KeyboardAccelerator Key="Escape" Invoked="StopAccelerator_Invoked" />
                         </AppBarButton.KeyboardAccelerators>
                     </AppBarButton>
-                    <AppBarButton
-                        AutomationProperties.AutomationId="CopyTranscriptButton"
-                        Click="CopyTranscript_Click"
-                        Icon="Copy"
-                        Label="Copy conversation" />
-                    <AppBarButton
-                        AutomationProperties.AutomationId="ShortcutsToolbarButton"
-                        Click="ShortcutsButton_Click"
-                        Icon="Help"
-                        Label="Shortcuts" />
+                    <CommandBar.SecondaryCommands>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="CompactToolbarButton"
+                            Command="{x:Bind ViewModel.CompactCommand}"
+                            Icon="Refresh"
+                            Label="Compact">
+                            <AppBarButton.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="K" Modifiers="Control,Shift" />
+                            </AppBarButton.KeyboardAccelerators>
+                        </AppBarButton>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="ClearContextToolbarButton"
+                            Command="{x:Bind ViewModel.ClearContextCommand}"
+                            Icon="Clear"
+                            Label="Clear">
+                            <AppBarButton.KeyboardAccelerators>
+                                <KeyboardAccelerator Key="Delete" Modifiers="Control,Shift" />
+                            </AppBarButton.KeyboardAccelerators>
+                        </AppBarButton>
+                        <AppBarButton
+                            AutomationProperties.AutomationId="CopyTranscriptButton"
+                            Click="CopyTranscript_Click"
+                            Icon="Copy"
+                            Label="Copy conversation" />
+                        <AppBarButton
+                            AutomationProperties.AutomationId="ShortcutsToolbarButton"
+                            Click="ShortcutsButton_Click"
+                            Icon="Help"
+                            Label="Shortcuts" />
+                    </CommandBar.SecondaryCommands>
                 </CommandBar>
                 <Grid
-                    Grid.Row="1"
+                    Grid.Row="2"
                     Grid.ColumnSpan="2"
                     Margin="0,8,0,0"
                     ColumnSpacing="8"
@@ -979,10 +980,9 @@
                 </Button>
             </Grid>
 
-            <!-- A2: x:Name so ChatPage.xaml.cs can reach ContentTemplateRoot (the realized InfoBar)
-                 to wire AutomationProperties.DescribedBy -> ApprovalCountdownText — DescribedBy has
-                 no XAML setter (Microsoft Learn: "does not have a Set accessor... not really a
-                 XAML attached property with a markup usage"), so it can only be set in code. -->
+            <!-- A2: x:Name so ChatPage.xaml.cs can reach the realized approval surface and wire
+                 AutomationProperties.DescribedBy -> ApprovalCountdownText — DescribedBy has no
+                 XAML setter, so it can only be set in code. -->
             <ContentControl
                 x:Name="PendingApprovalCard"
                 Grid.Row="2"
@@ -1103,6 +1103,7 @@
         </Grid>
 
         <toolkit:GridSplitter
+            x:Name="InspectorSplitter"
             Grid.Column="3"
             AutomationProperties.AutomationId="DetailsGridSplitter"
             AutomationProperties.Name="Resize workspace and inspector panes"

@@ -1,7 +1,7 @@
 # Desktop app
 
 The Windows desktop app is a full Caliper host: everything the console can do interactively,
-plus a visual workspace for approvals, schedules, runs, and settings.
+plus a visual workspace for approvals, schedules, and settings.
 
 ```powershell
 dotnet run --project src/Caliper.App     # requires Windows 10.0.19041+ and Windows App SDK
@@ -47,6 +47,23 @@ behind the "Show subagent runs" toggle.
 
 Pane widths and collapsed states persist across launches.
 
+The workspace adapts at two desktop breakpoints. At 1360 epx and above, Sessions and the
+Inspector can remain inline at their saved widths. Between 1008 and 1359 epx, Sessions starts
+closed while the Inspector can remain inline. Below 1008 epx, opening one side pane closes the
+other so the composer and transcript retain usable space. Responsive changes do not replace the
+saved wide-layout choices.
+
+## Settings
+
+Settings use adaptive left navigation grouped into Basics, Agent, Safety, Integrations, and
+Advanced. Configuration changes are staged until Save; Discard restores the last loaded values.
+Moving between Settings sections keeps staged edits in memory. Theme is the exception and is
+clearly marked as applying immediately.
+
+Labels describe outcomes rather than configuration enum names: permission choices explain what
+Caliper may do, execution choices distinguish this PC from a Docker sandbox, and Search shows
+"Search off" or "Tavily web search".
+
 ## Approvals
 
 When a run wants to do something your permission mode doesn't auto-allow, a docked approval
@@ -81,17 +98,11 @@ semantics):
 - **Run scheduler while the app is open** (opt-in toggle): jobs fire on their cron schedule
   for as long as the window stays open. The preference persists and re-activates on the next
   launch. Headless scheduling (no window at all) remains the console's `--serve`.
-
-## Runs page
-
-The durable-runs surface ([durable-runs.md](durable-runs.md)): the 20 most recent tracked
-runs — one-shot, unattended, scheduled, and subagent runs; ordinary chat turns are not
-tracked — with status, step/budget, and last update. Interrupted runs are highlighted and
-show a **Resume** button, which continues the run with its remaining step budget and reports
-the outcome (including any unattended denials) when it finishes.
-
-If any runs were interrupted (e.g. the process was killed mid-run), a banner appears at
-launch: "N run(s) were interrupted — view Runs."
+- The **History** mode shows the 20 most recent scheduled runs in a table with status,
+  schedule, progress, and update time. **Open chat** selects the run's `[job] {name}`
+  transcript and returns to Chat. Interrupted scheduled runs expose **Resume** in the same
+  row. One-shot, unattended CLI, and subagent run records remain inspectable through the
+  console's `/runs` command rather than occupying a separate desktop destination.
 
 ## Skills and Memory pages
 
@@ -106,11 +117,13 @@ Structured pages — General, Models & providers, Permissions, Tools, Agent beha
 Context & memory, Subagents, Execution, MCP servers, Search, Advanced — edit the same
 `~/.caliper/config.json` the console reads. Each page tells you whether a saved change
 applies immediately or needs a restart, and offers a one-click **Restart Caliper** when it
-does. Most sections are live; endpoints/keys, the enabled-tool set, MCP servers, and search
+does. Most sections are live; endpoints, the enabled-tool set, MCP servers, and search
 need a restart.
 
-- **Models & providers** stores API keys in **Windows Credential Manager**, never in
-  `config.json`.
+- **Models & providers** exposes all four providers. OpenRouter, Gemini, and OpenAI Platform use
+  API keys; OpenAI Codex has browser sign-in/sign-out for a ChatGPT account. Keys and OAuth
+  tokens are stored in **Windows Credential Manager**, never in `config.json`, and credential
+  changes apply immediately.
 - **Subagents** edits delegation profiles ([subagents.md](subagents.md)): global limits, a
   per-profile tool list (one per line), step budget, and permission mode with an
   "(inherit)" option. Renaming the default profile follows it; removing it is blocked until

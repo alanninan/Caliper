@@ -18,25 +18,32 @@
         <DataTemplate x:Key="ProfileDetailTemplate" x:DataType="vm:SubagentProfileItemViewModel">
             <StackPanel Spacing="12">
                 <TextBox AutomationProperties.AutomationId="ProfileNameTextBox" Header="Profile name" Text="{x:Bind Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBox
-                    AutomationProperties.AutomationId="ProfileEnabledToolsTextBox"
-                    AcceptsReturn="True"
-                    Header="Enabled tools (one per line)"
-                    MaxHeight="220"
-                    Text="{x:Bind EnabledToolsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    TextWrapping="Wrap" />
+                <StackPanel Spacing="8">
+                    <TextBox
+                        AutomationProperties.AutomationId="ProfileToolSearchBox"
+                        Header="Tools this profile can use"
+                        PlaceholderText="Search tools"
+                        Text="{x:Bind ToolSearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <ItemsControl ItemsSource="{x:Bind FilteredToolChoices, Mode=OneWay}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SubagentToolChoiceViewModel">
+                                <CheckBox Content="{x:Bind Name, Mode=OneTime}" IsChecked="{x:Bind IsEnabled, Mode=TwoWay}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
                 <NumberBox AutomationProperties.AutomationId="ProfileMaxStepsNumberBox" Header="Max steps" Minimum="1" SmallChange="1" SpinButtonPlacementMode="Compact" Value="{x:Bind MaxSteps, Mode=TwoWay}" />
                 <StackPanel Spacing="4">
                     <ComboBox AutomationProperties.AutomationId="ProfileModePicker" Header="Mode" MinWidth="200" SelectedItem="{x:Bind ModeText, Mode=TwoWay}">
-                        <x:String>(inherit)</x:String>
-                        <x:String>AskAlways</x:String>
-                        <x:String>Auto</x:String>
-                        <x:String>Plan</x:String>
+                        <x:String>Inherit parent</x:String>
+                        <x:String>Ask before actions</x:String>
+                        <x:String>Allow safe and approved actions</x:String>
+                        <x:String>Planning only</x:String>
                     </ComboBox>
                     <TextBlock
                         Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                         Style="{StaticResource CaptionTextBlockStyle}"
-                        Text="A profile mode only ever tightens the parent run's effective mode — never loosens it. (inherit) leaves the parent's mode as-is."
+                        Text="A profile can only be as permissive as its parent run. Inherit parent uses the parent's choice."
                         TextWrapping="Wrap" />
                 </StackPanel>
                 <TextBlock
@@ -49,21 +56,23 @@
         </DataTemplate>
     </Page.Resources>
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="1080" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Subagents" Style="{StaticResource TitleTextBlockStyle}" />
-                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Named tool-grant profiles the task tool can select — live, no restart needed." TextWrapping="Wrap" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Choose which tools delegated tasks can use and how carefully they may act." TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
                     <Button AutomationProperties.AutomationId="AddSubagentProfileButton" Command="{x:Bind ViewModel.AddProfileCommand}" Content="Add" />
-                    <Button AutomationProperties.AutomationId="DiscardSubagentsButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
-                    <Button AutomationProperties.AutomationId="SaveSubagentsButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                        <Button AutomationProperties.AutomationId="DiscardSubagentsButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                        <Button AutomationProperties.AutomationId="SaveSubagentsButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
                 </StackPanel>
             </Grid>
 
@@ -96,6 +105,7 @@
                         Grid.Column="3"
                         AutomationProperties.AutomationId="DefaultProfilePicker"
                         Header="Default profile"
+                        AutomationProperties.HelpText="Used when a delegated task does not request a named profile."
                         ItemsSource="{x:Bind ViewModel.ProfileNameOptions, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.DefaultProfile, Mode=TwoWay}" />
                 </Grid>
@@ -128,12 +138,28 @@
                 </StackPanel>
             </Border>
 
-            <Grid ColumnSpacing="16" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasProfiles), Mode=OneWay}">
+            <Grid x:Name="SubagentEditorGrid" ColumnSpacing="16" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasProfiles), Mode=OneWay}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="320" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="SubagentListColumn" Width="*" />
+                    <ColumnDefinition x:Name="SubagentDetailColumn" Width="0" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup>
+                        <VisualState x:Name="CompactSubagents" />
+                        <VisualState x:Name="WideSubagents">
+                            <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="1008" /></VisualState.StateTriggers>
+                            <VisualState.Setters>
+                                <Setter Target="SubagentListColumn.Width" Value="320" />
+                                <Setter Target="SubagentDetailColumn.Width" Value="*" />
+                                <Setter Target="SubagentListPanel.Visibility" Value="Visible" />
+                                <Setter Target="SubagentDetailPanel.Visibility" Value="Visible" />
+                                <Setter Target="SubagentDetailPanel.(Grid.Column)" Value="1" />
+                                <Setter Target="SubagentBackButton.Visibility" Value="Collapsed" />
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <StackPanel x:Name="SubagentListPanel" Spacing="8">
                     <Button
                         AutomationProperties.AutomationId="RemoveSubagentProfileButton"
                         HorizontalAlignment="Right"
@@ -155,20 +181,26 @@
                             ItemsSource="{x:Bind ViewModel.Profiles, Mode=OneWay}"
                             MaxHeight="480"
                             SelectedItem="{x:Bind ViewModel.SelectedProfile, Mode=TwoWay}"
+                            SelectionChanged="SubagentProfileList_SelectionChanged"
                             SelectionMode="Single" />
                     </Border>
                 </StackPanel>
                 <Border
+                    x:Name="SubagentDetailPanel"
                     Grid.Column="1"
                     Padding="20"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
-                    CornerRadius="{ThemeResource OverlayCornerRadius}">
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    Visibility="Collapsed">
+                    <StackPanel Spacing="8">
+                    <Button x:Name="SubagentBackButton" AutomationProperties.AutomationId="SubagentBackButton" Click="SubagentBack_Click" Content="Back" />
                     <ContentControl
                         HorizontalContentAlignment="Stretch"
                         Content="{x:Bind ViewModel.SelectedProfile, Mode=OneWay}"
                         ContentTemplate="{StaticResource ProfileDetailTemplate}" />
+                    </StackPanel>
                 </Border>
             </Grid>
         </StackPanel>

@@ -31,9 +31,15 @@ internal sealed class RuntimeSettings(
     {
         if (string.IsNullOrWhiteSpace(provider))
             throw new ArgumentException("Provider cannot be empty.", nameof(provider));
+        var resolved = ProviderIds.All.FirstOrDefault(candidate =>
+            string.Equals(candidate, provider.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (resolved is null)
+            throw new ArgumentException(
+                $"Provider must be one of: {string.Join(", ", ProviderIds.All)}.",
+                nameof(provider));
 
         lock (_gate)
-            _caliper.Provider = provider.Trim();
+            _caliper.Provider = resolved;
         RaiseSettingsChanged();
     }
 
@@ -91,12 +97,14 @@ internal sealed class RuntimeSettings(
             switch (NormalizeKey(key))
             {
                 case "provider":
-                    if (string.IsNullOrWhiteSpace(value))
+                    var provider = ProviderIds.All.FirstOrDefault(candidate =>
+                        string.Equals(candidate, value.Trim(), StringComparison.OrdinalIgnoreCase));
+                    if (provider is null)
                     {
-                        message = "Provider cannot be empty.";
+                        message = $"Provider must be one of: {string.Join(", ", ProviderIds.All)}.";
                         return false;
                     }
-                    _caliper.Provider = value.Trim();
+                    _caliper.Provider = provider;
                     message = $"provider = {_caliper.Provider}";
                     return true;
 

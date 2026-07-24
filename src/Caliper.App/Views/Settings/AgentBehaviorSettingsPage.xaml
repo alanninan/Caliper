@@ -6,18 +6,21 @@
     xmlns:converters="using:Caliper.App.Controls"
     xmlns:settings="using:CommunityToolkit.WinUI.Controls">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="720" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="Agent behavior" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Turn strategy, step limits, generation controls." TextWrapping="Wrap" />
                 </StackPanel>
-                <Button Grid.Column="1" AutomationProperties.AutomationId="SaveAgentBehaviorButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                    <Button AutomationProperties.AutomationId="DiscardAgentBehaviorButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                    <Button AutomationProperties.AutomationId="SaveAgentBehaviorButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                </StackPanel>
             </Grid>
             <InfoBar
                 IsClosable="False"

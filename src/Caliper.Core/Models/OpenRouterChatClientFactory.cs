@@ -14,35 +14,23 @@ namespace Caliper.Core.Models;
 
 internal sealed class OpenRouterChatClientProvider(
     IOptions<ProvidersOptions> providerOptions,
+    IProviderCredentialStore credentials,
     ILoggerFactory loggerFactory) : IChatClientProvider
 {
-    private readonly Dictionary<string, IChatClient> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _gate = new();
-
     public IChatClient GetClient(string modelSlug)
     {
-        lock (_gate)
-        {
-            if (_cache.TryGetValue(modelSlug, out var cached))
-                return cached;
-
-            var created = Create(modelSlug);
-            _cache[modelSlug] = created;
-            return created;
-        }
-    }
-
-    private IChatClient Create(string modelSlug)
-    {
         var openRouter = providerOptions.Value.OpenRouter;
-        if (string.IsNullOrWhiteSpace(openRouter.ApiKey))
+        var apiKey = credentials.TryRead(ProviderCredentialTargets.OpenRouterApiKey, out var stored)
+            ? stored
+            : openRouter.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
             return new UnavailableChatClient("Providers:OpenRouter:ApiKey is not configured.");
 
         var clientOptions = new OpenAIClientOptions { Endpoint = new Uri(openRouter.Endpoint) };
         clientOptions.AddPolicy(new OpenRouterAttributionPolicy(openRouter), PipelinePosition.PerCall);
 
         IChatClient model = new OpenAIClient(
-                new ApiKeyCredential(openRouter.ApiKey),
+                new ApiKeyCredential(apiKey),
                 clientOptions)
             .GetChatClient(modelSlug)
             .AsIChatClient();

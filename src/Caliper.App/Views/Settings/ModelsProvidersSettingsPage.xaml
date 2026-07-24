@@ -19,7 +19,7 @@
         Capping the row keeps the collapsed-expanders common case unchanged (it's shorter than
         the cap) while an expanded form section scrolls instead of pushing the catalog to zero.
     -->
-    <Grid Padding="36,28" RowSpacing="16">
+    <Grid Style="{StaticResource WidePageRootGridStyle}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -27,27 +27,28 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <Grid MaxWidth="960" HorizontalAlignment="Left" ColumnSpacing="16">
+        <Grid Style="{StaticResource PageHeaderGridStyle}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <StackPanel Spacing="8">
+            <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                 <TextBlock Text="Models &amp; providers" Style="{StaticResource TitleTextBlockStyle}" />
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind ViewModel.RuntimeSummary, Mode=OneWay}" TextWrapping="Wrap" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                    Text="{x:Bind ViewModel.CatalogSummaryText, Mode=OneWay}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Visibility="{x:Bind converters:XamlConverters.HasTextToVisibility(ViewModel.CatalogSummaryText), Mode=OneWay}" />
             </StackPanel>
-            <Button
-                Grid.Column="1"
-                AutomationProperties.AutomationId="SaveModelsProvidersButton"
-                Command="{x:Bind ViewModel.SaveCommand}"
-                Content="Save"
-                Style="{StaticResource AccentButtonStyle}" />
+            <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                <Button AutomationProperties.AutomationId="DiscardModelsProvidersButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                <Button AutomationProperties.AutomationId="SaveModelsProvidersButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" IsEnabled="{x:Bind ViewModel.CanSave, Mode=OneWay}" Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
         </Grid>
 
         <InfoBar
             Grid.Row="1"
-            MaxWidth="960"
-            HorizontalAlignment="Left"
             IsClosable="False"
             IsOpen="{x:Bind converters:XamlConverters.HasText(ViewModel.StatusMessage), Mode=OneWay}"
             Message="{x:Bind ViewModel.StatusMessage, Mode=OneWay}"
@@ -63,20 +64,22 @@
 
         <ScrollViewer
             Grid.Row="2"
-            MaxWidth="960"
-            HorizontalAlignment="Left"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="16">
+            <StackPanel HorizontalAlignment="Stretch" Spacing="{StaticResource SectionSpacing}">
                 <settings:SettingsExpander Header="Active model" Description="Provider determines the catalog, credentials, and request shape.">
                     <ComboBox
                         AutomationProperties.AutomationId="ProviderPicker"
+                        DisplayMemberPath="DisplayName"
                         MinWidth="200"
                         ItemsSource="{x:Bind ViewModel.ProviderOptions, Mode=OneWay}"
-                        SelectedItem="{x:Bind ViewModel.CurrentProvider, Mode=TwoWay}"
+                        SelectedValue="{x:Bind ViewModel.CurrentProvider, Mode=TwoWay}"
+                        SelectedValuePath="Id"
                         SelectionChanged="ProviderPicker_SelectionChanged" />
                     <settings:SettingsExpander.Items>
-                        <settings:SettingsCard Header="Model" Description="Applies immediately; type or pick from the catalog below.">
+                        <settings:SettingsCard Header="Model" Description="Type or pick from the catalog below, then Save to make it active.">
                             <AutoSuggestBox
                                 x:Name="ModelPicker"
                                 AutomationProperties.AutomationId="ModelPicker"
@@ -134,13 +137,64 @@
                         </settings:SettingsCard>
                     </settings:SettingsExpander.Items>
                 </settings:SettingsExpander>
+
+                <settings:SettingsExpander Header="OpenAI" Description="OpenAI Platform billing with an API key.">
+                    <settings:SettingsExpander.Items>
+                        <settings:SettingsCard Header="Endpoint">
+                            <TextBox AutomationProperties.AutomationId="OpenAIEndpointTextBox" MinWidth="320" Text="{x:Bind ViewModel.OpenAIEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="Organization" Description="Optional organization header.">
+                            <TextBox AutomationProperties.AutomationId="OpenAIOrganizationTextBox" MinWidth="220" Text="{x:Bind ViewModel.OpenAIOrganization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="Project" Description="Optional project header.">
+                            <TextBox AutomationProperties.AutomationId="OpenAIProjectTextBox" MinWidth="220" Text="{x:Bind ViewModel.OpenAIProject, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="API key" Description="Leave blank to use CALIPER_OPENAI_KEY.">
+                            <PasswordBox AutomationProperties.AutomationId="OpenAIApiKeyPasswordBox" MinWidth="220" Password="{x:Bind ViewModel.OpenAIApiKey, Mode=TwoWay}" PasswordRevealMode="Peek" />
+                        </settings:SettingsCard>
+                    </settings:SettingsExpander.Items>
+                </settings:SettingsExpander>
+
+                <settings:SettingsExpander Header="OpenAI Codex" Description="Use your ChatGPT subscription through OAuth.">
+                    <settings:SettingsExpander.Items>
+                        <settings:SettingsCard Header="Account" Description="Caliper opens the OpenAI sign-in page in your browser.">
+                            <StackPanel HorizontalAlignment="Right" Spacing="4">
+                                <TextBlock HorizontalAlignment="Right" Text="{x:Bind ViewModel.OpenAICodexStatus, Mode=OneWay}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <TextBlock
+                                    HorizontalAlignment="Right"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{x:Bind ViewModel.OpenAICodexAccount, Mode=OneWay}"
+                                    Visibility="{x:Bind converters:XamlConverters.HasTextToVisibility(ViewModel.OpenAICodexAccount), Mode=OneWay}" />
+                            </StackPanel>
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="Authentication">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    AutomationProperties.AutomationId="SignInOpenAICodexButton"
+                                    Command="{x:Bind ViewModel.SignInOpenAICodexCommand}"
+                                    Content="Sign in"
+                                    IsEnabled="{x:Bind converters:XamlConverters.InvertBool(ViewModel.IsBusy), Mode=OneWay}"
+                                    Style="{StaticResource AccentButtonStyle}"
+                                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsOpenAICodexSignedOut), Mode=OneWay}" />
+                                <Button
+                                    AutomationProperties.AutomationId="SignOutOpenAICodexButton"
+                                    Command="{x:Bind ViewModel.SignOutOpenAICodexCommand}"
+                                    Content="Sign out"
+                                    IsEnabled="{x:Bind converters:XamlConverters.InvertBool(ViewModel.IsBusy), Mode=OneWay}"
+                                    Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsOpenAICodexAuthenticated), Mode=OneWay}" />
+                            </StackPanel>
+                        </settings:SettingsCard>
+                        <settings:SettingsCard Header="Endpoint" Description="Advanced: change only for a compatible Codex backend.">
+                            <TextBox AutomationProperties.AutomationId="OpenAICodexEndpointTextBox" MinWidth="320" Text="{x:Bind ViewModel.OpenAICodexEndpoint, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </settings:SettingsCard>
+                    </settings:SettingsExpander.Items>
+                </settings:SettingsExpander>
             </StackPanel>
         </ScrollViewer>
 
         <Border
             Grid.Row="3"
-            MaxWidth="960"
-            HorizontalAlignment="Left"
+            HorizontalAlignment="Stretch"
             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
             BorderThickness="1"
@@ -149,18 +203,36 @@
             <ListView
                 AutomationProperties.AutomationId="ModelsList"
                 ItemsSource="{x:Bind ViewModel.Models, Mode=OneWay}">
+                <ListView.Header>
+                    <Grid Padding="12,8" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="100" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Provider" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Grid.Column="1" Text="Model" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Grid.Column="2" Text="Capabilities" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <TextBlock Grid.Column="3" Text="Default" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                    </Grid>
+                </ListView.Header>
+                <ListView.ItemContainerStyle>
+                    <StaticResource ResourceKey="StretchListViewItemStyle" />
+                </ListView.ItemContainerStyle>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="vm:ModelItemViewModel">
                         <Grid Padding="12" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="140" />
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="3*" />
+                                <ColumnDefinition Width="100" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="{x:Bind Id}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Capabilities}" TextWrapping="Wrap" Style="{StaticResource CaptionTextBlockStyle}" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Provider}" Style="{StaticResource CaptionTextBlockStyle}" />
+                            <TextBlock VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Provider}" />
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Text="{x:Bind Id}" TextTrimming="CharacterEllipsis" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind Capabilities}" TextWrapping="Wrap" />
+                            <TextBlock Grid.Column="3" VerticalAlignment="Center" Text="{x:Bind DefaultText}" />
                         </Grid>
                     </DataTemplate>
                 </ListView.ItemTemplate>

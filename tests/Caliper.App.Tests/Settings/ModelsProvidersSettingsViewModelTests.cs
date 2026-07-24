@@ -20,12 +20,16 @@ public sealed class ModelsProvidersSettingsViewModelTests
                 OpenRouter = new OpenRouterOptions { Endpoint = "https://example/v1", AppTitle = "Caliper" },
             },
         };
-        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), configWriter, new FakeCredentialStore());
+        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), configWriter, new FakeCredentialStore(), new FakeCodexAuthService());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
         Assert.Equal("https://example/v1", viewModel.OpenRouterEndpoint);
         Assert.Equal("Caliper", viewModel.OpenRouterAppTitle);
+        Assert.Equal(
+            [ProviderIds.OpenRouter, ProviderIds.Gemini, ProviderIds.OpenAI, ProviderIds.OpenAICodex],
+            viewModel.ProviderOptions.Select(option => option.Id));
+        Assert.Equal("OpenAI Codex", viewModel.ProviderOptions[^1].DisplayName);
     }
 
     [Fact]
@@ -34,18 +38,57 @@ public sealed class ModelsProvidersSettingsViewModelTests
         var catalog = new FakeModelCatalog(
             new ModelCatalogEntry("beta/model", new ModelCapabilities(true, false, false, 1000)),
             new ModelCatalogEntry("alpha/model", new ModelCapabilities(true, false, false, 1000)));
-        var viewModel = new ModelsProvidersSettingsViewModel(catalog, new TestRuntimeSettings(), new FakeConfigWriter(), new FakeCredentialStore());
+        var viewModel = new ModelsProvidersSettingsViewModel(catalog, new TestRuntimeSettings(), new FakeConfigWriter(), new FakeCredentialStore(), new FakeCodexAuthService());
 
         await viewModel.LoadModelsCommand.ExecuteAsync(null);
 
         Assert.Equal(["alpha/model", "beta/model"], viewModel.Models.Select(m => m.Id));
         Assert.True(viewModel.HasModels);
+        Assert.Equal("2 models from OpenRouter.", viewModel.CatalogSummaryText);
+        Assert.Empty(viewModel.StatusMessage);
+        Assert.False(viewModel.StatusIsError);
+    }
+
+    [Fact]
+    public async Task LoadModelsAsync_uses_staged_provider_without_changing_runtime()
+    {
+        var runtime = new TestRuntimeSettings();
+        runtime.SetProvider("OpenRouter");
+        var catalog = new FakeModelCatalog();
+        var viewModel = new ModelsProvidersSettingsViewModel(catalog, runtime, new FakeConfigWriter(), new FakeCredentialStore(), new FakeCodexAuthService());
+        viewModel.SetProvider("Gemini");
+
+        await viewModel.LoadModelsCommand.ExecuteAsync(null);
+
+        Assert.Equal("Gemini", catalog.RequestedProvider);
+        Assert.Equal("OpenRouter", runtime.Caliper.Provider);
+    }
+
+    [Fact]
+    public async Task SetProvider_clears_catalog_from_previous_provider()
+    {
+        var viewModel = new ModelsProvidersSettingsViewModel(
+            new FakeModelCatalog(new ModelCatalogEntry(
+                "openrouter/model",
+                new ModelCapabilities(true, false, false, 1000))),
+            new TestRuntimeSettings(),
+            new FakeConfigWriter(),
+            new FakeCredentialStore(),
+            new FakeCodexAuthService());
+        await viewModel.LoadModelsCommand.ExecuteAsync(null);
+
+        viewModel.SetProvider("Gemini");
+
+        Assert.Empty(viewModel.Models);
+        Assert.Empty(viewModel.FilteredModels);
+        Assert.Empty(viewModel.CatalogSummaryText);
+        Assert.False(viewModel.HasModels);
     }
 
     [Fact]
     public void FilterModels_matches_substring_case_insensitive()
     {
-        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), new FakeConfigWriter(), new FakeCredentialStore());
+        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), new FakeConfigWriter(), new FakeCredentialStore(), new FakeCodexAuthService());
         viewModel.Models.Add(new ModelItemViewModel(new ModelCatalogEntry("openrouter/GPT-Five", new ModelCapabilities(true, false, false, 1000))));
         viewModel.Models.Add(new ModelItemViewModel(new ModelCatalogEntry("openrouter/other", new ModelCapabilities(true, false, false, 1000))));
 
@@ -58,7 +101,7 @@ public sealed class ModelsProvidersSettingsViewModelTests
     public async Task SaveAsync_writes_caliper_and_providers_sections()
     {
         var configWriter = new FakeConfigWriter();
-        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), configWriter, new FakeCredentialStore())
+        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), configWriter, new FakeCredentialStore(), new FakeCodexAuthService())
         {
             CurrentProvider = "OpenRouter",
             CurrentModel = "openrouter/model",
@@ -79,10 +122,11 @@ public sealed class ModelsProvidersSettingsViewModelTests
     {
         var configWriter = new FakeConfigWriter();
         var credentials = new FakeCredentialStore();
-        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), configWriter, credentials)
+        var viewModel = new ModelsProvidersSettingsViewModel(new FakeModelCatalog(), new TestRuntimeSettings(), configWriter, credentials, new FakeCodexAuthService())
         {
             OpenRouterApiKey = "or-secret",
             GeminiApiKey = "gemini-secret",
+            OpenAIApiKey = "openai-secret",
         };
 
         await viewModel.SaveCommand.ExecuteAsync(null);
@@ -93,6 +137,27 @@ public sealed class ModelsProvidersSettingsViewModelTests
         Assert.Equal("or-secret", storedOpenRouterKey);
         Assert.True(credentials.TryRead("Caliper/Providers/Gemini/ApiKey", out var storedGeminiKey));
         Assert.Equal("gemini-secret", storedGeminiKey);
+        Assert.True(credentials.TryRead("Caliper/Providers/OpenAI/ApiKey", out var storedOpenAIKey));
+        Assert.Equal("openai-secret", storedOpenAIKey);
+    }
+
+    [Fact]
+    public async Task SignInOpenAICodexAsync_updates_account_state()
+    {
+        var auth = new FakeCodexAuthService();
+        var viewModel = new ModelsProvidersSettingsViewModel(
+            new FakeModelCatalog(),
+            new TestRuntimeSettings(),
+            new FakeConfigWriter(),
+            new FakeCredentialStore(),
+            auth);
+
+        await viewModel.SignInOpenAICodexCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsOpenAICodexAuthenticated);
+        Assert.False(viewModel.IsOpenAICodexSignedOut);
+        Assert.Equal("developer@example.com", viewModel.OpenAICodexAccount);
+        Assert.Equal("Signed in", viewModel.OpenAICodexStatus);
     }
 
     [Fact]
@@ -101,7 +166,7 @@ public sealed class ModelsProvidersSettingsViewModelTests
         var credentials = new FakeCredentialStore();
         credentials.Save("Caliper/Providers/OpenRouter/ApiKey", "stored-key");
         var viewModel = new ModelsProvidersSettingsViewModel(
-            new FakeModelCatalog(), new TestRuntimeSettings(), new FakeConfigWriter(), credentials);
+            new FakeModelCatalog(), new TestRuntimeSettings(), new FakeConfigWriter(), credentials, new FakeCodexAuthService());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -110,7 +175,44 @@ public sealed class ModelsProvidersSettingsViewModelTests
 
     private sealed class FakeModelCatalog(params ModelCatalogEntry[] entries) : IModelCatalog
     {
+        public string? RequestedProvider { get; private set; }
+
         public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct) =>
             Task.FromResult<IReadOnlyList<ModelCatalogEntry>>(entries);
+
+        public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(string provider, CancellationToken ct)
+        {
+            RequestedProvider = provider;
+            return ListAsync(ct);
+        }
+    }
+
+    private sealed class FakeCodexAuthService : IOpenAICodexAuthService
+    {
+        public OpenAICodexAuthStatus Status { get; set; } =
+            new(false, "Not signed in");
+
+        public Task<OpenAICodexAuthStatus> GetStatusAsync(CancellationToken ct) =>
+            Task.FromResult(Status);
+
+        public Task<OpenAICodexAuthStatus> LoginWithBrowserAsync(CancellationToken ct)
+        {
+            Status = new(true, "Signed in", "developer@example.com");
+            return Task.FromResult(Status);
+        }
+
+        public Task<OpenAICodexDeviceCode> RequestDeviceCodeAsync(CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<OpenAICodexAuthStatus> CompleteDeviceCodeAsync(
+            OpenAICodexDeviceCode code,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task LogoutAsync(CancellationToken ct)
+        {
+            Status = new(false, "Not signed in");
+            return Task.CompletedTask;
+        }
     }
 }

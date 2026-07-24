@@ -22,6 +22,8 @@ public sealed partial class AdvancedSettingsViewModel(
     internal static readonly TimeSpan JsonValidationDebounce = TimeSpan.FromMilliseconds(500);
 
     private CancellationTokenSource? _jsonValidationCts;
+    private string _loadedRawJson = string.Empty;
+    private string _loadedPersistencePath = string.Empty;
 
     // U11 test seam: the most recently scheduled debounce+validate task. Production code never
     // reads this — it exists so FakeTimeProvider-based tests can deterministically await the
@@ -43,6 +45,8 @@ public sealed partial class AdvancedSettingsViewModel(
     // below (the page has a single status InfoBar for both), cleared at the start of whichever ran
     // most recently.
     [ObservableProperty] public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsRawDirty { get; set; }
+    [ObservableProperty] public partial bool IsPersistenceDirty { get; set; }
 
     // U11: debounces ~500ms after the last keystroke before validating. Cancels any in-flight
     // validation for the previous text so only the latest edit is ever checked. The async work is
@@ -51,12 +55,22 @@ public sealed partial class AdvancedSettingsViewModel(
     // — is caught inside it), so this partial method itself never needs to be async.
     partial void OnRawJsonChanged(string value)
     {
+        IsRawDirty = !string.Equals(value, _loadedRawJson, StringComparison.Ordinal);
+        SaveRawCommand.NotifyCanExecuteChanged();
         _jsonValidationCts?.Cancel();
         _jsonValidationCts?.Dispose();
         var cts = new CancellationTokenSource();
         _jsonValidationCts = cts;
         JsonValidationTask = ScheduleJsonValidationAsync(value, cts.Token);
     }
+
+    partial void OnPersistencePathChanged(string value)
+    {
+        IsPersistenceDirty = !string.Equals(value, _loadedPersistencePath, StringComparison.Ordinal);
+        SavePersistenceCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnHasJsonErrorChanged(bool value) => SaveRawCommand.NotifyCanExecuteChanged();
 
     private async Task ScheduleJsonValidationAsync(string capturedText, CancellationToken ct)
     {
@@ -96,9 +110,15 @@ public sealed partial class AdvancedSettingsViewModel(
         RawJson = await configFileStore.ReadAsync(ct);
         var persistence = await configWriter.LoadPersistenceAsync(ct);
         PersistencePath = persistence.SqlitePath;
+        _loadedRawJson = RawJson;
+        _loadedPersistencePath = PersistencePath;
+        IsRawDirty = false;
+        IsPersistenceDirty = false;
+        SaveRawCommand.NotifyCanExecuteChanged();
+        SavePersistenceCommand.NotifyCanExecuteChanged();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSavePersistence))]
     private async Task SavePersistenceAsync()
     {
         RestartRequired = false;
@@ -112,9 +132,15 @@ public sealed partial class AdvancedSettingsViewModel(
                 ? "Saved. Restart Caliper for the database path change to take effect."
                 : "Saved."
             : result.Error ?? "Save failed.";
+        if (result.Success)
+        {
+            _loadedPersistencePath = PersistencePath;
+            IsPersistenceDirty = false;
+            SavePersistenceCommand.NotifyCanExecuteChanged();
+        }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSaveRaw))]
     private async Task SaveRawAsync()
     {
         RestartRequired = false;
@@ -128,6 +154,9 @@ public sealed partial class AdvancedSettingsViewModel(
             // previous file.
             RestartRequired = true;
             StatusMessage = "Raw JSON saved. Restart Caliper to apply the changes.";
+            _loadedRawJson = RawJson;
+            IsRawDirty = false;
+            SaveRawCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex) when (ex is JsonException or IOException or ArgumentException)
         {
@@ -135,4 +164,21 @@ public sealed partial class AdvancedSettingsViewModel(
             StatusMessage = ex.Message;
         }
     }
+
+    [RelayCommand]
+    private void RevertPersistence()
+    {
+        PersistencePath = _loadedPersistencePath;
+        StatusMessage = "Persistence path reverted.";
+    }
+
+    [RelayCommand]
+    private void RevertRaw()
+    {
+        RawJson = _loadedRawJson;
+        StatusMessage = "Raw JSON reverted.";
+    }
+
+    private bool CanSavePersistence() => IsPersistenceDirty;
+    private bool CanSaveRaw() => IsRawDirty && !HasJsonError;
 }

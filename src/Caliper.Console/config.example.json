@@ -35,6 +35,15 @@
     "OpenRouter": {
       "Endpoint": "https://openrouter.ai/api/v1",
       "AppTitle": "Caliper"
+    },
+    "Gemini": {
+      "Endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/"
+    },
+    "OpenAI": {
+      "Endpoint": "https://api.openai.com/v1"
+    },
+    "OpenAICodex": {
+      "Endpoint": "https://chatgpt.com/backend-api/codex"
     }
   },
   "Permissions": {

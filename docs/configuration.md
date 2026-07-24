@@ -12,6 +12,12 @@ Lowest to highest:
 The desktop app's Settings pages and the console both read and write the same file, so a
 change made in one is picked up by the other.
 
+The desktop app stages configuration edits. Save validates and writes the whole affected
+section; Discard restores the loaded snapshot. Unsaved edits survive navigation between app
+pages but are not written on exit. Theme is an app-local preference and applies immediately.
+The Chat header's model and permission quick switchers are session-only and do not write this
+file.
+
 ## What applies immediately vs after restart
 
 Most settings are **live** — they apply to the next run, tool call, or scheduler tick
@@ -20,16 +26,17 @@ profiles, the schedule list, the execution backend and container knobs, context/
 tuning.
 
 A few bind once at startup and are **restart-required**: the enabled-tool set
-(`EnabledTools`), provider endpoints and keys, MCP servers, persistence paths, and
+(`EnabledTools`), provider endpoints, MCP servers, persistence paths, and
 `Scheduler:MaxConcurrentJobs`. The app's Settings pages tell you which is which after each
-save and offer a one-click restart.
+save and offer a one-click restart. API keys and OAuth tokens are read from the credential
+store per client creation and apply immediately.
 
 ## Section overview
 
 ```jsonc
 {
   "Caliper": {
-    "Provider": "OpenRouter",            // or "Gemini"
+    "Provider": "OpenRouter",            // OpenRouter | Gemini | OpenAI | OpenAICodex
     "Model": "<slug>",
     "EnabledTools": ["search", "fetch_url", "read_file", "list_dir", "glob", "grep",
                      "write_file", "edit_file", "bash", "powershell", "memory",
@@ -72,13 +79,23 @@ span sections:
 - Schedules need unique names, a parsable cron, a resolvable timezone, an existing working
   root, and a non-empty prompt ([scheduling.md](scheduling.md)).
 
-## Secrets
+## Providers and secrets
 
-Never in `config.json`.
+The four provider IDs are `OpenRouter`, `Gemini`, `OpenAI`, and `OpenAICodex`. Their endpoint
+settings live under the matching `Providers` section. `OpenAI` additionally accepts optional
+`Organization` and `Project` headers. `OpenAICodex` is distinct from OpenAI Platform: it uses
+ChatGPT OAuth and the Codex backend, not an API key.
+See [provider-authentication.md](provider-authentication.md) for commands, storage, and the
+credentialed manual test matrix.
 
-- **Console**: environment variables — `CALIPER_OPENROUTER_KEY`, `CALIPER_GEMINI_KEY`,
-  `CALIPER_SEARCH_KEY`.
-- **Desktop app**: Windows Credential Manager, managed from Settings → Models & providers.
+Secrets should never be placed in `config.json`.
+
+- **Console**: `/auth set-key` and `/auth login OpenAICodex` store credentials in
+  `~/.caliper/provider-auth.json`; on Unix Caliper restricts it to the current user. Environment
+  alternatives are `CALIPER_OPENROUTER_KEY`, `CALIPER_GEMINI_KEY`, and
+  `CALIPER_OPENAI_KEY`. `CALIPER_SEARCH_KEY` configures Tavily.
+- **Desktop app**: API keys and Codex OAuth tokens use Windows Credential Manager, managed from
+  Settings → Models & providers.
 
 Every `CALIPER_*` variable is stripped from shell and docker child processes, so keys can't
 leak into tool commands.

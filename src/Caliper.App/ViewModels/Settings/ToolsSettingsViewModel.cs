@@ -25,6 +25,8 @@ public sealed partial class ToolsSettingsViewModel(
     // a restart is needed.
     [ObservableProperty]
     public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private HashSet<string> _loadedEnabled = new(StringComparer.OrdinalIgnoreCase);
 
     public string EnabledCountText => $"{Tools.Count(static t => t.IsEnabled):N0} of {Tools.Count:N0} enabled";
 
@@ -41,11 +43,17 @@ public sealed partial class ToolsSettingsViewModel(
             {
                 IsEnabled = enabled.Contains(tool.Name),
             };
-            toggle.PropertyChanged += (_, _) => OnPropertyChanged(nameof(EnabledCountText));
+            toggle.PropertyChanged += (_, _) =>
+            {
+                OnPropertyChanged(nameof(EnabledCountText));
+                UpdateDirty();
+            };
             Tools.Add(toggle);
         }
 
         OnPropertyChanged(nameof(EnabledCountText));
+        _loadedEnabled = [.. enabled];
+        IsDirty = false;
     }
 
     [RelayCommand]
@@ -63,6 +71,25 @@ public sealed partial class ToolsSettingsViewModel(
                 ? "Saved. Restart Caliper for the enabled tool set to take effect."
                 : "Saved."
             : result.Error ?? "Save failed.";
+        if (result.Success)
+        {
+            _loadedEnabled = [.. Tools.Where(static tool => tool.IsEnabled).Select(static tool => tool.Name)];
+            IsDirty = false;
+        }
+    }
+
+    [RelayCommand]
+    private void Discard()
+    {
+        foreach (var tool in Tools)
+            tool.IsEnabled = _loadedEnabled.Contains(tool.Name);
+        IsDirty = false;
+    }
+
+    private void UpdateDirty()
+    {
+        var current = Tools.Where(static tool => tool.IsEnabled).Select(static tool => tool.Name);
+        IsDirty = !_loadedEnabled.SetEquals(current);
     }
 }
 

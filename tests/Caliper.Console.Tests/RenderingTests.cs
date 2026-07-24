@@ -63,6 +63,9 @@ public sealed class RenderingTests
         Assert.Equal(SlashCommandKind.Model, SlashCommandParser.Parse("/model openai/gpt").Kind);
         Assert.Equal("Auto", SlashCommandParser.Parse("/permissions Auto").Argument);
         Assert.Equal(SlashCommandKind.Models, SlashCommandParser.Parse("/models").Kind);
+        Assert.Equal("OpenAI", SlashCommandParser.Parse("/models OpenAI").Argument);
+        Assert.Equal(SlashCommandKind.Providers, SlashCommandParser.Parse("/providers").Kind);
+        Assert.Equal(SlashCommandKind.Auth, SlashCommandParser.Parse("/auth status").Kind);
         Assert.Equal(SlashCommandKind.Help, SlashCommandParser.Parse("/help").Kind);
         Assert.Equal(SlashCommandKind.Unknown, SlashCommandParser.Parse("/missing").Kind);
     }

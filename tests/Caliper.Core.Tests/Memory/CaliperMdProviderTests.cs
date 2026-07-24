@@ -52,6 +52,40 @@ public sealed class CaliperMdProviderTests : IDisposable
         Assert.Contains(". [truncated]", document.Content, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task CreateIfMissingAsync_creates_default_heading()
+    {
+        var provider = Build();
+
+        var document = await provider.CreateIfMissingAsync(_root, CancellationToken.None);
+
+        Assert.Equal("# Project memory\n", document.Content);
+        Assert.True(File.Exists(Path.Combine(_root, "CALIPER.md")));
+    }
+
+    [Fact]
+    public async Task CreateIfMissingAsync_never_overwrites_existing_file()
+    {
+        File.WriteAllText(Path.Combine(_root, "CALIPER.md"), "keep me");
+        var provider = Build();
+
+        var document = await provider.CreateIfMissingAsync(_root, CancellationToken.None);
+
+        Assert.Equal("keep me", document.Content);
+    }
+
+    [Fact]
+    public async Task CreateIfMissingAsync_rejects_path_outside_working_root()
+    {
+        var provider = new CaliperMdProvider(Options.Create(new CaliperOptions
+        {
+            Memory = new MemoryOptions { ProjectFile = Path.Combine("..", "outside.md") },
+        }));
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(
+            () => provider.CreateIfMissingAsync(_root, CancellationToken.None));
+    }
+
     private static CaliperMdProvider Build(int maxChars = 4096) =>
         new(Options.Create(new CaliperOptions
         {

@@ -50,8 +50,15 @@ dotnet run --project src/Caliper.Console -- --resume <run-id> --print
 /sessions                     List saved sessions
 /resume <session-id>          Resume a previous session's transcript
 /model <slug>                 Switch the active model at runtime
-/models                       List available model metadata from the provider
-/set provider <name>          Switch provider (OpenRouter | Gemini) at runtime
+/models [provider]            List model metadata from the active or named provider
+/providers                    Show readiness for all four providers
+/auth status [provider]       Show credential or OAuth status
+/auth set-key <provider>      Securely save an OpenRouter, Gemini, or OpenAI API key
+/auth clear-key <provider>    Remove a saved API key
+/auth login OpenAICodex       Sign in with ChatGPT in the browser
+/auth login OpenAICodex --device-code  Sign in without a localhost callback
+/auth logout OpenAICodex      Remove saved Codex tokens
+/set provider <name>          Switch provider (OpenRouter | Gemini | OpenAI | OpenAICodex)
 /tools                        Show enabled tools
 /permissions <mode>           Set AskAlways, Auto, or Plan
 /mcp                          Show MCP server status
@@ -79,6 +86,8 @@ doubles as a dry-run harness for a job's allowlist before you trust the cron (se
 
 ## Credentials
 
-Keys come from environment variables, never config: `CALIPER_OPENROUTER_KEY`,
-`CALIPER_GEMINI_KEY`, `CALIPER_SEARCH_KEY` (Tavily search tool). The desktop app instead uses
-Windows Credential Manager ([desktop-app.md](desktop-app.md)).
+Provider keys never need to be placed in config. `/auth set-key` saves them in
+`~/.caliper/provider-auth.json` (owner-only permissions on Unix); environment alternatives are
+`CALIPER_OPENROUTER_KEY`, `CALIPER_GEMINI_KEY`, and `CALIPER_OPENAI_KEY`. OpenAI Codex access
+and refresh tokens use the same store. `CALIPER_SEARCH_KEY` configures Tavily search. The
+desktop app uses Windows Credential Manager instead ([desktop-app.md](desktop-app.md)).

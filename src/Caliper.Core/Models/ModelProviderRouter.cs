@@ -7,30 +7,37 @@ using Microsoft.Extensions.AI;
 namespace Caliper.Core.Models;
 
 /// <summary>
-/// Dispatches chat-client, capability, and catalog calls to the concrete provider selected by
-/// <see cref="Configuration.CaliperOptions.Provider"/>, read fresh on every call (not cached at
-/// construction) so a runtime provider switch — e.g. the console's <c>/set provider Gemini</c> —
-/// takes effect on the next model call without rebuilding this router or any of its dependents.
+/// Resolves the selected provider on every call, so runtime provider switches remain live. Unlike
+/// the former two-provider router, unknown identifiers fail explicitly instead of silently
+/// falling through to OpenRouter.
 /// </summary>
 internal sealed class ModelProviderRouter(
     IRuntimeSettings runtimeSettings,
-    OpenRouterChatClientProvider openRouterChat,
-    GeminiChatClientProvider geminiChat,
-    OpenRouterCapabilityProvider openRouterCapabilities,
-    GeminiCapabilityProvider geminiCapabilities)
+    IEnumerable<IModelProvider> providers)
     : IChatClientProvider, IModelCapabilityProvider, IModelCatalog
 {
+    private readonly Dictionary<string, IModelProvider> _providers = providers.ToDictionary(
+        provider => provider.Id,
+        StringComparer.OrdinalIgnoreCase);
+
     public IChatClient GetClient(string modelSlug) =>
-        IsGemini() ? geminiChat.GetClient(modelSlug) : openRouterChat.GetClient(modelSlug);
+        Resolve(runtimeSettings.Caliper.Provider).GetClient(modelSlug);
 
     public Task<ModelCapabilities> GetAsync(string modelSlug, CancellationToken ct) =>
-        IsGemini() ? geminiCapabilities.GetAsync(modelSlug, ct) : openRouterCapabilities.GetAsync(modelSlug, ct);
+        Resolve(runtimeSettings.Caliper.Provider).GetAsync(modelSlug, ct);
 
     public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(CancellationToken ct) =>
-        IsGemini() ? geminiCapabilities.ListAsync(ct) : openRouterCapabilities.ListAsync(ct);
+        Resolve(runtimeSettings.Caliper.Provider).ListAsync(ct);
 
-    // Unrecognized or unset provider values fall through to OpenRouter, preserving today's only
-    // behavior for existing configs.
-    private bool IsGemini() =>
-        string.Equals(runtimeSettings.Caliper.Provider, "Gemini", StringComparison.OrdinalIgnoreCase);
+    public Task<IReadOnlyList<ModelCatalogEntry>> ListAsync(string provider, CancellationToken ct) =>
+        Resolve(provider).ListAsync(ct);
+
+    private IModelProvider Resolve(string provider)
+    {
+        if (_providers.TryGetValue(provider, out var resolved))
+            return resolved;
+
+        throw new InvalidOperationException(
+            $"Unknown model provider '{provider}'. Supported providers: {string.Join(", ", ProviderIds.All)}.");
+    }
 }

@@ -76,8 +76,8 @@ public static class CaliperHome
     }
 
     private const string DefaultConfigTemplate = """
-        // Caliper config. You can also set CALIPER_OPENROUTER_KEY or CALIPER_GEMINI_KEY instead
-        // of storing a key here.
+        // Caliper config. API keys can be saved with /auth set-key or supplied through
+        // CALIPER_OPENROUTER_KEY, CALIPER_GEMINI_KEY, or CALIPER_OPENAI_KEY.
         {
           "Caliper": {
             "Provider": "OpenRouter",
@@ -94,6 +94,12 @@ public static class CaliperHome
             },
             "Gemini": {
               "Endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/"
+            },
+            "OpenAI": {
+              "Endpoint": "https://api.openai.com/v1"
+            },
+            "OpenAICodex": {
+              "Endpoint": "https://chatgpt.com/backend-api/codex"
             }
           },
           "Persistence": {

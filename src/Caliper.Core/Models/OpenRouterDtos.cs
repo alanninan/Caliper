@@ -13,5 +13,11 @@ internal sealed record OpenRouterModel(
     [property: JsonPropertyName("supported_parameters")] IReadOnlyList<string>? SupportedParameters,
     [property: JsonPropertyName("context_length")] int? ContextLength);
 
+internal sealed record OpenAIModelsResponse(
+    [property: JsonPropertyName("data")] IReadOnlyList<OpenAIModel>? Data);
+
+internal sealed record OpenAIModel(
+    [property: JsonPropertyName("id")] string Id);
+
 internal sealed record LoadSkillArguments(
     [property: JsonPropertyName("name")] string Name);

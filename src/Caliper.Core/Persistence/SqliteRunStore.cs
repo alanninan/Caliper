@@ -110,14 +110,32 @@ internal sealed class SqliteRunStore(
 
     public async Task<IReadOnlyList<RunRecord>> ListRecentAsync(int limit, CancellationToken ct)
     {
+        return await ListAsync(limit, scheduledOnly: false, ct).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<RunRecord>> ListRecentScheduledAsync(int limit, CancellationToken ct)
+    {
+        return await ListAsync(limit, scheduledOnly: true, ct).ConfigureAwait(false);
+    }
+
+    private async Task<IReadOnlyList<RunRecord>> ListAsync(
+        int limit,
+        bool scheduledOnly,
+        CancellationToken ct)
+    {
         await EnsureCreatedAsync(ct).ConfigureAwait(false);
 
         await using var connection = await OpenConnectionAsync(ct).ConfigureAwait(false);
         await using var command = connection.CreateCommand();
-        command.CommandText = """
-            SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at, resumed
-            FROM runs ORDER BY updated_at DESC LIMIT $limit;
-            """;
+        command.CommandText = scheduledOnly
+            ? """
+                SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at, resumed
+                FROM runs WHERE job_name IS NOT NULL ORDER BY updated_at DESC LIMIT $limit;
+                """
+            : """
+                SELECT run_id, session_id, job_name, status, reason, step, max_steps, unattended, started_at, updated_at, resumed
+                FROM runs ORDER BY updated_at DESC LIMIT $limit;
+                """;
         command.Parameters.AddWithValue("$limit", Math.Max(0, limit));
 
         var results = new List<RunRecord>();

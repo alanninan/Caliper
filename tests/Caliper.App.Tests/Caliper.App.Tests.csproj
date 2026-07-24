@@ -23,6 +23,7 @@
     <Compile Include="..\..\src\Caliper.App\ViewModels\ApprovalViewModel.cs" Link="ViewModels\ApprovalViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\ChatItemViewModels.cs" Link="ViewModels\ChatItemViewModels.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\ChatRunStatus.cs" Link="ViewModels\ChatRunStatus.cs" />
+    <Compile Include="..\..\src\Caliper.App\ViewModels\ChatResponsiveLayout.cs" Link="ViewModels\ChatResponsiveLayout.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\ChatViewModel.cs" Link="ViewModels\ChatViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\FileDiffViewModel.cs" Link="ViewModels\FileDiffViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\IChatSessionController.cs" Link="ViewModels\IChatSessionController.cs" />
@@ -31,7 +32,6 @@
     <Compile Include="..\..\src\Caliper.App\ViewModels\SessionItemViewModel.cs" Link="ViewModels\SessionItemViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SessionsViewModel.cs" Link="ViewModels\SessionsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SchedulesViewModel.cs" Link="ViewModels\SchedulesViewModel.cs" />
-    <Compile Include="..\..\src\Caliper.App\ViewModels\RunsViewModel.cs" Link="ViewModels\RunsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\SkillsViewModel.cs" Link="ViewModels\SkillsViewModel.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\ToolCallStatus.cs" Link="ViewModels\ToolCallStatus.cs" />
     <Compile Include="..\..\src\Caliper.App\ViewModels\Settings\GeneralSettingsViewModel.cs" Link="ViewModels\Settings\GeneralSettingsViewModel.cs" />
@@ -49,6 +49,8 @@
     <Compile Include="..\..\src\Caliper.App\Preferences\AppPreferencesStore.cs" Link="Preferences\AppPreferencesStore.cs" />
     <Compile Include="..\..\src\Caliper.App\Preferences\SessionUsageStore.cs" Link="Preferences\SessionUsageStore.cs" />
     <Compile Include="..\..\src\Caliper.App\Scheduling\AppSchedulerController.cs" Link="Scheduling\AppSchedulerController.cs" />
+    <Compile Include="..\..\src\Caliper.App\Navigation\AppNavigationService.cs" Link="Navigation\AppNavigationService.cs" />
+    <Compile Include="..\..\src\Caliper.App\Navigation\PathLauncher.cs" Link="Navigation\PathLauncher.cs" />
     <Compile Include="..\..\src\Caliper.App\Security\WindowsCredentialStore.cs" Link="Security\WindowsCredentialStore.cs" />
   </ItemGroup>
   <ItemGroup>

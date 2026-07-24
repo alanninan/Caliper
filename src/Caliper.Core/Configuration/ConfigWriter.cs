@@ -172,13 +172,10 @@ internal sealed class ConfigWriter(
 
     public async Task<ConfigWriteResult> SaveProvidersAsync(ProvidersOptions value, CancellationToken ct)
     {
-        var failures = new List<string>();
-        if (string.IsNullOrWhiteSpace(value.OpenRouter.Endpoint))
-            failures.Add("Providers.OpenRouter.Endpoint must not be empty.");
-        if (string.IsNullOrWhiteSpace(value.OpenRouter.AppTitle))
-            failures.Add("Providers.OpenRouter.AppTitle must not be empty.");
-        if (string.IsNullOrWhiteSpace(value.Gemini.Endpoint))
-            failures.Add("Providers.Gemini.Endpoint must not be empty.");
+        var validation = new ProvidersOptionsValidator().Validate(null, value);
+        var failures = validation.Failed
+            ? validation.Failures.ToList()
+            : [];
         if (failures.Count > 0)
             return Invalid(failures);
 
@@ -196,6 +193,17 @@ internal sealed class ConfigWriter(
                 Endpoint = value.Gemini.Endpoint,
                 ApiKey = BlankToNull(value.Gemini.ApiKey),
             },
+            OpenAI = new OpenAIOptions
+            {
+                Endpoint = value.OpenAI.Endpoint,
+                Organization = BlankToNull(value.OpenAI.Organization),
+                Project = BlankToNull(value.OpenAI.Project),
+                ApiKey = BlankToNull(value.OpenAI.ApiKey),
+            },
+            OpenAICodex = new OpenAICodexOptions
+            {
+                Endpoint = value.OpenAICodex.Endpoint,
+            },
         };
 
         var root = await ReadRootAsync(ct).ConfigureAwait(false);
@@ -203,17 +211,21 @@ internal sealed class ConfigWriter(
         root[ProvidersSection] = JsonSerializer.SerializeToNode(toSerialize, CaliperJsonContext.Default.ProvidersOptions);
         await WriteRootAsync(root, ct).ConfigureAwait(false);
 
-        // Provider chat clients bind IOptions<ProvidersOptions> once at singleton construction — no
-        // live seam exists — but a restart is only actually needed when a bound field changed.
-        // (API keys the app stores in Credential Manager aren't visible here; the caller folds those
-        // in.) Don't cry wolf when e.g. only a caliper-section field was re-saved.
+        // Provider endpoint/header options are startup snapshots, so changing them requires a
+        // restart. Credentials use IProviderCredentialStore and are intentionally excluded from
+        // this decision by host settings surfaces.
         var restartRequired =
             !string.Equals(previous.OpenRouter.Endpoint, toSerialize.OpenRouter.Endpoint, StringComparison.Ordinal) ||
             !string.Equals(previous.OpenRouter.AppTitle, toSerialize.OpenRouter.AppTitle, StringComparison.Ordinal) ||
             !string.Equals(previous.OpenRouter.AppReferer, toSerialize.OpenRouter.AppReferer, StringComparison.Ordinal) ||
             !string.Equals(previous.OpenRouter.ApiKey, toSerialize.OpenRouter.ApiKey, StringComparison.Ordinal) ||
             !string.Equals(previous.Gemini.Endpoint, toSerialize.Gemini.Endpoint, StringComparison.Ordinal) ||
-            !string.Equals(previous.Gemini.ApiKey, toSerialize.Gemini.ApiKey, StringComparison.Ordinal);
+            !string.Equals(previous.Gemini.ApiKey, toSerialize.Gemini.ApiKey, StringComparison.Ordinal) ||
+            !string.Equals(previous.OpenAI.Endpoint, toSerialize.OpenAI.Endpoint, StringComparison.Ordinal) ||
+            !string.Equals(previous.OpenAI.Organization, toSerialize.OpenAI.Organization, StringComparison.Ordinal) ||
+            !string.Equals(previous.OpenAI.Project, toSerialize.OpenAI.Project, StringComparison.Ordinal) ||
+            !string.Equals(previous.OpenAI.ApiKey, toSerialize.OpenAI.ApiKey, StringComparison.Ordinal) ||
+            !string.Equals(previous.OpenAICodex.Endpoint, toSerialize.OpenAICodex.Endpoint, StringComparison.Ordinal);
 
         return Success(restartRequired);
     }

@@ -34,8 +34,9 @@ dotnet run --project tests/Caliper.Evals -- --suite tool-calling --model "<openr
 dotnet publish src/Caliper.Console -c Release -r win-x64
 ```
 
-Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model runs),
-`CALIPER_SEARCH_KEY` (Tavily). Config seeds at `~/.caliper/config.json` on first run.
+Provider credentials come from `/auth set-key`, `/auth login OpenAICodex`, or env vars
+`CALIPER_OPENROUTER_KEY`, `CALIPER_GEMINI_KEY`, and `CALIPER_OPENAI_KEY`;
+`CALIPER_SEARCH_KEY` configures Tavily. Config seeds at `~/.caliper/config.json` on first run.
 
 ## Layout
 
@@ -136,7 +137,7 @@ Credentials come from env vars: `CALIPER_OPENROUTER_KEY` (required for model run
   `Agents/TwoPhaseStrategy.cs`, and the matching test) — they're removed via `<Compile Remove>`.
 - Don't add knobs to `AgentOptions` — it's legacy/preserved and unused by the native strategy.
   Use `CaliperOptions`.
-- Don't commit secrets; keys come from `CALIPER_OPENROUTER_KEY` / `CALIPER_SEARCH_KEY`.
+- Don't commit secrets; use the provider credential store or `CALIPER_*_KEY` env vars.
 
 ## Documentation
 

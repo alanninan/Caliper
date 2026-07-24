@@ -17,34 +17,22 @@ namespace Caliper.Core.Models;
 /// </summary>
 internal sealed class GeminiChatClientProvider(
     IOptions<ProvidersOptions> providerOptions,
+    IProviderCredentialStore credentials,
     ILoggerFactory loggerFactory) : IChatClientProvider
 {
-    private readonly Dictionary<string, IChatClient> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _gate = new();
-
     public IChatClient GetClient(string modelSlug)
     {
-        lock (_gate)
-        {
-            if (_cache.TryGetValue(modelSlug, out var cached))
-                return cached;
-
-            var created = Create(modelSlug);
-            _cache[modelSlug] = created;
-            return created;
-        }
-    }
-
-    private IChatClient Create(string modelSlug)
-    {
         var gemini = providerOptions.Value.Gemini;
-        if (string.IsNullOrWhiteSpace(gemini.ApiKey))
+        var apiKey = credentials.TryRead(ProviderCredentialTargets.GeminiApiKey, out var stored)
+            ? stored
+            : gemini.ApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
             return new UnavailableChatClient("Providers:Gemini:ApiKey is not configured.");
 
         var clientOptions = new OpenAIClientOptions { Endpoint = new Uri(gemini.Endpoint) };
 
         IChatClient model = new OpenAIClient(
-                new ApiKeyCredential(gemini.ApiKey),
+                new ApiKeyCredential(apiKey),
                 clientOptions)
             .GetChatClient(modelSlug)
             .AsIChatClient();

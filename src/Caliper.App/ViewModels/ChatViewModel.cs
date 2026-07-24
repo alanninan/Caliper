@@ -238,7 +238,7 @@ public sealed partial class ChatViewModel : ObservableObject, IChatSessionContro
 
     // Lazy, once-per-session-of-the-page fetch: called from the quick-switcher flyout's Opened
     // event, not eagerly at construction. The catalog call hits a live, provider-selected network
-    // endpoint (OpenRouter/Gemini) — same unenumerable failure surface as
+    // endpoint — same unenumerable failure surface as
     // ModelsProvidersSettingsViewModel.LoadModelsAsync (A11) — so a failure must degrade to an
     // empty list and surface the error as the hint text rather than throw out of a flyout-open
     // handler.

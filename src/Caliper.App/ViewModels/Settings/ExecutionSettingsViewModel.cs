@@ -31,6 +31,8 @@ public sealed partial class ExecutionSettingsViewModel(IConfigWriter configWrite
     [ObservableProperty] public partial string StatusMessage { get; set; } = string.Empty;
     [ObservableProperty] public partial bool StatusIsError { get; set; }
     [ObservableProperty] public partial bool RestartRequired { get; set; }
+    [ObservableProperty] public partial bool IsDirty { get; set; }
+    private Snapshot? _snapshot;
 
     /// <summary>
     /// Non-empty only when <see cref="SelectedBackend"/> is Host and a bare <c>"*"</c> wildcard is
@@ -53,7 +55,13 @@ public sealed partial class ExecutionSettingsViewModel(IConfigWriter configWrite
         OnPropertyChanged(nameof(IsContainerBackend));
         OnPropertyChanged(nameof(IsHostBackend));
         UpdateWildcardWarning();
+        UpdateDirty();
     }
+    partial void OnImageChanged(string value) => UpdateDirty();
+    partial void OnSelectedNetworkChanged(string value) => UpdateDirty();
+    partial void OnCpusChanged(double value) => UpdateDirty();
+    partial void OnMemoryMbChanged(double value) => UpdateDirty();
+    partial void OnUserChanged(string value) => UpdateDirty();
 
     [RelayCommand]
     public async Task LoadAsync(CancellationToken ct)
@@ -67,6 +75,8 @@ public sealed partial class ExecutionSettingsViewModel(IConfigWriter configWrite
         User = execution.User;
 
         await RefreshWildcardSourceAsync(ct);
+        _snapshot = Capture();
+        IsDirty = false;
     }
 
     [RelayCommand]
@@ -98,7 +108,11 @@ public sealed partial class ExecutionSettingsViewModel(IConfigWriter configWrite
             : result.Error ?? "Save failed.";
 
         if (result.Success)
+        {
             await RefreshWildcardSourceAsync(CancellationToken.None);
+            _snapshot = Capture();
+            IsDirty = false;
+        }
     }
 
     [RelayCommand]
@@ -108,6 +122,14 @@ public sealed partial class ExecutionSettingsViewModel(IConfigWriter configWrite
         StatusIsError = false;
         await LoadAsync(ct);
     }
+
+    private Snapshot Capture() => new(SelectedBackend, Image, SelectedNetwork, Cpus, MemoryMb, User);
+    private void UpdateDirty()
+    {
+        if (_snapshot is not null)
+            IsDirty = Capture() != _snapshot;
+    }
+    private sealed record Snapshot(string Backend, string Image, string Network, double Cpus, double Memory, string User);
 
     /// <summary>
     /// Reads the current Permissions section and Schedules list once (on Load and after a

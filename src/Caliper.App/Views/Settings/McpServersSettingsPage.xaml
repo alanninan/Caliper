@@ -7,20 +7,23 @@
     xmlns:settings="using:CommunityToolkit.WinUI.Controls"
     xmlns:vm="using:Caliper.App.ViewModels.Settings">
 
-    <ScrollViewer Padding="36,28">
-        <StackPanel MaxWidth="960" Spacing="16">
-            <Grid ColumnSpacing="16">
+    <ScrollViewer Style="{StaticResource PageScrollViewerStyle}">
+        <StackPanel Style="{StaticResource WidePageShellStyle}">
+            <Grid Style="{StaticResource PageHeaderGridStyle}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <StackPanel Style="{StaticResource PageHeaderTextStyle}">
                     <TextBlock Text="MCP servers" Style="{StaticResource TitleTextBlockStyle}" />
                     <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="External tool servers connected to the runtime." TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <StackPanel Grid.Column="1" Style="{StaticResource PageHeaderActionsStyle}">
                     <Button AutomationProperties.AutomationId="McpReconnectButton" Command="{x:Bind ViewModel.ReconnectCommand}" Content="Reconnect all" />
-                    <Button AutomationProperties.AutomationId="SaveMcpButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.IsDirty), Mode=OneWay}">
+                        <Button AutomationProperties.AutomationId="DiscardMcpButton" Command="{x:Bind ViewModel.DiscardCommand}" Content="Discard" />
+                        <Button AutomationProperties.AutomationId="SaveMcpButton" Command="{x:Bind ViewModel.SaveCommand}" Content="Save" Style="{StaticResource AccentButtonStyle}" />
+                    </StackPanel>
                 </StackPanel>
             </Grid>
             <InfoBar
@@ -37,7 +40,22 @@
                 </InfoBar.ActionButton>
             </InfoBar>
 
-            <Grid ColumnSpacing="12">
+            <Border MaxWidth="{StaticResource EmptyStateWidth}" Padding="28,24" HorizontalAlignment="Center"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                    CornerRadius="{ThemeResource OverlayCornerRadius}"
+                    Visibility="{x:Bind converters:XamlConverters.InvertBoolToVisibility(ViewModel.HasConfiguredServers), Mode=OneWay}">
+                <StackPanel Spacing="16">
+                    <TextBlock HorizontalAlignment="Center" Text="Add an MCP server" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Connect a local command or a web server to add external tools." TextAlignment="Center" TextWrapping="Wrap" />
+                    <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="8">
+                        <Button AutomationProperties.AutomationId="AddLocalMcpServerButton" Command="{x:Bind ViewModel.AddServerWithTransportCommand}" CommandParameter="stdio" Content="Local command" Style="{StaticResource AccentButtonStyle}" />
+                        <Button AutomationProperties.AutomationId="AddWebMcpServerButton" Command="{x:Bind ViewModel.AddServerWithTransportCommand}" CommandParameter="http" Content="Web server" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Grid ColumnSpacing="12" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasConfiguredServers), Mode=OneWay}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -48,7 +66,7 @@
                 <settings:SettingsCard Grid.Column="2" Header="Status" Description="{x:Bind ViewModel.HealthText, Mode=OneWay}" />
             </Grid>
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasConfiguredServers), Mode=OneWay}">
                 <ListView AutomationProperties.AutomationId="McpServerStatusList" ItemsSource="{x:Bind ViewModel.McpServers, Mode=OneWay}">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="vm:McpStatusViewModel">
@@ -67,12 +85,28 @@
                 </ListView>
             </Border>
 
-            <Grid ColumnSpacing="16">
+            <Grid x:Name="McpEditorGrid" ColumnSpacing="16" Visibility="{x:Bind converters:XamlConverters.BoolToVisibility(ViewModel.HasConfiguredServers), Mode=OneWay}">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="320" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="McpListColumn" Width="*" />
+                    <ColumnDefinition x:Name="McpDetailColumn" Width="0" />
                 </Grid.ColumnDefinitions>
-                <StackPanel Spacing="8">
+                <VisualStateManager.VisualStateGroups>
+                    <VisualStateGroup>
+                        <VisualState x:Name="CompactMcp" />
+                        <VisualState x:Name="WideMcp">
+                            <VisualState.StateTriggers><AdaptiveTrigger MinWindowWidth="1008" /></VisualState.StateTriggers>
+                            <VisualState.Setters>
+                                <Setter Target="McpListColumn.Width" Value="320" />
+                                <Setter Target="McpDetailColumn.Width" Value="*" />
+                                <Setter Target="McpListPanel.Visibility" Value="Visible" />
+                                <Setter Target="McpDetailPanel.Visibility" Value="Visible" />
+                                <Setter Target="McpDetailPanel.(Grid.Column)" Value="1" />
+                                <Setter Target="McpBackButton.Visibility" Value="Collapsed" />
+                            </VisualState.Setters>
+                        </VisualState>
+                    </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <StackPanel x:Name="McpListPanel" Spacing="8">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button AutomationProperties.AutomationId="AddMcpServerButton" Command="{x:Bind ViewModel.AddServerCommand}" Content="Add" />
                         <Button AutomationProperties.AutomationId="RemoveMcpServerButton" Command="{x:Bind ViewModel.RemoveSelectedServerCommand}" Content="Remove" />
@@ -82,6 +116,7 @@
                         MaxHeight="360"
                         ItemsSource="{x:Bind ViewModel.Servers, Mode=OneWay}"
                         SelectedItem="{x:Bind ViewModel.SelectedServer, Mode=TwoWay}"
+                        SelectionChanged="McpServerList_SelectionChanged"
                         SelectionMode="Single">
                         <ListView.ItemTemplate>
                             <DataTemplate x:DataType="vm:McpServerSettingViewModel">
@@ -93,7 +128,9 @@
                         </ListView.ItemTemplate>
                     </ListView>
                 </StackPanel>
-                <Border Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}">
+                <Border x:Name="McpDetailPanel" Grid.Column="1" Padding="16" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="{ThemeResource OverlayCornerRadius}" Visibility="Collapsed">
+                    <StackPanel Spacing="8">
+                    <Button x:Name="McpBackButton" AutomationProperties.AutomationId="McpBackButton" Click="McpBack_Click" Content="Back" />
                     <ContentControl Content="{x:Bind ViewModel.SelectedServer, Mode=OneWay}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate x:DataType="vm:McpServerSettingViewModel">
@@ -112,6 +149,7 @@
                             </DataTemplate>
                         </ContentControl.ContentTemplate>
                     </ContentControl>
+                    </StackPanel>
                 </Border>
             </Grid>
         </StackPanel>

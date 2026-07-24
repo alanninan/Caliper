@@ -46,9 +46,6 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     private readonly TimeProvider _timeProvider = App.Services.GetRequiredService<TimeProvider>();
     private readonly ICredentialStore _credentials = App.Services.GetRequiredService<ICredentialStore>();
     private readonly IAppPreferencesStore _preferences = App.Services.GetRequiredService<IAppPreferencesStore>();
-    // Whether the app was launched with a provider key already bound. Provider clients bind once at
-    // startup, so a key added afterward can't actually connect until a restart.
-    private readonly bool _startupHadKey = HasAnyProviderKeyConfigured();
     private readonly DispatcherTimer _approvalCountdown = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool _initialized;
     private bool _showAddKeyWelcome;
@@ -58,6 +55,9 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     // splitter drag. Seeded from saved prefs (or the historical default) in ApplySavedPaneWidths.
     private double _lastExpandedSessionsWidth = DefaultSessionsPaneWidth;
     private double _lastExpandedInspectorWidth = DefaultInspectorPaneWidth;
+    private ChatLayoutBand _layoutBand;
+    private bool _transientSessionsOpen;
+    private bool _transientInspectorOpen;
     // U6: the previously-observed RunStatus, so a toast fires only for a genuine transition out of
     // an in-flight run (Running, or Stopping en route to a terminal status) into a terminal one —
     // never a session switch or reload that happens to touch RunStatus without a run having been
@@ -81,14 +81,14 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    // A provider key must be added (no key anywhere).
+    // The selected provider needs a key or OAuth sign-in.
     public bool ShowAddKeyWelcome
     {
         get => _showAddKeyWelcome;
         private set { if (_showAddKeyWelcome != value) { _showAddKeyWelcome = value; RaiseWelcomeChanged(); } }
     }
 
-    // A key now exists but the running app started without one — it needs a restart to connect.
+    // Retained for the existing welcome-card layout. Credentials now take effect without restart.
     public bool ShowRestartWelcome
     {
         get => _showRestartWelcome;
@@ -100,8 +100,8 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
     public string WelcomeTitle => ShowRestartWelcome ? "Almost ready" : "Welcome to Caliper";
 
     public string WelcomeMessage => ShowRestartWelcome
-        ? "A provider key is saved but the app started without one. Restart Caliper to connect."
-        : "No model provider is configured yet. Add an OpenRouter or Gemini API key in Settings to start chatting.";
+        ? "Provider settings changed. Restart Caliper to apply the endpoint change."
+        : "The active model provider is not connected. Add its API key or sign in to OpenAI Codex in Settings.";
 
     private void RaiseWelcomeChanged()
     {
@@ -112,26 +112,37 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(WelcomeMessage)));
     }
 
-    private static bool HasAnyProviderKeyConfigured()
+    // Read the selected provider and its live credential. API-key providers consult Credential
+    // Manager first and then the startup options snapshot (which includes config and environment
+    // variables); Codex accepts either token because a refresh token can recover an access token.
+    private bool HasActiveProviderConfiguredLive()
     {
         var providers = App.Services.GetRequiredService<IOptions<ProvidersOptions>>().Value;
-        return !string.IsNullOrWhiteSpace(providers.OpenRouter.ApiKey) ||
-               !string.IsNullOrWhiteSpace(providers.Gemini.ApiKey);
+        var provider = App.Services.GetRequiredService<IRuntimeSettings>().Caliper.Provider;
+
+        return provider switch
+        {
+            ProviderIds.OpenRouter =>
+                HasCredential(CredentialTargets.OpenRouterApiKey, providers.OpenRouter.ApiKey),
+            ProviderIds.Gemini =>
+                HasCredential(CredentialTargets.GeminiApiKey, providers.Gemini.ApiKey),
+            ProviderIds.OpenAI =>
+                HasCredential(CredentialTargets.OpenAIApiKey, providers.OpenAI.ApiKey),
+            ProviderIds.OpenAICodex =>
+                HasCredential(CredentialTargets.OpenAICodexAccessToken, null) ||
+                HasCredential(CredentialTargets.OpenAICodexRefreshToken, null),
+            _ => false,
+        };
     }
 
-    // Read the live key state — credential store first (the app's real key home), falling back to
-    // the startup config snapshot. Unlike the bound IOptions snapshot, this reflects a key the user
-    // just saved without a restart, so the welcome card can update instead of looping the user back.
-    private bool HasAnyProviderKeyConfiguredLive() =>
-        _startupHadKey ||
-        _credentials.TryRead(CredentialTargets.OpenRouterApiKey, out var openRouter) && !string.IsNullOrWhiteSpace(openRouter) ||
-        _credentials.TryRead(CredentialTargets.GeminiApiKey, out var gemini) && !string.IsNullOrWhiteSpace(gemini);
+    private bool HasCredential(string target, string? configuredValue) =>
+        _credentials.TryRead(target, out var storedValue) && !string.IsNullOrWhiteSpace(storedValue) ||
+        !string.IsNullOrWhiteSpace(configuredValue);
 
     private void RefreshFirstRunState()
     {
-        var hasKeyNow = HasAnyProviderKeyConfiguredLive();
-        ShowAddKeyWelcome = !hasKeyNow;
-        ShowRestartWelcome = hasKeyNow && !_startupHadKey;
+        ShowAddKeyWelcome = !HasActiveProviderConfiguredLive();
+        ShowRestartWelcome = false;
         UpdateWelcomeCardFocus();
     }
 
@@ -188,6 +199,66 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         Unloaded += ChatPage_Unloaded;
     }
 
+    internal static ChatLayoutBand ResolveLayoutBand(double width) =>
+        ChatResponsiveLayout.Resolve(width).Band;
+
+    private void ChatWorkspace_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var band = ResolveLayoutBand(e.NewSize.Width);
+        if (band != _layoutBand)
+        {
+            _layoutBand = band;
+            _transientSessionsOpen = false;
+            _transientInspectorOpen = false;
+        }
+        ApplyResponsivePaneLayout();
+    }
+
+    private void ToggleSessionsPane_Click(object sender, RoutedEventArgs e)
+    {
+        if (_layoutBand == ChatLayoutBand.Wide)
+            Sessions.TogglePaneCommand.Execute(null);
+        else
+        {
+            _transientSessionsOpen = !_transientSessionsOpen;
+            if (_layoutBand == ChatLayoutBand.Compact && _transientSessionsOpen)
+                _transientInspectorOpen = false;
+            ApplyResponsivePaneLayout();
+        }
+    }
+
+    private void ToggleInspectorPane_Click(object sender, RoutedEventArgs e)
+    {
+        if (_layoutBand != ChatLayoutBand.Compact)
+            ViewModel.ToggleInspectorCommand.Execute(null);
+        else
+        {
+            _transientInspectorOpen = !_transientInspectorOpen;
+            if (_transientInspectorOpen)
+                _transientSessionsOpen = false;
+            ApplyResponsivePaneLayout();
+        }
+    }
+
+    private void ApplyResponsivePaneLayout()
+    {
+        var sessionsOpen = _layoutBand == ChatLayoutBand.Wide
+            ? !Sessions.IsPaneCollapsed
+            : _transientSessionsOpen;
+        var inspectorOpen = _layoutBand switch
+        {
+            ChatLayoutBand.Wide or ChatLayoutBand.Medium => !ViewModel.IsInspectorCollapsed,
+            _ => _transientInspectorOpen,
+        };
+
+        SetColumnWidth(SessionsColumn, !sessionsOpen, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
+        SetColumnWidth(InspectorColumn, !inspectorOpen, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        SessionsSplitter.Visibility = sessionsOpen && _layoutBand == ChatLayoutBand.Wide
+            ? Visibility.Visible : Visibility.Collapsed;
+        InspectorSplitter.Visibility = inspectorOpen && _layoutBand != ChatLayoutBand.Compact
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     public static Visibility IsAdded(DiffLineKind kind) =>
         kind == DiffLineKind.Added ? Visibility.Visible : Visibility.Collapsed;
 
@@ -199,13 +270,6 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
 
     public static string FormatLineNumber(int? lineNumber) =>
         lineNumber?.ToString(CultureInfo.CurrentCulture) ?? string.Empty;
-
-    public static InfoBarSeverity ApprovalSeverity(bool isResolved, bool isDenied) =>
-        isDenied
-            ? InfoBarSeverity.Error
-            : isResolved
-                ? InfoBarSeverity.Success
-                : InfoBarSeverity.Warning;
 
     public static Visibility EmptyStateVisibility(bool hasMessages, bool showFirstRunWelcome) =>
         !hasMessages && !showFirstRunWelcome ? Visibility.Visible : Visibility.Collapsed;
@@ -641,13 +705,12 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
             peer.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
-    // A1/A2: the approval card's Reason line (ApprovalReasonText) and the DescribedBy link from
-    // its InfoBar to ApprovalCountdownText both live inside ApprovalTemplate — a DataTemplate, so
-    // neither is a page-level x:Name field. ContentTemplateRoot gives the docked ContentControl's
-    // realized template root (the InfoBar); FindName then reaches the named descendant within that
-    // instance's own template namescope. Deferred one dispatch tick so the x:Bind driven by the
-    // PendingApproval change that triggered this call has flowed through to the templated
-    // InfoBar/TextBlock first.
+    // A1/A2: the approval surface's Reason line (ApprovalReasonText) and the DescribedBy link to
+    // ApprovalCountdownText both live inside ApprovalTemplate — a DataTemplate, so neither is a
+    // page-level x:Name field. ContentTemplateRoot gives the docked ContentControl's realized root;
+    // FindName then reaches the named descendant within that instance's template namescope.
+    // Deferred one dispatch tick so the x:Bind driven by the PendingApproval change that triggered
+    // this call has flowed through to the templated Border/TextBlock first.
     private void WireApprovalCardAccessibility()
     {
         _ = DispatcherQueue.TryEnqueue(() =>
@@ -656,7 +719,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
                 return;
 
             // A2: GetDescribedBy(...).Add is the only way to set DescribedBy — it has no XAML
-            // setter. The Contains guard is the "once, not per update" requirement: this InfoBar
+            // setter. The Contains guard is the "once, not per update" requirement: this surface
             // instance is reused across successive approvals (ContentPresenter doesn't tear down
             // and rebuild the same ContentTemplate just because Content's value changed), so adding
             // unconditionally on every approval would duplicate the entry.
@@ -679,8 +742,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         _lastExpandedSessionsWidth = Math.Max(preferences.SessionsPaneWidth ?? DefaultSessionsPaneWidth, SessionsPaneMinWidth);
         _lastExpandedInspectorWidth = Math.Max(preferences.InspectorPaneWidth ?? DefaultInspectorPaneWidth, InspectorPaneMinWidth);
 
-        SetColumnWidth(SessionsColumn, Sessions.IsPaneCollapsed, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
-        SetColumnWidth(InspectorColumn, ViewModel.IsInspectorCollapsed, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        ApplyResponsivePaneLayout();
     }
 
     private static void SetColumnWidth(ColumnDefinition column, bool isCollapsed, double expandedWidth, double minWidth)
@@ -708,7 +770,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         if (Sessions.IsPaneCollapsed && SessionsColumn.ActualWidth > 0)
             _lastExpandedSessionsWidth = Math.Max(SessionsColumn.ActualWidth, SessionsPaneMinWidth);
 
-        SetColumnWidth(SessionsColumn, Sessions.IsPaneCollapsed, _lastExpandedSessionsWidth, SessionsPaneMinWidth);
+        ApplyResponsivePaneLayout();
         PersistPaneWidths();
     }
 
@@ -717,7 +779,7 @@ public sealed partial class ChatPage : Page, INotifyPropertyChanged
         if (ViewModel.IsInspectorCollapsed && InspectorColumn.ActualWidth > 0)
             _lastExpandedInspectorWidth = Math.Max(InspectorColumn.ActualWidth, InspectorPaneMinWidth);
 
-        SetColumnWidth(InspectorColumn, ViewModel.IsInspectorCollapsed, _lastExpandedInspectorWidth, InspectorPaneMinWidth);
+        ApplyResponsivePaneLayout();
         PersistPaneWidths();
     }
 

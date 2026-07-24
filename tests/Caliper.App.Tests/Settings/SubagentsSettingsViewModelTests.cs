@@ -79,7 +79,7 @@ public sealed class SubagentsSettingsViewModelTests
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
-        Assert.Equal("Plan", viewModel.Profiles.Single().ModeText);
+        Assert.Equal("Planning only", viewModel.Profiles.Single().ModeText);
     }
 
     [Fact]

@@ -24,6 +24,8 @@ public sealed partial class McpServersSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
@@ -39,4 +41,19 @@ public sealed partial class McpServersSettingsPage : Page
 #pragma warning disable CA1822
     private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
 #pragma warning restore CA1822
+
+    private void McpServerList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ActualWidth >= 1008 || ViewModel.SelectedServer is null)
+            return;
+        McpListPanel.Visibility = Visibility.Collapsed;
+        McpDetailPanel.Visibility = Visibility.Visible;
+        Grid.SetColumn(McpDetailPanel, 0);
+    }
+
+    private void McpBack_Click(object sender, RoutedEventArgs e)
+    {
+        McpDetailPanel.Visibility = Visibility.Collapsed;
+        McpListPanel.Visibility = Visibility.Visible;
+    }
 }

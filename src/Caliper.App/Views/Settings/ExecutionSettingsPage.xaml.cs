@@ -24,7 +24,11 @@ public sealed partial class ExecutionSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
+            ExecutionHostChoice.IsChecked = ViewModel.IsHostBackend;
+            ExecutionContainerChoice.IsChecked = ViewModel.IsContainerBackend;
         }
         catch (Exception ex)
         {
@@ -39,4 +43,10 @@ public sealed partial class ExecutionSettingsPage : Page
 #pragma warning disable CA1822
     private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
 #pragma warning restore CA1822
+
+    private void BackendChoice_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string backend })
+            ViewModel.SelectedBackend = backend;
+    }
 }

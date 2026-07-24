@@ -24,6 +24,8 @@ public sealed partial class ModelsProvidersSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
             if (ViewModel.Models.Count == 0)
                 await ViewModel.LoadModelsCommand.ExecuteAsync(null);

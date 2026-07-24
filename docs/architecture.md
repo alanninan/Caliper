@@ -23,8 +23,9 @@ Everything is wired in `ServiceCollectionExtensions.AddCaliperCore`; hosts use
 the singleton runner is re-entrant — several runs can be in flight at once (App session A
 running while B is viewed; scheduler jobs; subagent children).
 
-Each step: re-read live options → build the system prompt (skills menu, loaded skill bodies,
-memory block, project document, current task) → fit history to the context window (compacting
+Each step: re-read live options → build the system prompt (runtime identity with the Caliper
+harness, selected provider, and effective per-run model; skills menu; loaded skill bodies;
+memory block; project document; current task) → fit history to the context window (compacting
 if needed) → stream one model turn → persist and dispatch tool calls through the permission
 gate → repeat. The loop is bounded by `MaxSteps`, `DuplicateCallLimit`, per-tool timeouts, and
 windowed duplicate-signature loop detection (catches A-B-A-B oscillation, not just immediate
@@ -100,11 +101,17 @@ fields. Loop detection still applies if the model repeats the identical malforme
 
 ## Models
 
-Two providers behind `ModelProviderRouter` (`IChatClientProvider` + `IModelCapabilityProvider`
-+ `IModelCatalog`): OpenRouter (live catalog) and Gemini (curated catalog via its
-OpenAI-compatible endpoint). The router re-reads the configured provider per call, so
-`/set provider` switches live. `RunSpec.Model` reaches capability lookup and client selection
-through `TurnContext.Model` in every strategy.
+Four `IModelProvider` registrations sit behind `ModelProviderRouter`
+(`IChatClientProvider` + `IModelCapabilityProvider` + `IModelCatalog`): OpenRouter, Gemini,
+OpenAI Platform (API key + Responses API), and OpenAI Codex (ChatGPT OAuth + Codex Responses
+backend). Authentication, transport, catalog, and capabilities remain provider-scoped; an
+unknown provider fails explicitly rather than falling back to OpenRouter. The router re-reads
+the configured provider per call, so `/set provider` switches live. `RunSpec.Model` reaches
+capability lookup and client selection through `TurnContext.Model` in every strategy.
+
+OpenAI Codex uses PKCE browser login or device-code login and refreshes short-lived access
+tokens through `auth.openai.com`. Caliper uses the HTTP Responses transport so the host retains
+ownership of tools, permissions, persistence, and the agent loop.
 
 ## Persistence
 

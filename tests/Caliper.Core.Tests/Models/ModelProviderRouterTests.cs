@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for full license information.
 using System.Net;
 using System.Text;
+using Caliper.Core.Abstractions;
 using Caliper.Core.Configuration;
 using Caliper.Core.Models;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -49,13 +50,14 @@ public sealed class ModelProviderRouterTests
     }
 
     [Fact]
-    public async Task Unrecognized_provider_falls_through_to_openrouter()
+    public async Task Unrecognized_provider_fails_explicitly()
     {
         var (router, _) = Build(provider: "SomethingElse", openRouterJson: """{"data": []}""");
 
-        var capabilities = await router.GetAsync("test/model", CancellationToken.None);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => router.GetAsync("test/model", CancellationToken.None));
 
-        Assert.Equal(32768, capabilities.ContextWindowTokens);
+        Assert.Contains("Unknown model provider", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -85,23 +87,58 @@ public sealed class ModelProviderRouterTests
         });
         var runtimeSettings = new RuntimeSettings(caliperOptions, Options.Create(new PermissionsOptions()));
 
-        var openRouterChat = new OpenRouterChatClientProvider(providersOptions, NullLoggerFactory.Instance);
-        var geminiChat = new GeminiChatClientProvider(providersOptions, NullLoggerFactory.Instance);
+        var credentials = new TestProviderCredentialStore();
+        var openRouterChat = new OpenRouterChatClientProvider(
+            providersOptions,
+            credentials,
+            NullLoggerFactory.Instance);
+        var geminiChat = new GeminiChatClientProvider(
+            providersOptions,
+            credentials,
+            NullLoggerFactory.Instance);
         var openRouterCapabilities = new OpenRouterCapabilityProvider(
             new StaticHttpClientFactory(new StaticJsonHandler(openRouterJson)),
-            caliperOptions,
             providersOptions,
             NullLogger<OpenRouterCapabilityProvider>.Instance);
         var geminiCapabilities = new GeminiCapabilityProvider();
 
         var router = new ModelProviderRouter(
             runtimeSettings,
-            openRouterChat,
-            geminiChat,
-            openRouterCapabilities,
-            geminiCapabilities);
+            [
+                new CompositeModelProvider(
+                    ProviderIds.OpenRouter,
+                    "OpenRouter",
+                    ProviderAuthenticationKind.ApiKey,
+                    openRouterChat,
+                    openRouterCapabilities,
+                    openRouterCapabilities),
+                new CompositeModelProvider(
+                    ProviderIds.Gemini,
+                    "Google Gemini",
+                    ProviderAuthenticationKind.ApiKey,
+                    geminiChat,
+                    geminiCapabilities,
+                    geminiCapabilities),
+            ]);
 
         return (router, runtimeSettings);
+    }
+}
+
+file sealed class TestProviderCredentialStore : IProviderCredentialStore
+{
+    public void Save(string targetName, string secret)
+    {
+    }
+
+    public bool TryRead(string targetName, out string secret)
+    {
+        secret = string.Empty;
+        return false;
+    }
+
+    public void Delete(string targetName)
+    {
     }
 }
 

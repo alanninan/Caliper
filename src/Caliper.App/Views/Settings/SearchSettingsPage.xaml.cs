@@ -22,7 +22,10 @@ public sealed partial class SearchSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
+            SearchBackendPicker.SelectedIndex = ViewModel.IsTavilySelected ? 1 : 0;
         }
         catch (Exception ex)
         {
@@ -37,4 +40,10 @@ public sealed partial class SearchSettingsPage : Page
 #pragma warning disable CA1822
     private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
 #pragma warning restore CA1822
+
+    private void SearchBackend_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SearchBackendPicker.SelectedItem is FrameworkElement { Tag: string backend })
+            ViewModel.Backend = backend;
+    }
 }

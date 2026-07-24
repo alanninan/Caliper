@@ -8,9 +8,11 @@
         x:Name="SettingsNav"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
-        PaneDisplayMode="Top"
+        OpenPaneLength="240"
+        PaneDisplayMode="Auto"
         SelectionChanged="SettingsNav_SelectionChanged">
         <NavigationView.MenuItems>
+            <NavigationViewItemHeader Content="Basics" />
             <NavigationViewItem AutomationProperties.AutomationId="GeneralSettingsNavItem" Content="General" Tag="General">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE713;" />
@@ -21,6 +23,7 @@
                     <FontIcon Glyph="&#xE950;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItemHeader Content="Agent" />
             <NavigationViewItem AutomationProperties.AutomationId="AgentBehaviorSettingsNavItem" Content="Agent behavior" Tag="AgentBehavior">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE8BD;" />
@@ -41,6 +44,7 @@
                     <FontIcon Glyph="&#xE716;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItemHeader Content="Safety" />
             <NavigationViewItem AutomationProperties.AutomationId="PermissionsSettingsNavItem" Content="Permissions" Tag="Permissions">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE72E;" />
@@ -51,6 +55,7 @@
                     <FontIcon Glyph="&#xE756;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItemHeader Content="Integrations" />
             <NavigationViewItem AutomationProperties.AutomationId="McpSettingsNavItem" Content="MCP servers" Tag="Mcp">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE774;" />
@@ -61,12 +66,16 @@
                     <FontIcon Glyph="&#xE721;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
+            <NavigationViewItemHeader Content="Advanced" />
             <NavigationViewItem AutomationProperties.AutomationId="AdvancedSettingsNavItem" Content="Advanced" Tag="Advanced">
                 <NavigationViewItem.Icon>
                     <FontIcon Glyph="&#xE90F;" />
                 </NavigationViewItem.Icon>
             </NavigationViewItem>
         </NavigationView.MenuItems>
-        <Frame x:Name="SettingsFrame" />
+        <Frame
+            x:Name="SettingsFrame"
+            HorizontalContentAlignment="Stretch"
+            VerticalContentAlignment="Stretch" />
     </NavigationView>
 </Page>

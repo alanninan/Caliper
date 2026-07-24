@@ -24,6 +24,8 @@ public sealed partial class SubagentsSettingsPage : Page
     {
         try
         {
+            if (ViewModel.IsDirty)
+                return;
             await ViewModel.LoadCommand.ExecuteAsync(null);
         }
         catch (Exception ex)
@@ -39,6 +41,21 @@ public sealed partial class SubagentsSettingsPage : Page
 #pragma warning disable CA1822
     private void RestartApp_Click(object sender, RoutedEventArgs e) => AppRestart.Restart();
 #pragma warning restore CA1822
+
+    private void SubagentProfileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ActualWidth >= 1008 || ViewModel.SelectedProfile is null)
+            return;
+        SubagentListPanel.Visibility = Visibility.Collapsed;
+        SubagentDetailPanel.Visibility = Visibility.Visible;
+        Grid.SetColumn(SubagentDetailPanel, 0);
+    }
+
+    private void SubagentBack_Click(object sender, RoutedEventArgs e)
+    {
+        SubagentDetailPanel.Visibility = Visibility.Collapsed;
+        SubagentListPanel.Visibility = Visibility.Visible;
+    }
 
     private async void RemoveSelectedProfile_Click(object sender, RoutedEventArgs e)
     {

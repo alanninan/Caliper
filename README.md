@@ -1,6 +1,6 @@
 # Caliper
 
-Caliper is a .NET agent runtime with two front-ends — an interactive console app and a WinUI 3 desktop app — for running model-assisted workflows against a local workspace. It combines OpenRouter and Google Gemini chat clients, guarded local tools, MCP server support, session persistence, memory, skills, and context compaction. The reusable engine lives in `Caliper.Core`; the console and the WinUI app are two hosts on top of it.
+Caliper is a .NET agent runtime with two front-ends — an interactive console app and a WinUI 3 desktop app — for running model-assisted workflows against a local workspace. It supports OpenRouter, Google Gemini, OpenAI Platform API keys, and OpenAI Codex OAuth, alongside guarded local tools, MCP server support, session persistence, memory, skills, and context compaction. The reusable engine lives in `Caliper.Core`; the console and the WinUI app are two hosts on top of it.
 
 The project is designed around deterministic host-side control: model output proposes work, while Caliper owns tool dispatch, permissions, retries, context management, persistence, and safety checks.
 
@@ -10,12 +10,11 @@ The project is designed around deterministic host-side control: model output pro
 
 - Console-first agent loop with streaming responses, plus a WinUI 3 desktop app (`Caliper.App`)
   with a three-pane workbench, inline tool/diff inspector, docked permission approvals, structured
-  settings pages, a Schedules page for managing and running cron jobs, and a Runs page for
-  inspecting and resuming durable runs.
-- OpenRouter and Google Gemini provider integration through `Microsoft.Extensions.AI` (Gemini via
-  its OpenAI-compatible endpoint).
+  settings pages, and a Schedules page for managing cron jobs and reviewing their run history.
+- Four explicit provider integrations: OpenRouter, Google Gemini, OpenAI Platform through the
+  Responses API, and OpenAI Codex through ChatGPT OAuth.
 - Runtime model switching with `/model <slug>` and catalog inspection with `/models`; runtime
-  provider switching with `/set provider <OpenRouter|Gemini>`.
+  provider switching with `/set provider <OpenRouter|Gemini|OpenAI|OpenAICodex>`.
 - Tool permission modes: `AskAlways`, `Auto`, and `Plan`.
 - Built-in tools for search, URL fetch, file reads/writes/edits, glob, grep, shell, memory, and skill loading.
 - MCP client support for stdio and HTTP servers.
@@ -55,18 +54,18 @@ The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
 
 - Run it with `dotnet run --project src/Caliper.App` (or F5 in Visual Studio); requires the Windows
   App SDK and a Windows 10.0.19041+ target.
-- API keys are stored in **Windows Credential Manager** (not `config.json`) — enter them under
-  Settings → Models &amp; providers. Provider endpoint and key changes apply after a restart, which
-  the app offers as a one-click "Restart Caliper" button.
+- API keys and OpenAI Codex OAuth tokens are stored in **Windows Credential Manager** (not
+  `config.json`) — manage them under Settings → Models &amp; providers. Credential changes are live;
+  provider endpoint changes require a restart.
 - UI preferences (theme, window placement, sessions-pane state, whether the in-app scheduler
   toggle is on) live in `~/.caliper/app-ui.json`; runtime settings still come from
   `~/.caliper/config.json`.
 - A Schedules page manages `Caliper:Schedules` jobs (add/edit/remove, enable/disable, "Run now")
   and can optionally run `SchedulerHostedService` in-process while the window is open — jobs still
   run unattended (permission prompts deny + report), and headless scheduling remains `--serve`.
-- A Runs page lists durable runs (`IRunStore`) with parity to the console's `/runs` and
-  `--resume <run-id>`, including a "Resume" action for runs the startup sweep left `Interrupted`
-  and a launch-time banner when any exist.
+  Its History mode lists the 20 most recent scheduled runs, opens their Chat transcripts, and
+  resumes interrupted scheduled runs.
+- Adaptive grouped Settings stage edits until Save.
 - Settings → Subagents and Settings → Execution edit `Caliper:Subagents` and `Caliper:Execution`
   (both live seams, so changes apply to the very next `task`/shell call, no restart) — no more
   hand-editing `config.json` for either.
@@ -74,8 +73,8 @@ The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
 ## Prerequisites
 
 - .NET SDK 10.0 or newer.
-- An API key for model-backed runs: an OpenRouter key (default provider), or a Google Gemini API
-  key if you plan to use `Provider: "Gemini"`.
+- Credentials for the selected provider: an OpenRouter, Gemini, or OpenAI Platform API key, or a
+  ChatGPT account for OpenAI Codex OAuth.
 - A model slug from your chosen provider. Pick a model appropriate for your task; tool-calling
   models work best with Caliper's native tool strategy.
 
@@ -88,11 +87,15 @@ The WinUI 3 desktop app is a second host on the same `Caliper.Core` engine.
    dotnet build Caliper.slnx
    ```
 
-2. Configure credentials. The recommended local setup is to keep the API key in an environment variable.
+2. Configure credentials. In the console, use `/auth set-key OpenRouter` (input is hidden), or
+   keep the API key in an environment variable:
 
    ```powershell
    $env:CALIPER_OPENROUTER_KEY = "<your-openrouter-api-key>"
    ```
+
+   For a ChatGPT subscription, run `/auth login OpenAICodex`; add `--device-code` when a browser
+   callback is unavailable. `/providers` shows readiness for all four providers.
 
 3. Configure the model slug. Caliper seeds `~/.caliper/config.json` on first run. Set `Caliper.Model` to the OpenRouter model slug you want to use.
 
@@ -298,12 +301,15 @@ Important settings:
 
 | Setting | Purpose |
 | --- | --- |
-| `Caliper.Provider` | Active provider: `OpenRouter` (default) or `Gemini`. Switchable at runtime with `/set provider <name>`. |
+| `Caliper.Provider` | Active provider: `OpenRouter` (default), `Gemini`, `OpenAI`, or `OpenAICodex`. |
 | `Caliper.Model` | Active provider model slug. Configure this before model-backed use. |
 | `Providers.OpenRouter.Endpoint` | OpenRouter-compatible API endpoint. |
 | `Providers.OpenRouter.ApiKey` | API key, usually supplied through `CALIPER_OPENROUTER_KEY`. |
 | `Providers.Gemini.Endpoint` | Gemini's OpenAI-compatible API endpoint. |
 | `Providers.Gemini.ApiKey` | API key, usually supplied through `CALIPER_GEMINI_KEY`. |
+| `Providers.OpenAI.Endpoint` | OpenAI Platform Responses API endpoint. |
+| `Providers.OpenAI.ApiKey` | API key, usually supplied through `CALIPER_OPENAI_KEY`. |
+| `Providers.OpenAICodex.Endpoint` | ChatGPT Codex backend endpoint; OAuth tokens are stored separately. |
 | `Caliper.WorkingRoot` | Workspace root exposed to file tools. |
 | `Caliper.EnabledTools` | Tool allowlist surfaced to the agent. |
 | `Permissions.Mode` | Permission mode for side-effecting tools. |
@@ -320,6 +326,7 @@ Environment variable examples:
 ```powershell
 $env:CALIPER_OPENROUTER_KEY = "<your-openrouter-api-key>"
 $env:CALIPER_GEMINI_KEY = "<your-gemini-api-key>"
+$env:CALIPER_OPENAI_KEY = "<your-openai-api-key>"
 $env:CALIPER_Caliper__Model = "<your-openrouter-model-slug>"
 $env:CALIPER_Permissions__Mode = "AskAlways"
 ```

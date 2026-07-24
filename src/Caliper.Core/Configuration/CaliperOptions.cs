@@ -235,6 +235,8 @@ public sealed class ProvidersOptions
 {
     public OpenRouterOptions OpenRouter { get; set; } = new();
     public GeminiOptions Gemini { get; set; } = new();
+    public OpenAIOptions OpenAI { get; set; } = new();
+    public OpenAICodexOptions OpenAICodex { get; set; } = new();
 }
 
 public sealed class OpenRouterOptions
@@ -251,6 +253,19 @@ public sealed class GeminiOptions
     // for OpenRouter, so no dedicated Gemini SDK or wire format is needed.
     public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/openai/";
     public string? ApiKey { get; set; }
+}
+
+public sealed class OpenAIOptions
+{
+    public string Endpoint { get; set; } = "https://api.openai.com/v1";
+    public string? Organization { get; set; }
+    public string? Project { get; set; }
+    public string? ApiKey { get; set; }
+}
+
+public sealed class OpenAICodexOptions
+{
+    public string Endpoint { get; set; } = "https://chatgpt.com/backend-api/codex";
 }
 
 public sealed class PermissionsOptions
